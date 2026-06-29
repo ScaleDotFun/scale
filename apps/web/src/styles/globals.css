@@ -1,0 +1,249 @@
+/* ═══════════════════════════════════════════════════════════════
+   FRONT PROTOCOL — Global Design System
+   Trojan-inspired trading terminal — pure black + gold accent
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ── CSS Custom Properties ──────────────────────────────────── */
+:root {
+  /* Backgrounds — pure black core */
+  --bg-0: #000000;
+  --bg-1: #0a0a0a;
+  --bg-2: #111111;
+  --bg-3: #181818;
+  --bg-4: #1e1e1e;
+
+  /* Panels — flat dark, no glassmorphism */
+  --panel-bg: #0d0d0d;
+  --panel-bg-hover: #141414;
+  --panel-border: #1a1a1a;
+  --panel-border-hover: #2a2a2a;
+  --panel-radius: 8px;
+
+  /* Text — clean white hierarchy */
+  --text-0: #ffffff;
+  --text-1: #a0a0a0;
+  --text-2: #555555;
+
+  /* Primary accent — gold/yellow (Trojan-style) */
+  --primary: #f0b90b;
+  --primary-dim: #d4a50a;
+  --primary-glow: rgba(240, 185, 11, 0.10);
+  --primary-subtle: rgba(240, 185, 11, 0.06);
+  --primary-hover: #ffd740;
+
+  /* Status */
+  --green: #00c853;
+  --red: #ff3b3b;
+  --yellow: #f0b90b;
+  --cyan: #26c6da;
+  --blue: #448aff;
+
+  /* Borders */
+  --border: #1a1a1a;
+  --border-hover: #2a2a2a;
+  --border-active: rgba(240, 185, 11, 0.25);
+
+  /* Fonts */
+  --font-sans: 'Inter', -apple-system, 'SF Pro Display', 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  /* Transitions */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: 150ms var(--ease);
+  --transition-mid: 250ms var(--ease);
+}
+
+/* ── Reset ──────────────────────────────────────────────────── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-3) transparent;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg-0);
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+input, textarea { font-family: inherit; }
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--bg-4);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-2); }
+
+/* ── Typography Helpers ────────────────────────────────────── */
+h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-0); }
+h2 { font-size: 1.25rem; font-weight: 600; color: var(--text-0); }
+h3 { font-size: 1rem; font-weight: 600; color: var(--text-0); }
+h4 { font-size: 0.875rem; font-weight: 600; color: var(--text-0); }
+p { color: var(--text-1); }
+
+.mono { font-family: var(--font-mono); }
+.text-green { color: var(--green); }
+.text-red { color: var(--red); }
+.text-yellow { color: var(--yellow); }
+.text-primary { color: var(--primary); }
+.text-dim { color: var(--text-2); }
+.text-muted { color: var(--text-1); }
+.text-secondary { color: var(--text-1); }
+.text-right { text-align: right; }
+
+/* ── Utility ───────────────────────────────────────────────── */
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #000;
+  border-color: var(--primary);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-0);
+  border: 1px solid var(--border);
+}
+
+.btn-outline:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-2);
+}
+
+/* ── Alerts ────────────────────────────────────────────────── */
+.alert {
+  padding: 10px 14px;
+  border-radius: var(--panel-radius);
+  font-size: 12px;
+  border: 1px solid;
+}
+
+.alert-error {
+  color: var(--red);
+  border-color: rgba(255, 59, 59, 0.15);
+  background: rgba(255, 59, 59, 0.05);
+}
+
+/* ── Stat Card ─────────────────────────────────────────────── */
+.stat-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  padding: 16px;
+}
+
+.stat-card-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.stat-card-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-0);
+}
+
+.stat-card-sub {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+/* ── Page Grid ─────────────────────────────────────────────── */
+.page-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.page-grid-3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.page-grid-4 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+/* ── Badge ─────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.badge-bonded { color: var(--green); background: rgba(0, 200, 83, 0.08); }
+.badge-rising { color: var(--primary); background: var(--primary-subtle); }
+.badge-degen { color: var(--red); background: rgba(255, 59, 59, 0.08); }

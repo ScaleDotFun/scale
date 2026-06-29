@@ -1,0 +1,24 @@
+{
+  "name": "@front-protocol/bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/bot.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/bot.ts",
+    "start": "node dist/bot.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@front-protocol/core": "workspace:*",
+    "grammy": "^1.44.0",
+    "dotenv": "^16.4.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

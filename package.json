@@ -1,0 +1,24 @@
+{
+  "name": "front-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "db:generate": "pnpm --filter @front-protocol/database db:generate",
+    "db:migrate": "pnpm --filter @front-protocol/database db:migrate",
+    "db:push": "pnpm --filter @front-protocol/database db:push",
+    "db:seed": "pnpm --filter @front-protocol/database db:seed",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "latest",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

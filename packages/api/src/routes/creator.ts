@@ -1,0 +1,357 @@
+// ──────────────────────────────────────────────
+// FRONT PROTOCOL — Creator Routes
+// ──────────────────────────────────────────────
+
+import { Router } from 'express';
+import { prisma } from '@front-protocol/database';
+import { LAMPORTS_PER_SOL, getTierConfig, type Tier } from '@front-protocol/core';
+import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
+import { sendSuccess, sendError, sendPaginated } from '../lib/response';
+import { ValidationError, NotFoundError, InsufficientFundsError } from '../lib/errors';
+
+const router = Router();
+
+/** Minimum claimable amount: 0.5 SOL in lamports */
+const MIN_CLAIM_LAMPORTS = LAMPORTS_PER_SOL / 2n;
+
+/**
+ * GET /creator/dashboard
+ *
+ * Return the creator's tokens with earnings, volume, and stats.
+ */
+router.get('/dashboard', verifyWalletSignature, async (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const wallet = authReq.wallet!;
+
+    // Fetch all tokens this creator has listed
+    const tokens = await prisma.token.findMany({
+      where: { creatorWallet: wallet },
+      orderBy: { listedAt: 'desc' },
+    });
+
+    if (tokens.length === 0) {
+      sendSuccess(res, {
+        tokens: [],
+        totals: {
+          totalTradingVolume: 0n,
+          totalEarnings: 0n,
+          unclaimedEarnings: 0n,
+          tokenCount: 0,
+        },
+      });
+      return;
+    }
+
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const tokenIds = tokens.map((t) => t.id);
+
+    // Get unclaimed (claimable) payouts for this creator
+    const unclaimedAgg = await prisma.creatorPayout.aggregate({
+      where: {
+        creatorWallet: wallet,
+        status: { in: ['pending', 'claimable'] },
+      },
+      _sum: { amount: true },
+    });
+
+    // Get today's volume across all creator tokens
+    const todayVolumeAgg = await prisma.position.aggregate({
+      where: {
+        tokenId: { in: tokenIds },
+        openedAt: { gte: twentyFourHoursAgo },
+      },
+      _sum: {
+        userCapital: true,
+        protocolCapital: true,
+      },
+    });
+
+    // Get today's earnings (creator payouts created today)
+    const todayEarningsAgg = await prisma.creatorPayout.aggregate({
+      where: {
+        creatorWallet: wallet,
+        createdAt: { gte: twentyFourHoursAgo },
+      },
+      _sum: { amount: true },
+    });
+
+    // Build per-token dashboard items
+    const dashboardTokens = await Promise.all(
+      tokens.map(async (token) => {
+        const config = getTierConfig(token.tier as Tier);
+
+        // Today's volume for this specific token
+        const tokenTodayVolume = await prisma.position.aggregate({
+          where: {
+            tokenId: token.id,
+            openedAt: { gte: twentyFourHoursAgo },
+          },
+          _sum: {
+            userCapital: true,
+            protocolCapital: true,
+          },
+        });
+
+        // Unclaimed for this token
+        const tokenUnclaimed = await prisma.creatorPayout.aggregate({
+          where: {
+            tokenId: token.id,
+            status: { in: ['pending', 'claimable'] },
+          },
+          _sum: { amount: true },
+        });
+
+        // Today's earnings for this token
+        const tokenTodayEarnings = await prisma.creatorPayout.aggregate({
+          where: {
+            tokenId: token.id,
+            createdAt: { gte: twentyFourHoursAgo },
+          },
+          _sum: { amount: true },
+        });
+
+        const todayVolume =
+          (tokenTodayVolume._sum.userCapital ?? 0n) +
+          (tokenTodayVolume._sum.protocolCapital ?? 0n);
+
+        return {
+          tokenAddress: token.address,
+          tokenName: token.name,
+          tokenSymbol: token.symbol,
+          tier: token.tier,
+          tierEmoji: config.emoji,
+          listedAt: token.listedAt,
+          isActive: token.isActive,
+          totalTradingVolume: token.totalTradingVolume,
+          totalFeesGenerated: token.totalFeesClaimed,
+          totalEarnings: token.totalCreatorPayouts,
+          todayTradingVolume: todayVolume,
+          todayEarnings: tokenTodayEarnings._sum.amount ?? 0n,
+          unclaimedEarnings: tokenUnclaimed._sum.amount ?? 0n,
+        };
+      }),
+    );
+
+    const todayVolume =
+      (todayVolumeAgg._sum.userCapital ?? 0n) +
+      (todayVolumeAgg._sum.protocolCapital ?? 0n);
+
+    sendSuccess(res, {
+      tokens: dashboardTokens,
+      totals: {
+        totalTradingVolume: tokens.reduce((sum, t) => sum + t.totalTradingVolume, 0n),
+        totalEarnings: tokens.reduce((sum, t) => sum + t.totalCreatorPayouts, 0n),
+        totalFeesClaimed: tokens.reduce((sum, t) => sum + t.totalFeesClaimed, 0n),
+        unclaimedEarnings: unclaimedAgg._sum.amount ?? 0n,
+        todayVolume,
+        todayEarnings: todayEarningsAgg._sum.amount ?? 0n,
+        tokenCount: tokens.length,
+      },
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /creator/payouts
+ *
+ * Return the creator's payout history, paginated.
+ * Query params: limit (default 20, max 100), offset (default 0), status (optional)
+ */
+router.get('/payouts', verifyWalletSignature, async (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const wallet = authReq.wallet!;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 100);
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+    const statusFilter = req.query.status as string | undefined;
+
+    const where: Record<string, unknown> = { creatorWallet: wallet };
+    if (statusFilter && ['pending', 'claimable', 'claimed'].includes(statusFilter)) {
+      where.status = statusFilter;
+    }
+
+    const [payouts, total] = await Promise.all([
+      prisma.creatorPayout.findMany({
+        where,
+        include: {
+          token: {
+            select: {
+              address: true,
+              name: true,
+              symbol: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.creatorPayout.count({ where }),
+    ]);
+
+    const data = payouts.map((p) => ({
+      id: p.id,
+      token: p.token,
+      amount: p.amount,
+      status: p.status,
+      claimTx: p.claimTx,
+      createdAt: p.createdAt,
+      claimedAt: p.claimedAt,
+    }));
+
+    sendPaginated(res, data, total, limit, offset);
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * POST /creator/claim
+ *
+ * Claim accumulated earnings. Requires minimum 0.5 SOL accumulated.
+ * This marks the payouts as claimed; the actual SOL transfer is handled by services.
+ */
+router.post('/claim', verifyWalletSignature, async (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const wallet = authReq.wallet!;
+
+    // Find all claimable payouts
+    const claimablePayouts = await prisma.creatorPayout.findMany({
+      where: {
+        creatorWallet: wallet,
+        status: { in: ['pending', 'claimable'] },
+      },
+    });
+
+    if (claimablePayouts.length === 0) {
+      throw new ValidationError('No claimable payouts found');
+    }
+
+    const totalAmount = claimablePayouts.reduce((sum, p) => sum + p.amount, 0n);
+
+    if (totalAmount < MIN_CLAIM_LAMPORTS) {
+      throw new InsufficientFundsError(
+        `Minimum claim amount is 0.5 SOL. Current claimable: ${(Number(totalAmount) / 1e9).toFixed(4)} SOL`,
+      );
+    }
+
+    // Mark all as claimed in a transaction
+    const now = new Date();
+    const payoutIds = claimablePayouts.map((p) => p.id);
+
+    await prisma.$transaction([
+      prisma.creatorPayout.updateMany({
+        where: { id: { in: payoutIds } },
+        data: {
+          status: 'claimed',
+          claimedAt: now,
+        },
+      }),
+      // Record pool outflow
+      prisma.poolLedger.create({
+        data: {
+          type: 'creator_payout',
+          amount: -totalAmount,
+        },
+      }),
+    ]);
+
+    sendSuccess(res, {
+      claimedAmount: totalAmount,
+      payoutCount: claimablePayouts.length,
+      message: 'Claim initiated. SOL will be transferred to your wallet shortly.',
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /creator/volume/:tokenAddress
+ *
+ * Return detailed volume stats for a specific token owned by the creator.
+ */
+router.get('/volume/:tokenAddress', verifyWalletSignature, async (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const wallet = authReq.wallet!;
+    const tokenAddress = req.params.tokenAddress as string;
+
+    const token = await prisma.token.findUnique({
+      where: { address: tokenAddress },
+    });
+
+    if (!token) {
+      throw new NotFoundError('Token', tokenAddress);
+    }
+    if (token.creatorWallet !== wallet) {
+      throw new ValidationError('You are not the creator of this token');
+    }
+
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Aggregate volumes for different time periods
+    const [volume1h, volume24h, volume7d, volume30d, totalPositions, activePositions] = await Promise.all([
+      prisma.position.aggregate({
+        where: { tokenId: token.id, openedAt: { gte: oneHourAgo } },
+        _sum: { userCapital: true, protocolCapital: true },
+        _count: true,
+      }),
+      prisma.position.aggregate({
+        where: { tokenId: token.id, openedAt: { gte: twentyFourHoursAgo } },
+        _sum: { userCapital: true, protocolCapital: true },
+        _count: true,
+      }),
+      prisma.position.aggregate({
+        where: { tokenId: token.id, openedAt: { gte: sevenDaysAgo } },
+        _sum: { userCapital: true, protocolCapital: true },
+        _count: true,
+      }),
+      prisma.position.aggregate({
+        where: { tokenId: token.id, openedAt: { gte: thirtyDaysAgo } },
+        _sum: { userCapital: true, protocolCapital: true },
+        _count: true,
+      }),
+      prisma.position.count({ where: { tokenId: token.id } }),
+      prisma.position.count({ where: { tokenId: token.id, status: 'open' } }),
+    ]);
+
+    const sumVolume = (agg: { _sum: { userCapital: bigint | null; protocolCapital: bigint | null } }) =>
+      (agg._sum.userCapital ?? 0n) + (agg._sum.protocolCapital ?? 0n);
+
+    sendSuccess(res, {
+      tokenAddress: token.address,
+      tokenName: token.name,
+      tokenSymbol: token.symbol,
+      volume: {
+        '1h': sumVolume(volume1h),
+        '24h': sumVolume(volume24h),
+        '7d': sumVolume(volume7d),
+        '30d': sumVolume(volume30d),
+        allTime: token.totalTradingVolume,
+      },
+      trades: {
+        '1h': volume1h._count,
+        '24h': volume24h._count,
+        '7d': volume7d._count,
+        '30d': volume30d._count,
+        total: totalPositions,
+        active: activePositions,
+      },
+      totalFeesClaimed: token.totalFeesClaimed,
+      totalCreatorPayouts: token.totalCreatorPayouts,
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+export default router;

@@ -1,0 +1,430 @@
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+const TOKEN_KEY = 'front_token';
+
+/** Get stored auth token */
+export function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Store auth token */
+export function setAuthToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+/** Clear auth token */
+export function clearAuthToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+/** Core fetch wrapper with auth and error handling */
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) ?? {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(response.status, response.statusText, body);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const json = await response.json();
+  // API wraps responses as { success, data }. Unwrap if present.
+  if (json && typeof json === 'object' && 'data' in json) {
+    return json.data as T;
+  }
+  return json as T;
+}
+
+/** API error with status code */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly statusText: string,
+    public readonly body?: unknown,
+  ) {
+    super(`API Error ${status}: ${statusText}`);
+    this.name = 'ApiError';
+  }
+}
+
+// ── Auth ──
+
+export interface AuthLoginResponse {
+  token: string;
+  user: {
+    id: number;
+    email: string;
+    walletAddress: string;
+  };
+}
+
+export interface AuthMeResponse {
+  id: number;
+  email: string;
+  walletAddress: string;
+}
+
+export function login(email: string, password: string): Promise<AuthLoginResponse> {
+  return request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function register(email: string, password: string): Promise<AuthLoginResponse> {
+  return request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function getMe(): Promise<AuthMeResponse> {
+  return request('/auth/me');
+}
+
+// ── Tokens ──
+
+export interface TokenInfo {
+  address: string;
+  name: string;
+  symbol: string;
+  tier: string;
+  tierEmoji?: string;
+  tierLabel?: string;
+  creatorWallet?: string;
+  isActive?: boolean;
+  maxLeverage?: number;
+  flatFeePct?: number;
+  exitThresholdPct?: number;
+  volume24h?: string;
+  trades24h?: number;
+  totalTradingVolume?: string;
+  totalCreatorPayouts?: string;
+  listedAt?: string;
+  // Price fields (may be undefined if not available)
+  priceUsd?: number;
+  priceSol?: number;
+  marketCapUsd?: number;
+  liquidityUsd?: number;
+  volume24hUsd?: number;
+  priceChange24hPct?: number;
+  isBonded?: boolean;
+}
+
+export function searchTokens(query: string): Promise<TokenInfo[]> {
+  return request(`/tokens/search?q=${encodeURIComponent(query)}`);
+}
+
+export function getTrendingTokens(): Promise<TokenInfo[]> {
+  return request('/tokens/trending');
+}
+
+export function getTokenDetails(address: string): Promise<TokenInfo> {
+  return request(`/tokens/${address}`);
+}
+
+export interface CandleData {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export function getTokenCandles(address: string, interval?: string): Promise<CandleData[]> {
+  const q = interval ? `?interval=${interval}` : '';
+  return request(`/tokens/${address}/candles${q}`);
+}
+
+// ── Positions ──
+
+export interface PositionTokenInfo {
+  address: string;
+  name: string | null;
+  symbol: string | null;
+  tier?: string;
+}
+
+export interface PositionInfo {
+  id: number;
+  userWallet: string;
+  token: PositionTokenInfo;
+  status: string;
+  userCapital: string;
+  protocolCapital: string;
+  leverage: number;
+  flatFee: string;
+  tier: string;
+  entryPrice: string | null;
+  exitThreshold: string;
+  tokensBought: string | null;
+  openedAt: string;
+  // Active position fields
+  timeRemainingMs?: number;
+  livePnLPercent?: number | null;
+  // History fields
+  exitPrice?: string | null;
+  pnlSol?: string | null;
+  degenProfit?: string | null;
+  protocolRevenue?: string | null;
+  closedAt?: string | null;
+  closeTx?: string | null;
+}
+
+export interface PositionPreviewResponse {
+  tier: string;
+  tierEmoji: string;
+  leverage: number;
+  userCapitalLamports: string;
+  positionSizeLamports: string;
+  protocolCapitalLamports: string;
+  flatFeeLamports: string;
+  flatFeePct: number;
+  exitThresholdPct: number;
+  maxDurationHours: number;
+  profitLockPct: number;
+  scenarioIf2x: ScenarioResponse;
+  scenarioIf3x: ScenarioResponse;
+  scenarioIfDump: ScenarioResponse;
+}
+
+export interface ScenarioResponse {
+  label: string;
+  priceMovePercent: number;
+  profitLamports: string;
+  degenCashoutLamports: string;
+  degenLockLamports: string;
+}
+
+export function previewPosition(
+  tokenAddress: string,
+  capitalLamports: string,
+  leverage: number,
+): Promise<PositionPreviewResponse> {
+  return request('/positions/preview', {
+    method: 'POST',
+    body: JSON.stringify({ tokenAddress, capitalLamports, leverage }),
+  });
+}
+
+export function openPosition(
+  tokenAddress: string,
+  capitalLamports: string,
+  leverage: number,
+): Promise<PositionInfo> {
+  return request('/positions/open', {
+    method: 'POST',
+    body: JSON.stringify({ tokenAddress, capitalLamports, leverage }),
+  });
+}
+
+export function getActivePositions(): Promise<PositionInfo[]> {
+  return request('/positions/active');
+}
+
+export function getTradeHistory(): Promise<PositionInfo[]> {
+  return request('/positions/history');
+}
+
+export function closePosition(positionId: string): Promise<PositionInfo> {
+  return request(`/positions/${positionId}/close`, { method: 'POST' });
+}
+
+// ── Burns & Stats ──
+
+export interface BurnEntry {
+  id: number;
+  solAmount: string;
+  tokenAmount: string;
+  txSignature: string;
+  burnedAt: string;
+  position?: {
+    id: number;
+    userWallet: string;
+    tier: string;
+    tokenSymbol: string;
+    tokenAddress: string;
+  };
+}
+
+export interface ProtocolStatsResponse {
+  totalBurnedLamports: string;
+  totalBurnedTokens: string;
+  totalLockedLamports: string;
+  totalLockedTokens: string;
+  poolSizeLamports: string;
+  totalCreatorPayoutsLamports: string;
+  totalTradesExecuted: number;
+  totalListedTokens: number;
+  activeListedTokens: number;
+  activePositions: number;
+}
+
+export function getProtocolStats(): Promise<ProtocolStatsResponse> {
+  return request('/stats');
+}
+
+export function getRecentBurns(limit?: number): Promise<BurnEntry[]> {
+  const q = limit ? `?limit=${limit}` : '';
+  return request(`/burns${q}`);
+}
+
+export interface ProfitLockEntry {
+  id: number;
+  solAmount: string;
+  tokenAmount: string;
+  lockedAt: string;
+  unlocksAt: string;
+  isUnlocked: boolean;
+  isExpired: boolean;
+  timeRemainingMs: number;
+  buyTx: string;
+  unlockTx: string | null;
+  position: {
+    id: number;
+    tier: string;
+    tokenAddress: string;
+    tokenSymbol: string | null;
+  } | null;
+}
+
+export interface LocksResponse {
+  locks: ProfitLockEntry[];
+  summary: {
+    totalLocked: string;
+    totalUnlocked: string;
+    pendingUnlock: string;
+    activeLockCount: number;
+  };
+}
+
+export function getRecentLocks(limit?: number): Promise<LocksResponse> {
+  return request('/locks');
+}
+
+// ── Creator ──
+
+export interface CreatorDashboardTokenItem {
+  tokenAddress: string;
+  tokenName: string | null;
+  tokenSymbol: string | null;
+  tier: string;
+  tierEmoji: string;
+  listedAt: string;
+  isActive: boolean;
+  totalTradingVolume: string;
+  totalFeesGenerated: string;
+  totalEarnings: string;
+  todayTradingVolume: string;
+  todayEarnings: string;
+  unclaimedEarnings: string;
+}
+
+export interface CreatorDashboardTotals {
+  totalTradingVolume: string;
+  totalEarnings: string;
+  totalFeesClaimed: string;
+  unclaimedEarnings: string;
+  todayVolume: string;
+  todayEarnings: string;
+  tokenCount: number;
+}
+
+export interface CreatorDashboardResponse {
+  tokens: CreatorDashboardTokenItem[];
+  totals: CreatorDashboardTotals;
+}
+
+export interface CreatorPayoutEntry {
+  id: number;
+  token: {
+    address: string;
+    name: string | null;
+    symbol: string | null;
+  };
+  amount: string;
+  status: string;
+  claimTx: string | null;
+  createdAt: string;
+  claimedAt: string | null;
+}
+
+export function getCreatorDashboard(): Promise<CreatorDashboardResponse> {
+  return request('/creator/dashboard');
+}
+
+export function getCreatorPayouts(): Promise<CreatorPayoutEntry[]> {
+  return request('/creator/payouts');
+}
+
+/** Public wallet-based lookup — no auth required */
+export function getCreatorDashboardByWallet(wallet: string): Promise<CreatorDashboardResponse> {
+  return request(`/creator/dashboard/${wallet}`);
+}
+
+/** Public wallet-based payout lookup — no auth required */
+export function getCreatorPayoutsByWallet(wallet: string): Promise<CreatorPayoutEntry[]> {
+  return request(`/creator/payouts/${wallet}`);
+}
+
+export function claimCreatorEarnings(tokenAddress: string): Promise<{
+  claimedAmount: string;
+  payoutCount: number;
+  message: string;
+}> {
+  return request('/creator/claim', {
+    method: 'POST',
+    body: JSON.stringify({ tokenAddress }),
+  });
+}
+
+export function listToken(tokenAddress: string): Promise<{ success: boolean; message: string }> {
+  return request('/tokens/list', {
+    method: 'POST',
+    body: JSON.stringify({ tokenAddress }),
+  });
+}
+
+export function verifyTokenListing(tokenAddress: string): Promise<{
+  verified: boolean;
+  isCreator: boolean;
+  feesRedirected: boolean;
+}> {
+  return request(`/tokens/${tokenAddress}/verify`);
+}

@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// Users — custodial email/password accounts
+// ──────────────────────────────────────────────
+model User {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique @db.VarChar(255)
+  passwordHash  String   @map("password_hash") @db.Text
+  walletAddress String   @unique @map("wallet_address") @db.VarChar(44)
+  encryptedKey  String   @map("encrypted_key") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+// ──────────────────────────────────────────────
+// Listed tokens — auto-discovered when creator redirects fees
+// ──────────────────────────────────────────────
+model Token {
+  id                  Int       @id @default(autoincrement())
+  address             String    @unique @db.VarChar(44)
+  name                String?   @db.VarChar(100)
+  symbol              String?   @db.VarChar(20)
+  imageUri            String?   @map("image_uri") @db.Text
+  creatorWallet       String    @map("creator_wallet") @db.VarChar(44)
+  tier                String    @db.VarChar(10) // 'bonded', 'rising', 'degen'
+  feeWalletPda        String?   @map("fee_wallet_pda") @db.VarChar(44)
+  sharingConfigPda    String?   @map("sharing_config_pda") @db.VarChar(44)
+  listedAt            DateTime  @default(now()) @map("listed_at")
+  isActive            Boolean   @default(true) @map("is_active")
+  isAutoListed        Boolean   @default(false) @map("is_auto_listed")
+  totalFeesClaimed    BigInt    @default(0) @map("total_fees_claimed")
+  totalTradingVolume  BigInt    @default(0) @map("total_trading_volume")
+  totalCreatorPayouts BigInt    @default(0) @map("total_creator_payouts")
+
+  positions      Position[]
+  feeClaims      FeeClaim[]
+  creatorPayouts CreatorPayout[]
+
+  @@map("tokens")
+}
+
+// ──────────────────────────────────────────────
+// Leveraged positions
+// ──────────────────────────────────────────────
+model Position {
+  id               Int       @id @default(autoincrement())
+  userWallet       String    @map("user_wallet") @db.VarChar(44)
+  tokenId          Int       @map("token_id")
+  status           String    @db.VarChar(20) // 'open', 'closed_profit', 'closed_loss', 'liquidated', 'timed_out'
+  userCapital      BigInt    @map("user_capital")      // lamports
+  protocolCapital  BigInt    @map("protocol_capital")  // lamports
+  leverage         Decimal   @db.Decimal(4, 2)
+  flatFee          BigInt    @map("flat_fee")          // lamports
+  tier             String    @db.VarChar(10)
+  entryPrice       Decimal?  @map("entry_price") @db.Decimal(20, 10)
+  exitPrice        Decimal?  @map("exit_price") @db.Decimal(20, 10)
+  tokensBought     BigInt?   @map("tokens_bought")
+  exitThreshold    Decimal   @map("exit_threshold") @db.Decimal(5, 2)
+  slippageRisk     Int?      @map("slippage_risk")     // 0-100 risk score
+  pnlSol           BigInt?   @map("pnl_sol")          // lamports (positive = profit)
+  userProfit       BigInt?   @map("user_profit")       // user's 70% cash + 30% locked
+  protocolRevenue  BigInt?   @map("protocol_revenue")  // flat fee only
+  creatorPayout    BigInt?   @map("creator_payout")     // 30% of flat fee
+  burnAmount       BigInt?   @map("burn_amount")        // 20% of flat fee
+  poolReturn       BigInt?   @map("pool_return")        // 50% of flat fee
+  lockAmount       BigInt?   @map("lock_amount")        // 30% of profit → buy $FRONT
+  openedAt         DateTime  @default(now()) @map("opened_at")
+  closedAt         DateTime? @map("closed_at")
+  closeTx          String?   @map("close_tx") @db.VarChar(88)
+  openTx           String?   @map("open_tx") @db.VarChar(88)
+
+  token          Token          @relation(fields: [tokenId], references: [id])
+  burns          Burn[]
+  profitLocks    ProfitLock[]
+  creatorPayouts CreatorPayout[]
+
+  @@index([userWallet])
+  @@index([tokenId])
+  @@index([status])
+  @@map("positions")
+}
+
+// ──────────────────────────────────────────────
+// $FRONT token burns
+// ──────────────────────────────────────────────
+model Burn {
+  id          Int      @id @default(autoincrement())
+  solAmount   BigInt   @map("sol_amount")   // SOL spent
+  tokenAmount BigInt   @map("token_amount") // $FRONT burned
+  txSignature String   @map("tx_signature") @db.VarChar(88)
+  positionId  Int?     @map("position_id")
+  burnedAt    DateTime @default(now()) @map("burned_at")
+
+  position Position? @relation(fields: [positionId], references: [id])
+
+  @@map("burns")
+}
+
+// ──────────────────────────────────────────────
+// Profit locks — $FRONT locked for 7 days
+// ──────────────────────────────────────────────
+model ProfitLock {
+  id          Int       @id @default(autoincrement())
+  userWallet  String    @map("user_wallet") @db.VarChar(44)
+  solAmount   BigInt    @map("sol_amount")
+  tokenAmount BigInt    @map("token_amount") // $FRONT locked
+  positionId  Int?      @map("position_id")
+  buyTx       String    @map("buy_tx") @db.VarChar(88)
+  lockTx      String?   @map("lock_tx") @db.VarChar(88)
+  unlockTx    String?   @map("unlock_tx") @db.VarChar(88)
+  claimTx     String?   @map("claim_tx") @db.VarChar(88)
+  lockedAt    DateTime  @default(now()) @map("locked_at")
+  unlocksAt   DateTime  @map("unlocks_at")  // lockedAt + 7 days
+  isUnlocked  Boolean   @default(false) @map("is_unlocked")
+  isClaimed   Boolean   @default(false) @map("is_claimed")
+
+  position Position? @relation(fields: [positionId], references: [id])
+
+  @@index([userWallet])
+  @@index([isUnlocked, unlocksAt])
+  @@index([isClaimed])
+  @@map("profit_locks")
+}
+
+// ──────────────────────────────────────────────
+// Creator payouts — 30% of flat fee revenue share
+// ──────────────────────────────────────────────
+model CreatorPayout {
+  id            Int       @id @default(autoincrement())
+  tokenId       Int       @map("token_id")
+  creatorWallet String    @map("creator_wallet") @db.VarChar(44)
+  amount        BigInt                            // lamports
+  positionId    Int?      @map("position_id")
+  status        String    @db.VarChar(20)         // 'pending', 'claimable', 'claimed'
+  claimTx       String?   @map("claim_tx") @db.VarChar(88)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  claimedAt     DateTime? @map("claimed_at")
+
+  token    Token     @relation(fields: [tokenId], references: [id])
+  position Position? @relation(fields: [positionId], references: [id])
+
+  @@index([creatorWallet, status])
+  @@index([tokenId])
+  @@map("creator_payouts")
+}
+
+// ──────────────────────────────────────────────
+// Fee claims from Pump.fun
+// ──────────────────────────────────────────────
+model FeeClaim {
+  id          Int      @id @default(autoincrement())
+  tokenId     Int      @map("token_id")
+  amount      BigInt                            // lamports
+  txSignature String   @map("tx_signature") @db.VarChar(88)
+  claimedAt   DateTime @default(now()) @map("claimed_at")
+
+  token Token @relation(fields: [tokenId], references: [id])
+
+  @@map("fee_claims")
+}
+
+// ──────────────────────────────────────────────
+// Telegram bot users — generated wallets
+// ──────────────────────────────────────────────
+model TelegramUser {
+  id            Int      @id @default(autoincrement())
+  telegramId    BigInt   @unique @map("telegram_id")
+  walletAddress String   @map("wallet_address") @db.VarChar(44)
+  encryptedKey  String   @map("encrypted_key") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  settings      Json     @default("{}")
+
+  @@map("telegram_users")
+}
+
+// ──────────────────────────────────────────────
+// Capital Pool ledger — tracks all inflows/outflows
+// ──────────────────────────────────────────────
+model PoolLedger {
+  id          Int      @id @default(autoincrement())
+  type        String   @db.VarChar(30) // 'fee_claim', 'position_open', 'position_close', 'profit_recycle', 'creator_payout', 'burn', 'insurance_deposit', 'insurance_withdrawal'
+  amount      BigInt                   // lamports (+inflow, -outflow)
+  referenceId Int?     @map("reference_id")
+  txSignature String?  @map("tx_signature") @db.VarChar(88)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([type])
+  @@map("pool_ledger")
+}
+
+// ──────────────────────────────────────────────
+// Insurance Fund — covers edge case losses from slippage
+// ──────────────────────────────────────────────
+model InsuranceFund {
+  id            Int      @id @default(autoincrement())
+  type          String   @db.VarChar(20) // 'deposit', 'withdrawal'
+  amount        BigInt                   // lamports
+  reason        String?  @db.VarChar(200)
+  txSignature   String?  @map("tx_signature") @db.VarChar(88)
+  positionId    Int?     @map("position_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([type])
+  @@map("insurance_fund")
+}

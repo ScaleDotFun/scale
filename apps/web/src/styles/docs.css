@@ -1,0 +1,291 @@
+/* ═══════════════════════════════════════════════════════════════
+   FRONT PROTOCOL — Documentation Page Styles
+   Professional, clean, technical documentation layout
+   ═══════════════════════════════════════════════════════════════ */
+
+.docs-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding-bottom: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.docs-header {
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+
+.docs-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-0);
+  margin-bottom: 8px;
+}
+
+.docs-header-sub {
+  font-size: 0.93rem;
+  color: var(--text-1);
+  line-height: 1.6;
+}
+
+/* ── Table of Contents ──────────────────────────────────────── */
+.docs-toc {
+  padding: 20px 24px;
+  margin-bottom: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  align-items: center;
+}
+
+.docs-toc-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.docs-toc-link {
+  font-size: 12px;
+  color: var(--text-1);
+  text-decoration: none;
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+
+.docs-toc-link:hover {
+  color: var(--primary);
+}
+
+/* ── Sections ───────────────────────────────────────────────── */
+.docs-section {
+  padding: 32px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-section:last-child {
+  border-bottom: none;
+}
+
+.docs-section h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-0);
+  margin-bottom: 16px;
+}
+
+.docs-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-0);
+  margin-top: 24px;
+  margin-bottom: 8px;
+}
+
+.docs-section h4 {
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: var(--text-0);
+  margin-bottom: 4px;
+}
+
+.docs-section p {
+  font-size: 0.9rem;
+  color: var(--text-1);
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.docs-section p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Lists ──────────────────────────────────────────────────── */
+.docs-list {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.docs-list li {
+  font-size: 0.9rem;
+  color: var(--text-1);
+  line-height: 1.6;
+  padding-left: 16px;
+  position: relative;
+}
+
+.docs-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-2);
+}
+
+.docs-list li strong {
+  color: var(--text-0);
+}
+
+/* ── Callouts ───────────────────────────────────────────────── */
+.docs-callout {
+  padding: 16px 20px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+.docs-callout-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+
+.docs-callout p {
+  font-size: 0.86rem;
+  color: var(--text-1);
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+
+/* ── Examples ───────────────────────────────────────────────── */
+.docs-example {
+  padding: 16px 20px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 12px 0;
+}
+
+.docs-example-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  margin-bottom: 8px;
+}
+
+.docs-example p {
+  font-size: 0.86rem;
+  margin-bottom: 0;
+}
+
+/* ── Steps ──────────────────────────────────────────────────── */
+.docs-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.docs-step {
+  display: flex;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+}
+
+.docs-step-num {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: var(--bg-0);
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.docs-step h4 {
+  margin-bottom: 4px;
+}
+
+.docs-step p {
+  font-size: 0.86rem;
+  margin-bottom: 0;
+}
+
+/* ── Tables ─────────────────────────────────────────────────── */
+.docs-table-wrap {
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+/* ── Revenue Grid ───────────────────────────────────────────── */
+.docs-revenue-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.docs-revenue-card {
+  padding: 20px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.docs-revenue-pct {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+
+.docs-revenue-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-0);
+  margin-bottom: 8px;
+}
+
+.docs-revenue-card p {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin-bottom: 0;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .docs-page {
+    padding: 0 4px 40px;
+  }
+
+  .docs-toc {
+    padding: 16px;
+  }
+
+  .docs-revenue-grid {
+    grid-template-columns: 1fr;
+  }
+}
