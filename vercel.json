@@ -1,0 +1,9 @@
+{
+  "buildCommand": "pnpm --filter @front-protocol/core build && pnpm --filter @front-protocol/web build",
+  "outputDirectory": "apps/web/dist",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
