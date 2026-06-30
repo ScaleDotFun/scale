@@ -137,3 +137,4 @@ Open [http://localhost:3000](http://localhost:3000)
 **Built for degens, by degens** ⬡
 
 </div>
+# Auto-deploy test
