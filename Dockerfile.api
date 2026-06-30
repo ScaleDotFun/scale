@@ -29,6 +29,11 @@ COPY packages/api/ ./packages/api/
 # Generate Prisma client
 RUN cd packages/database && npx prisma generate
 
+# Build library packages (their exports point to dist/)
+RUN cd packages/core && pnpm build
+RUN cd packages/solana && pnpm build
+RUN cd packages/services && pnpm build
+
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
