@@ -13,38 +13,17 @@ import { ValidationError, NotFoundError, InsufficientFundsError } from '../lib/e
 const router = Router();
 
 /**
- * Generate a deterministic but unique wallet address for a Telegram user.
- * In production, this would use a proper HD wallet derivation from a master seed.
- * The encrypted private key is stored in the database.
+ * Generate a real Solana wallet for a Telegram user.
+ * Uses the same secure keypair generation as the web auth.
  */
-function generateBotWallet(): { address: string; encryptedKey: string } {
-  // Generate a random 32-byte ed25519 seed
-  const seed = crypto.randomBytes(32);
-
-  // Derive a deterministic "address" (in production this would use @solana/web3.js Keypair)
-  const hash = crypto.createHash('sha256').update(seed).digest();
-
-  // Convert to base58-like string (simplified — production uses actual Solana keypair generation)
-  const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let address = '';
-  let value = BigInt('0x' + hash.toString('hex'));
-  while (address.length < 44) {
-    const remainder = Number(value % 58n);
-    address = ALPHABET[remainder] + address;
-    value = value / 58n;
-  }
-  address = address.slice(0, 44);
-
-  // Encrypt the seed (in production, use a proper KMS or encryption at rest)
-  const encryptionKey = process.env.WALLET_ENCRYPTION_KEY || 'dev-encryption-key-change-in-production';
-  const iv = crypto.randomBytes(16);
-  const keyHash = crypto.createHash('sha256').update(encryptionKey).digest();
-  const cipher = crypto.createCipheriv('aes-256-cbc', keyHash, iv);
-  let encrypted = cipher.update(seed.toString('hex'), 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const encryptedKey = iv.toString('hex') + ':' + encrypted;
-
-  return { address, encryptedKey };
+function generateTelegramBotWallet(): { address: string; encryptedKey: string } {
+  // Use the real Solana keypair generator from the solana package
+  const { generateBotWallet: genWallet } = require('@front-protocol/solana');
+  const wallet = genWallet();
+  return {
+    address: wallet.publicKey,
+    encryptedKey: wallet.encryptedPrivateKey,
+  };
 }
 
 /**
@@ -73,7 +52,7 @@ router.post('/wallet', verifyTelegramAuth, async (req, res) => {
     }
 
     // Generate a new wallet
-    const { address, encryptedKey } = generateBotWallet();
+    const { address, encryptedKey } = generateTelegramBotWallet();
 
     user = await prisma.telegramUser.create({
       data: {

@@ -9,7 +9,7 @@ import { sendSuccess, sendError } from '../lib/response';
 const router = Router();
 
 const BIRDEYE_BASE = 'https://public-api.birdeye.so';
-const BIRDEYE_KEY = process.env.BIRDEYE_API_KEY || process.env.VITE_BIRDEYE_API_KEY || '7b004cf32274422ba20bff56f202d385';
+const BIRDEYE_KEY = process.env.BIRDEYE_API_KEY || '';
 
 async function birdeyeFetch(path: string, params?: Record<string, string>) {
   const url = new URL(`${BIRDEYE_BASE}${path}`);

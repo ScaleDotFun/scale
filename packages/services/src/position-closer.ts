@@ -16,6 +16,11 @@ import {
   type PositionStatus,
 } from '@front-protocol/core';
 import {
+  swapTokenToSol,
+  getProtocolWallet,
+  transferSol,
+} from '@front-protocol/solana';
+import {
   redisConnection,
   QUEUE_NAMES,
   burnQueue,
@@ -43,25 +48,32 @@ function determineStatus(
 }
 
 /**
- * Simulate selling the tokens back to SOL.
- * In production this would execute a Jupiter swap.
- *
- * @returns The actual exit price achieved
+ * Sell tokens back to SOL via Jupiter.
  */
 async function executeTokenSell(
   tokenAddress: string,
   tokensBought: bigint,
-): Promise<{ exitPrice: number; txSignature: string }> {
-  // SOLANA: would execute Jupiter swap:
-  //   1. Get quote from Jupiter API (api.jup.ag)
-  //   2. Execute swap instruction
-  //   3. Confirm transaction
+): Promise<{ solReceived: bigint; txSignature: string }> {
+  const protocolWallet = getProtocolWallet();
+
   console.log(
-    `${PREFIX} SOLANA: would sell ${tokensBought} tokens of ${tokenAddress} via Jupiter`,
+    `${PREFIX} Selling ${tokensBought} tokens of ${tokenAddress} via Jupiter`,
   );
+
+  const result = await swapTokenToSol(
+    tokenAddress,
+    tokensBought,
+    200, // 2% slippage for liquidation sells
+    protocolWallet,
+  );
+
+  console.log(
+    `${PREFIX} Sell complete: received ${result.solReceived} lamports, tx=${result.txSignature}`,
+  );
+
   return {
-    exitPrice: 0, // In production: derived from swap execution
-    txSignature: `sim_sell_${tokenAddress}_${Date.now()}`,
+    solReceived: result.solReceived,
+    txSignature: result.txSignature,
   };
 }
 
@@ -111,88 +123,84 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
     const protocolCapitalLamports = position.protocolCapital;
     const tier = position.tier as Tier;
 
-    // In production: sell tokens first to get the actual exit price
-    const { exitPrice: simulatedExit, txSignature: closeTx } = await executeTokenSell(
+    // Sell tokens via Jupiter to get actual SOL back
+    const { solReceived, txSignature: closeTx } = await executeTokenSell(
       position.token.address,
       tokensBought,
     );
 
-    // Use simulated exit or calculate based on reason
-    // In production this comes from the actual swap
-    let exitPrice: number;
-    if (simulatedExit > 0) {
-      exitPrice = simulatedExit;
-    } else {
-      // Fallback: use entry price (P&L = 0) — in production would never happen
-      exitPrice = entryPrice;
-      console.warn(`${PREFIX} Using entry price as fallback exit price for position #${positionId}`);
-    }
-
-    // Calculate P&L
-    const pnl = calculatePnL(
-      entryPrice,
-      exitPrice,
-      tokensBought,
-      userCapitalLamports,
-      protocolCapitalLamports,
-      tier,
-    );
-
-    // Calculate full distribution (revenue split from flat fees)
-    const distribution = calculateFullDistribution(
-      pnl,
-      userCapitalLamports,
-      protocolCapitalLamports,
-    );
-
-    // Determine final status
-    const finalStatus = determineStatus(pnl.isProfitable, reason);
-
-    // Persist everything in a transaction
+    // Calculate exit price from actual swap result
+    const exitPrice = Number(solReceived) / Number(tokensBought);
     const positionSize = userCapitalLamports + protocolCapitalLamports;
 
+    // Real P&L: solReceived - totalCapitalDeployed
+    const totalProfitLamports = solReceived - positionSize;
+    const isProfitable = totalProfitLamports > 0n;
+    const flatFeeLamports = position.flatFee;
+
+    // Revenue distribution from flat fee
+    const creatorPayoutLamports = (flatFeeLamports * 30n) / 100n;
+    const burnAmountLamports = (flatFeeLamports * 20n) / 100n;
+    const poolReturnLamports = flatFeeLamports - creatorPayoutLamports - burnAmountLamports;
+
+    // User profit distribution
+    let userCashProfitLamports = 0n;
+    let userLockLamports = 0n;
+    if (isProfitable) {
+      userCashProfitLamports = (totalProfitLamports * 70n) / 100n;
+      userLockLamports = totalProfitLamports - userCashProfitLamports;
+    }
+
+    // What goes back to user
+    const userReturnLamports = isProfitable
+      ? userCapitalLamports + userCashProfitLamports - flatFeeLamports
+      : (solReceived > protocolCapitalLamports + flatFeeLamports
+          ? solReceived - protocolCapitalLamports - flatFeeLamports
+          : 0n);
+
+    // Determine final status
+    const finalStatus = determineStatus(isProfitable, reason);
+
+    // Transfer user's SOL return to their wallet
+    if (userReturnLamports > 0n) {
+      try {
+        const protocolWallet = getProtocolWallet();
+        await transferSol(protocolWallet, position.userWallet, userReturnLamports);
+        console.log(`${PREFIX} Returned ${Number(userReturnLamports) / 1e9} SOL to user ${position.userWallet}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`${PREFIX} CRITICAL: Failed to return SOL to user: ${msg}`);
+      }
+    }
+
+    // Persist everything in a transaction
     await prisma.$transaction([
-      // Update position record with all calculated fields
       prisma.position.update({
         where: { id: positionId },
         data: {
           status: finalStatus,
           exitPrice: exitPrice,
-          pnlSol: pnl.totalProfitLamports,
-          userProfit: pnl.userGrossProfitLamports + pnl.userLockLamports,
-          protocolRevenue: pnl.totalProtocolRevenueLamports,
-          creatorPayout: distribution.revenue.creatorPayoutLamports,
-          burnAmount: distribution.revenue.burnAmountLamports,
-          poolReturn: distribution.revenue.poolReturnLamports,
-          lockAmount: pnl.userLockLamports,
+          pnlSol: totalProfitLamports,
+          userProfit: userCashProfitLamports + userLockLamports,
+          protocolRevenue: flatFeeLamports,
+          creatorPayout: creatorPayoutLamports,
+          burnAmount: burnAmountLamports,
+          poolReturn: poolReturnLamports,
+          lockAmount: userLockLamports,
           closedAt: new Date(),
           closeTx,
         },
       }),
 
-      // Pool ledger: return protocol capital
+      // Pool ledger: return protocol capital + pool share
       prisma.poolLedger.create({
         data: {
           type: 'position_close',
-          amount: distribution.capitalReturn.protocolCapitalLamports,
+          amount: protocolCapitalLamports + poolReturnLamports,
           referenceId: positionId,
           txSignature: closeTx,
         },
       }),
-
-      // Pool ledger: flat fee revenue recycled back to pool (50% of fee)
-      ...(distribution.revenue.poolReturnLamports > 0n
-        ? [
-            prisma.poolLedger.create({
-              data: {
-                type: 'profit_recycle',
-                amount: distribution.revenue.poolReturnLamports,
-                referenceId: positionId,
-                txSignature: closeTx,
-              },
-            }),
-          ]
-        : []),
 
       // Update token's total trading volume
       prisma.token.update({
@@ -206,12 +214,12 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
     // Dispatch downstream jobs
 
     // Burn job — buy back & burn $FRONT with 20% of flat fee revenue
-    if (distribution.revenue.burnAmountLamports > 0n) {
+    if (burnAmountLamports > 0n) {
       await burnQueue.add(
         'burn-from-position',
         {
           positionId,
-          solAmountLamports: distribution.revenue.burnAmountLamports.toString(),
+          solAmountLamports: burnAmountLamports.toString(),
         },
         {
           attempts: 3,
@@ -220,13 +228,13 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
       );
     }
 
-    // Lock job — 30% of profit → buy $FRONT & lock 7 days for user
-    if (pnl.isProfitable && pnl.userLockLamports > 0n) {
+    // Lock job — 30% of profit -> buy $FRONT & lock 7 days for user
+    if (isProfitable && userLockLamports > 0n) {
       await lockQueue.add(
         'lock-from-position',
         {
           userWallet: position.userWallet,
-          solAmountLamports: pnl.userLockLamports.toString(),
+          solAmountLamports: userLockLamports.toString(),
           positionId,
         },
         {
@@ -237,13 +245,13 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
     }
 
     // Creator payout job — 30% of flat fee revenue to token creator
-    if (distribution.revenue.creatorPayoutLamports > 0n) {
+    if (creatorPayoutLamports > 0n) {
       await creatorPayoutsQueue.add(
         'payout-from-position',
         {
           tokenId: position.token.id,
           creatorWallet: position.token.creatorWallet,
-          amountLamports: distribution.revenue.creatorPayoutLamports.toString(),
+          amountLamports: creatorPayoutLamports.toString(),
           positionId,
         },
         {
@@ -256,8 +264,8 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
     const elapsed = Date.now() - startTime;
     console.log(
       `${PREFIX} Position #${positionId} closed as ${finalStatus} | ` +
-        `P&L: ${formatSol(pnl.totalProfitLamports)} SOL | ` +
-        `Revenue: ${formatSol(pnl.totalProtocolRevenueLamports)} SOL | ` +
+        `P&L: ${formatSol(totalProfitLamports)} SOL | ` +
+        `Revenue: ${formatSol(flatFeeLamports)} SOL | ` +
         `(${elapsed}ms)`,
     );
   } catch (err) {

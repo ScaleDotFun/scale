@@ -72,6 +72,20 @@ router.post(
         throw new ValidationError('Token is not active for trading');
       }
 
+      // Check for duplicate open position on same token
+      const existingPosition = await prisma.position.findFirst({
+        where: {
+          userWallet: wallet,
+          tokenId: token.id,
+          status: { in: ['open', 'closing'] },
+        },
+      });
+      if (existingPosition) {
+        throw new ValidationError(
+          `You already have an open position on ${token.symbol}. Close it before opening a new one.`,
+        );
+      }
+
       const tier = token.tier as Tier;
       const userCapital = BigInt(userCapitalLamports);
 
@@ -310,13 +324,18 @@ router.post(
         throw new ValidationError('Position missing entry data — cannot close');
       }
 
+      // Set status to 'closing' immediately to prevent concurrent close attempts
+      await prisma.position.update({
+        where: { id: positionId },
+        data: { status: 'closing' },
+      });
+
       const entryPrice = Number(position.entryPrice);
       const tokensBought = position.tokensBought;
       const userCapitalLamports = position.userCapital;
       const protocolCapitalLamports = position.protocolCapital;
       const tier = position.tier as Tier;
       const protocolWallet = getProtocolWallet();
-      const connection = getConnection();
 
       // 1. Sell tokens via Jupiter
       const slippage = Number(req.body.slippageBps) || 200; // default 2% for sells
@@ -337,6 +356,11 @@ router.post(
           `[positions] Sold tokens: ${closeTx} | received=${solReceived} lamports`,
         );
       } catch (sellErr) {
+        // Revert status back to open so user can retry
+        await prisma.position.update({
+          where: { id: positionId },
+          data: { status: 'open' },
+        });
         console.error(`[positions] Token sell failed:`, sellErr);
         throw new ValidationError(
           `Failed to sell tokens: ${sellErr instanceof Error ? sellErr.message : 'Unknown error'}`,

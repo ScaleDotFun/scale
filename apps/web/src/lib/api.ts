@@ -262,8 +262,11 @@ export function getTradeHistory(): Promise<PositionInfo[]> {
   return request('/positions/history');
 }
 
-export function closePosition(positionId: string): Promise<PositionInfo> {
-  return request(`/positions/${positionId}/close`, { method: 'POST' });
+export function closePosition(positionId: string, slippageBps = 200): Promise<PositionInfo> {
+  return request(`/positions/${positionId}/close`, {
+    method: 'POST',
+    body: JSON.stringify({ slippageBps }),
+  });
 }
 
 // ── Burns & Stats ──

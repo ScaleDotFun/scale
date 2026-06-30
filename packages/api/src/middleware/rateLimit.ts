@@ -61,3 +61,21 @@ export const publicLimiter = rateLimit({
     return req.ip || req.socket.remoteAddress || 'unknown';
   },
 });
+
+/**
+ * Auth rate limit: 5 requests per minute per IP.
+ * Applied to register/login to prevent account creation spam.
+ */
+export const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many auth attempts. Please try again in a minute.',
+  },
+  keyGenerator: (req: Request) => {
+    return req.ip || req.socket.remoteAddress || 'unknown';
+  },
+});

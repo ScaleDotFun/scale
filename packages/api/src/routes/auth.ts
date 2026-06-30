@@ -9,6 +9,7 @@ import { generateBotWallet } from '@front-protocol/solana';
 import { issueToken, verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, AuthError } from '../lib/errors';
+import { authLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ function isValidEmail(email: string): boolean {
  * Body: { email: string, password: string }
  * Returns: { token, user: { id, email, walletAddress } }
  */
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -94,7 +95,7 @@ router.post('/register', async (req, res) => {
  * Body: { email: string, password: string }
  * Returns: { token, user: { id, email, walletAddress } }
  */
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -221,6 +222,16 @@ router.post('/withdraw', verifyWalletSignature, async (req, res) => {
 
     if (!user) {
       throw new AuthError('User not found');
+    }
+
+    // Block withdrawal if user has open positions
+    const openPositionCount = await prisma.position.count({
+      where: { userWallet: user.walletAddress, status: 'open' },
+    });
+    if (openPositionCount > 0) {
+      throw new AuthError(
+        `Cannot withdraw while you have ${openPositionCount} open position(s). Close them first.`,
+      );
     }
 
     const { loadBotWallet, getSolBalance, transferSol, getProtocolWallet } = await import('@front-protocol/solana');

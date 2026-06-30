@@ -113,6 +113,15 @@ async function executeSwap(
     `${LOG_PREFIX} Swap quote: in=${quote.inAmount} out=${quote.outAmount} impact=${quote.priceImpactPct}%`,
   );
 
+  // Price impact guard — reject swaps that move the market too much
+  const priceImpact = parseFloat(quote.priceImpactPct);
+  if (priceImpact > 5) {
+    throw new Error(
+      `Price impact too high: ${priceImpact.toFixed(2)}%. Maximum allowed is 5%. ` +
+      `Try a smaller position size or pick a token with more liquidity.`,
+    );
+  }
+
   // 2. Get serialized swap transaction
   const swapResponse = await client.swapPost({
     swapRequest: {
