@@ -13,8 +13,7 @@ out/
 .env.local
 .env.*.local
 
-# Database
-packages/database/prisma/migrations/
+# Database (keep migrations — needed for deploy)
 
 # IDE
 .vscode/
