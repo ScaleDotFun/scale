@@ -8,28 +8,31 @@ RUN npm install -g pnpm@9
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy package files and root tsconfig
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/database/package.json ./packages/database/
 COPY packages/solana/package.json ./packages/solana/
+COPY packages/services/package.json ./packages/services/
 COPY packages/api/package.json ./packages/api/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source
+# Copy source for all needed packages
 COPY packages/core/ ./packages/core/
 COPY packages/database/ ./packages/database/
 COPY packages/solana/ ./packages/solana/
+COPY packages/services/ ./packages/services/
 COPY packages/api/ ./packages/api/
 
 # Generate Prisma client
 RUN cd packages/database && npx prisma generate
 
-# Build packages in order
+# Build packages in dependency order
 RUN cd packages/core && pnpm build
 RUN cd packages/solana && pnpm build
+RUN cd packages/services && pnpm build
 RUN cd packages/api && pnpm build
 
 EXPOSE 4001
