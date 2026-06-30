@@ -7,15 +7,7 @@ export function useTokens() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<api.TokenInfo[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [selectedToken, setSelectedToken] = useState<api.TokenInfo | null>({
-    address: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
-    name: 'dogwifhat',
-    symbol: '$WIF',
-    tier: 'bonded',
-    tierLabel: 'Bonded',
-    isActive: true,
-    maxLeverage: 10,
-  });
+  const [selectedToken, setSelectedToken] = useState<api.TokenInfo | null>(null);
 
   const trendingResult = useApi<api.TokenInfo[]>(
     () => api.getTrendingTokens(),

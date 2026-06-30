@@ -167,8 +167,8 @@ router.get('/me', verifyWalletSignature, async (req, res) => {
 /**
  * GET /auth/wallet
  *
- * Return the authenticated user's wallet address and balance.
- * In dev mode, returns a mock balance.
+ * Return the authenticated user's wallet address.
+ * Balance is fetched from Helius RPC via the /portfolio endpoint.
  */
 router.get('/wallet', verifyWalletSignature, async (req, res) => {
   try {

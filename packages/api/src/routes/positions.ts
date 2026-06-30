@@ -14,13 +14,8 @@ import {
   getExitThresholdPercent,
   type Tier,
 } from '@front-protocol/core';
-// Stub: In production this would be a BullMQ queue for async position closing.
-// For dev without Redis, we just log and skip.
-const positionCloseQueue = {
-  add: async (name: string, data: unknown, opts?: unknown) => {
-    console.log(`[DEV] Would queue ${name}:`, data);
-  },
-};
+// Position close is handled inline for now.
+// In production with Jupiter swap execution, this would use BullMQ for async processing.
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { tradingLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -97,9 +92,31 @@ router.post(
       const exitThreshold = getExitThresholdPercent(tier);
 
       // Safety validation — slippage risk + liquidity depth check
-      // Fetch SOL price for safety calculations
-      const solPriceUsd = 150; // TODO: fetch from price feed; placeholder for compilation
-      const liquidityUsd = 50_000; // TODO: fetch from DexScreener/Jupiter for this token
+      // Fetch real SOL price and token liquidity
+      let solPriceUsd = 150;
+      let liquidityUsd = 0;
+
+      const BIRDEYE_KEY = process.env.BIRDEYE_API_KEY || '';
+      try {
+        // Fetch SOL price
+        const solPriceRes = await fetch('https://public-api.birdeye.so/defi/price?address=So11111111111111111111111111111111111111112', {
+          headers: { 'X-API-KEY': BIRDEYE_KEY, 'x-chain': 'solana' },
+        });
+        const solPriceData = await solPriceRes.json() as any;
+        if (solPriceData?.data?.value) solPriceUsd = solPriceData.data.value;
+
+        // Fetch token liquidity
+        const tokenRes = await fetch(`https://public-api.birdeye.so/defi/token_overview?address=${tokenAddress}`, {
+          headers: { 'X-API-KEY': BIRDEYE_KEY, 'x-chain': 'solana' },
+        });
+        const tokenData = await tokenRes.json() as any;
+        if (tokenData?.data?.liquidity) liquidityUsd = tokenData.data.liquidity;
+      } catch {
+        // If Birdeye fails, use conservative defaults that block large positions
+        solPriceUsd = 150;
+        liquidityUsd = 0; // 0 liquidity = safety check will reject
+      }
+
       const safetyCheck = validatePositionSafety(
         userCapital,
         Number(leverage),
@@ -211,26 +228,37 @@ router.post(
         throw new ValidationError(`Position is already ${position.status}`);
       }
 
-      // Queue a close job — the position-closer worker will:
-      //   1. Sell tokens via Jupiter
-      //   2. Calculate real P&L
-      //   3. Set the correct terminal status
-      //   4. Distribute revenue (burn, lock, creator payout)
-      await positionCloseQueue.add(
-        'close-position',
-        { positionId, reason: 'user' as const },
-        {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5000 },
-          jobId: `close-user-${positionId}`,
+      // Close the position directly
+      // In production, Jupiter swap would execute here first to sell tokens
+      // For now, mark as closed and return protocol capital to pool
+      const closedPosition = await prisma.position.update({
+        where: { id: positionId },
+        data: {
+          status: 'closed',
+          closedAt: new Date(),
         },
-      );
+        include: {
+          token: {
+            select: { address: true, name: true, symbol: true },
+          },
+        },
+      });
+
+      // Return protocol capital to the pool
+      await prisma.poolLedger.create({
+        data: {
+          type: 'position_close',
+          amount: position.protocolCapital,
+          referenceId: positionId,
+        },
+      });
 
       sendSuccess(res, {
-        id: position.id,
-        status: 'closing',
-        message: 'Position close initiated. Settlement will complete shortly.',
-        token: position.token,
+        id: closedPosition.id,
+        status: closedPosition.status,
+        message: 'Position closed successfully.',
+        token: closedPosition.token,
+        closedAt: closedPosition.closedAt,
       });
     } catch (err) {
       sendError(res, err);

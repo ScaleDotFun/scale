@@ -496,30 +496,19 @@ const AnimCounter: FC<{ end: number; suffix: string; label: string }> = ({ end, 
 };
 
 
-/* ── Live Trade Activity Feed ────────────────────────── */
-const MOCK_TRADES = [
-  { user: '7xKq...m2Fp', token: '$WOJAK', action: 'Bought', amount: '3.2 SOL', leverage: '5x', pnl: '+0.8 SOL', positive: true },
-  { user: '4bNe...a9Rv', token: '$PEPE', action: 'Closed', amount: '1.5 SOL', leverage: '3x', pnl: '+2.1 SOL', positive: true },
-  { user: '9mTz...f3Qx', token: '$WIF', action: 'Bought', amount: '5.0 SOL', leverage: '7x', pnl: '', positive: true },
-  { user: '2cYp...k8Lw', token: '$BONK', action: 'Closed', amount: '0.8 SOL', leverage: '4x', pnl: '-0.12 SOL', positive: false },
-  { user: '6hRs...d1Mn', token: '$POPCAT', action: 'Bought', amount: '2.0 SOL', leverage: '6x', pnl: '', positive: true },
-  { user: '8kFj...w5Bt', token: '$MYRO', action: 'Closed', amount: '4.0 SOL', leverage: '5x', pnl: '+3.4 SOL', positive: true },
-  { user: '1pGx...v7Cs', token: '$MOODENG', action: 'Bought', amount: '1.2 SOL', leverage: '8x', pnl: '', positive: true },
-  { user: '5nLq...h2Aw', token: '$GIGA', action: 'Closed', amount: '0.5 SOL', leverage: '10x', pnl: '+1.8 SOL', positive: true },
+/* ── Live Activity Feed ────────────────────────── */
+const ACTIVITY_ITEMS = [
+  { text: 'Front Protocol', detail: 'Leverage trade any memecoin on Solana', color: '#f0b90b' },
+  { text: 'Up to 10x', detail: 'Leverage on bonded tokens', color: '#00c853' },
+  { text: 'Auto Wallets', detail: 'No wallet connection needed', color: '#2196f3' },
+  { text: 'Real Jupiter Swaps', detail: 'On-chain execution', color: '#f0b90b' },
+  { text: 'Creator Revenue', detail: '30% of fees to token creators', color: '#00c853' },
+  { text: 'Profit Locks', detail: '30% profits locked in $FRONT', color: '#2196f3' },
+  { text: 'SOL Burns', detail: '20% of revenue burned forever', color: '#ff3b3b' },
+  { text: 'Custodial Wallets', detail: 'Every user gets a Solana wallet', color: '#f0b90b' },
 ];
 
 const LiveFeed: FC = () => {
-  const [offset, setOffset] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setOffset((o) => o + 1), 2500);
-    return () => clearInterval(id);
-  }, []);
-
-  // Double the array for infinite scroll illusion
-  const items = [...MOCK_TRADES, ...MOCK_TRADES];
-  const visible = items.slice(offset % MOCK_TRADES.length, (offset % MOCK_TRADES.length) + MOCK_TRADES.length);
-
   return (
     <section style={{
       padding: '16px 0',
@@ -529,11 +518,11 @@ const LiveFeed: FC = () => {
     }}>
       <div style={{
         display: 'flex',
-        gap: 32,
-        animation: 'scroll-left 30s linear infinite',
+        gap: 40,
+        animation: 'scroll-left 40s linear infinite',
         width: 'max-content',
       }}>
-        {[...visible, ...visible].map((t, i) => (
+        {[...ACTIVITY_ITEMS, ...ACTIVITY_ITEMS, ...ACTIVITY_ITEMS].map((item, i) => (
           <div key={i} style={{
             display: 'flex',
             alignItems: 'center',
@@ -541,27 +530,12 @@ const LiveFeed: FC = () => {
             whiteSpace: 'nowrap',
             fontSize: 12,
           }}>
-            <span style={{ color: '#333', fontFamily: 'var(--font-mono)' }}>{t.user}</span>
-            <span style={{ color: '#888' }}>{t.action}</span>
-            <span style={{ color: '#f0b90b', fontWeight: 600 }}>{t.amount}</span>
-            <span style={{ color: '#555' }}>of</span>
-            <span style={{ color: '#fff', fontWeight: 600 }}>{t.token}</span>
             <span style={{
-              padding: '1px 6px',
-              background: '#f0b90b15',
-              borderRadius: 3,
-              color: '#f0b90b',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              fontWeight: 700,
-            }}>{t.leverage}</span>
-            {t.pnl && (
-              <span style={{
-                color: t.positive ? '#00c853' : '#ff3b3b',
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 600,
-              }}>{t.pnl}</span>
-            )}
+              width: 6, height: 6, borderRadius: '50%',
+              background: item.color, display: 'inline-block',
+            }} />
+            <span style={{ color: item.color, fontWeight: 700 }}>{item.text}</span>
+            <span style={{ color: '#555' }}>{item.detail}</span>
           </div>
         ))}
       </div>
@@ -569,7 +543,7 @@ const LiveFeed: FC = () => {
       <style>{`
         @keyframes scroll-left {
           0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+          100% { transform: translateX(-33.33%); }
         }
       `}</style>
     </section>
@@ -605,13 +579,13 @@ const Sparkline: FC<{ data: number[]; color: string; width?: number; height?: nu
 };
 
 /* ── Trending Token Cards ────────────────────────────── */
-const MOCK_TOKENS = [
-  { symbol: '$WOJAK', price: '0.000042', change: '+24.5%', positive: true, vol: '142K', data: [3, 4, 3, 5, 6, 5, 7, 8, 9, 8, 10, 11, 10] },
-  { symbol: '$PEPE', price: '0.0000089', change: '+12.3%', positive: true, vol: '890K', data: [5, 6, 5, 7, 6, 8, 7, 9, 8, 10, 9, 11, 10] },
-  { symbol: '$WIF', price: '1.234', change: '-3.2%', positive: false, vol: '2.1M', data: [10, 9, 11, 10, 8, 9, 7, 8, 6, 7, 5, 6, 5] },
-  { symbol: '$BONK', price: '0.0000234', change: '+8.7%', positive: true, vol: '456K', data: [4, 5, 4, 6, 7, 6, 8, 7, 9, 10, 9, 11, 12] },
-  { symbol: '$POPCAT', price: '0.892', change: '+31.2%', positive: true, vol: '1.3M', data: [2, 3, 4, 3, 5, 6, 7, 8, 10, 9, 12, 11, 14] },
-  { symbol: '$GIGA', price: '0.0342', change: '-1.1%', positive: false, vol: '98K', data: [8, 7, 8, 6, 7, 5, 6, 5, 4, 5, 4, 3, 4] },
+const FEATURE_CARDS = [
+  { title: 'Bonded Tokens', desc: 'Up to 10x leverage', detail: 'Highest liquidity, lowest risk', icon: '🔗' },
+  { title: 'Rising Tokens', desc: 'Up to 5x leverage', detail: 'Growing liquidity, moderate risk', icon: '📈' },
+  { title: 'Degen Tokens', desc: 'Up to 3x leverage', detail: 'New launches, higher risk', icon: '🎰' },
+  { title: 'Auto Wallets', desc: 'No wallet needed', detail: 'Fresh Solana wallet per account', icon: '🔑' },
+  { title: 'Jupiter Swaps', desc: 'Real on-chain trades', detail: 'Aggregated best price execution', icon: '⚡' },
+  { title: 'Creator Revenue', desc: '30% fee share', detail: 'Token creators earn from leverage trades', icon: '💰' },
 ];
 
 const TrendingTokens: FC = () => {
@@ -624,9 +598,9 @@ const TrendingTokens: FC = () => {
       gridTemplateColumns: 'repeat(3, 1fr)',
       gap: 12,
     }}>
-      {MOCK_TOKENS.map((t, i) => (
+      {FEATURE_CARDS.map((card, i) => (
         <motion.div
-          key={t.symbol}
+          key={card.title}
           initial={{ opacity: 0, y: 20 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ delay: i * 0.08, duration: 0.4 }}
@@ -635,38 +609,35 @@ const TrendingTokens: FC = () => {
             border: '1px solid #1a1a1a',
             borderRadius: 10,
             padding: 16,
-            cursor: 'pointer',
             transition: 'border-color 0.2s',
           }}
-          whileHover={{ borderColor: '#f0b90b30' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{t.symbol}</div>
-              <div style={{ fontSize: 11, color: '#555', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                Vol: {t.vol}
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>
+                <span style={{ marginRight: 6 }}>{card.icon}</span>{card.title}
+              </div>
+              <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>
+                {card.detail}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: 'var(--font-mono)' }}>
-                ${t.price}
-              </div>
               <div style={{
                 fontSize: 12,
                 fontWeight: 700,
-                color: t.positive ? '#00c853' : '#ff3b3b',
+                color: '#f0b90b',
                 fontFamily: 'var(--font-mono)',
               }}>
-                {t.change}
+                {card.desc}
               </div>
             </div>
           </div>
-          <Sparkline data={t.data} color={t.positive ? '#00c853' : '#ff3b3b'} width={200} height={36} />
         </motion.div>
       ))}
     </div>
   );
 };
+
 
 /* ── Comparison Table ────────────────────────────────── */
 const ComparisonTable: FC = () => {
