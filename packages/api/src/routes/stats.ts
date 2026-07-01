@@ -221,4 +221,53 @@ router.post('/admin/fund-wallet', async (req, res) => {
   }
 });
 
+/**
+ * POST /admin/backfill-tokens
+ *
+ * Backfill name/symbol/imageUri for all tokens missing metadata.
+ * Protected by ADMIN_SECRET.
+ */
+router.post('/admin/backfill-tokens', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (!secret || secret !== process.env.ADMIN_SECRET) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    const tokens = await prisma.token.findMany({
+      where: { OR: [{ name: null }, { symbol: null }, { imageUri: null }] },
+    });
+
+    const results: Array<{ address: string; name: string | null; symbol: string | null }> = [];
+
+    for (const token of tokens) {
+      try {
+        const jupRes = await fetch(`https://tokens.jup.ag/token/${token.address}`);
+        if (jupRes.ok) {
+          const meta = await jupRes.json() as { name?: string; symbol?: string; logoURI?: string };
+          await prisma.token.update({
+            where: { id: token.id },
+            data: {
+              name: token.name || meta.name || null,
+              symbol: token.symbol || meta.symbol || null,
+              imageUri: token.imageUri || meta.logoURI || null,
+            },
+          });
+          results.push({
+            address: token.address,
+            name: meta.name || null,
+            symbol: meta.symbol || null,
+          });
+        }
+      } catch {
+        // Skip failed lookups
+      }
+    }
+
+    sendSuccess(res, { updated: results.length, tokens: results });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 export default router;

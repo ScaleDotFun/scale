@@ -46,6 +46,7 @@ router.get('/listed', publicLimiter, async (req, res) => {
         address: token.address,
         name: token.name,
         symbol: token.symbol,
+        imageUri: token.imageUri,
         creatorWallet: token.creatorWallet,
         tier: token.tier,
         tierLabel: config.label,
@@ -111,6 +112,7 @@ router.get('/trending', publicLimiter, async (req, res) => {
           address: token.address,
           name: token.name,
           symbol: token.symbol,
+          imageUri: token.imageUri,
           tier: token.tier,
           volume24h,
           trades24h: rp._count,
@@ -152,7 +154,21 @@ router.get('/search', async (req, res) => {
       orderBy: { totalTradingVolume: 'desc' },
     });
 
-    sendSuccess(res, tokens);
+    const data = tokens.map((token) => {
+      const config = getTierConfig(token.tier as Tier);
+      return {
+        address: token.address,
+        name: token.name,
+        symbol: token.symbol,
+        imageUri: token.imageUri,
+        tier: token.tier,
+        tierLabel: config.label,
+        maxLeverage: config.maxLeverage,
+        totalTradingVolume: token.totalTradingVolume,
+      };
+    });
+
+    sendSuccess(res, data);
   } catch (err) {
     sendError(res, err);
   }
@@ -203,6 +219,7 @@ router.get('/:address', publicLimiter, async (req, res) => {
       address: token.address,
       name: token.name,
       symbol: token.symbol,
+      imageUri: token.imageUri,
       creatorWallet: token.creatorWallet,
       tier: token.tier,
       tierLabel: config.label,
@@ -263,12 +280,63 @@ router.post('/list', verifyWalletSignature, async (req, res) => {
       throw new ValidationError('Token is already listed');
     }
 
+    // Auto-fetch token metadata (name, symbol, logo) if not provided
+    let resolvedName = name || null;
+    let resolvedSymbol = symbol || null;
+    let resolvedImage: string | null = null;
+
+    if (!resolvedName || !resolvedSymbol) {
+      try {
+        // Try Jupiter strict token list first (fast, no auth)
+        const jupRes = await fetch(`https://tokens.jup.ag/token/${tokenAddress}`);
+        if (jupRes.ok) {
+          const meta = await jupRes.json() as { name?: string; symbol?: string; logoURI?: string };
+          resolvedName = resolvedName || meta.name || null;
+          resolvedSymbol = resolvedSymbol || meta.symbol || null;
+          resolvedImage = meta.logoURI || null;
+        }
+      } catch {
+        // Silently ignore — metadata is best-effort
+      }
+    }
+
+    // Fallback: try Helius DAS API for on-chain metadata
+    if (!resolvedName || !resolvedSymbol) {
+      try {
+        const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const dasRes = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getAsset',
+            params: { id: tokenAddress },
+          }),
+        });
+        if (dasRes.ok) {
+          const dasData = await dasRes.json() as {
+            result?: { content?: { metadata?: { name?: string; symbol?: string }; links?: { image?: string } } };
+          };
+          const content = dasData.result?.content;
+          if (content?.metadata) {
+            resolvedName = resolvedName || content.metadata.name || null;
+            resolvedSymbol = resolvedSymbol || content.metadata.symbol || null;
+            resolvedImage = resolvedImage || content.links?.image || null;
+          }
+        }
+      } catch {
+        // Silently ignore
+      }
+    }
+
     // Create token record
     const token = await prisma.token.create({
       data: {
         address: tokenAddress,
-        name: name || null,
-        symbol: symbol || null,
+        name: resolvedName,
+        symbol: resolvedSymbol,
+        imageUri: resolvedImage,
         creatorWallet: wallet,
         tier: tier,
         feeWalletPda: feeWalletPda || null,
@@ -283,6 +351,7 @@ router.post('/list', verifyWalletSignature, async (req, res) => {
       address: token.address,
       name: token.name,
       symbol: token.symbol,
+      imageUri: token.imageUri,
       creatorWallet: token.creatorWallet,
       tier: token.tier,
       tierLabel: config.label,
