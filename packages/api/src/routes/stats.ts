@@ -148,4 +148,42 @@ router.get('/pool', publicLimiter, async (req, res) => {
   }
 });
 
+/**
+ * POST /admin/seed-pool
+ *
+ * Seed the pool ledger with an initial deposit. Protected by ADMIN_SECRET.
+ * Body: { amountLamports: string }
+ */
+router.post('/admin/seed-pool', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (!secret || secret !== process.env.ADMIN_SECRET) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    const amountLamports = BigInt(req.body.amountLamports || '0');
+    if (amountLamports <= 0n) {
+      return res.status(400).json({ success: false, error: 'amountLamports must be positive' });
+    }
+
+    await prisma.poolLedger.create({
+      data: {
+        type: 'initial_deposit',
+        amount: amountLamports,
+        txSignature: 'admin-seed-deposit',
+      },
+    });
+
+    const poolAgg = await prisma.poolLedger.aggregate({ _sum: { amount: true } });
+
+    sendSuccess(res, {
+      message: 'Pool seeded',
+      deposited: amountLamports.toString(),
+      totalPool: (poolAgg._sum.amount ?? 0n).toString(),
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 export default router;
