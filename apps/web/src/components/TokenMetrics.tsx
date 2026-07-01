@@ -7,11 +7,11 @@ interface TokenMetricsProps {
   overview?: TokenOverview | null;
 }
 
-function formatCompact(n: number): string {
-  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n.toFixed(0)}`;
+function formatCompact(n: number, prefix = ''): string {
+  if (n >= 1_000_000_000) return `${prefix}${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `${prefix}${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${prefix}${(n / 1_000).toFixed(1)}K`;
+  return `${prefix}${n.toFixed(0)}`;
 }
 
 function formatNum(n: number): string {
@@ -68,7 +68,7 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
       {/* LIQ */}
       <div className="token-metrics-item">
         <span className="token-metrics-label">LIQ</span>
-        <span className="token-metrics-value">{formatCompact(liq)}</span>
+        <span className="token-metrics-value">{formatCompact(liq, '$')}</span>
       </div>
       <div className="token-metrics-sep" />
 
@@ -77,7 +77,7 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
         <>
           <div className="token-metrics-item">
             <span className="token-metrics-label">VOL 24H</span>
-            <span className="token-metrics-value">{formatCompact(vol24h)}</span>
+            <span className="token-metrics-value">{formatCompact(vol24h, '$')}</span>
           </div>
           <div className="token-metrics-sep" />
         </>

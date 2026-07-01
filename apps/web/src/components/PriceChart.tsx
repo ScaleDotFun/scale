@@ -268,8 +268,12 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions }) => 
         setPriceChange(change);
       }
 
-      // Fit content
+      // Fit content — immediate + delayed to handle container sizing
       chartRef.current?.timeScale().fitContent();
+      setTimeout(() => {
+        chartRef.current?.timeScale().fitContent();
+        chartRef.current?.timeScale().scrollToRealTime();
+      }, 100);
       setLoading(false);
     };
 
