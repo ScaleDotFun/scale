@@ -93,11 +93,7 @@ export const Layout: FC = () => {
       {/* ── Horizontal Top Nav ──────────────────── */}
       <nav className="top-nav">
         <NavLink to="/" className="top-nav-logo">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+          <img src="/front-logo.png" alt="Front" width="22" height="22" style={{ borderRadius: 4 }} />
           <span>FRONT</span>
         </NavLink>
 
