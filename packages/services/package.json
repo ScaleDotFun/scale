@@ -25,6 +25,8 @@
     "@front-protocol/solana": "workspace:*",
     "@pump-fun/pump-sdk": "^1.36.0",
     "@pump-fun/pump-swap-sdk": "^1.18.0",
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.98.0",
     "bullmq": "^5.34.0",
     "dotenv": "^16.4.0",
     "ioredis": "5.10.1"
