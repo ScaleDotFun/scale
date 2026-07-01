@@ -835,6 +835,8 @@ export const Landing: FC = () => {
           <a href="#leverage" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>Leverage</a>
           <a href="#creators" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>Creators</a>
           <Link to="/docs" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>Docs</Link>
+          <a href="https://x.com/FrontDotFun" target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>𝕏</a>
+          <a href="https://github.com/FrontDotFun/front" target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>GitHub</a>
         </div>
         <Link
           to="/explore"
@@ -1109,6 +1111,8 @@ export const Landing: FC = () => {
           <Link to="/docs" style={{ fontSize: 11, color: '#333', textDecoration: 'none' }}>Docs</Link>
           <Link to="/stats" style={{ fontSize: 11, color: '#333', textDecoration: 'none' }}>Stats</Link>
           <Link to="/list" style={{ fontSize: 11, color: '#333', textDecoration: 'none' }}>List Token</Link>
+          <a href="https://x.com/FrontDotFun" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#555', textDecoration: 'none' }}>𝕏</a>
+          <a href="https://github.com/FrontDotFun/front" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#555', textDecoration: 'none' }}>GitHub</a>
         </div>
       </footer>
     </div>
