@@ -1,9 +1,10 @@
 import { type FC, useState, useCallback, useTransition, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useTokens } from '../hooks/useTokens';
 import { usePositions } from '../hooks/usePositions';
 import { useTokenOverview } from '../hooks/useTokenOverview';
+import { useAuth } from '../providers/AuthProvider';
 import { PriceChart, type ChartPosition } from '../components/PriceChart';
 import { TokenMetrics } from '../components/TokenMetrics';
 import { ExecutionSettings } from '../components/ExecutionSettings';
@@ -34,6 +35,17 @@ export const Trade: FC = () => {
 
   // Shared token overview data — auto-polls every 15s
   const { overview: tokenOverview } = useTokenOverview(selectedToken?.address);
+  const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
+
+  // Balance state
+  const [walletBalance, setWalletBalance] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) { setWalletBalance(null); return; }
+    api.getWalletBalance()
+      .then((b) => setWalletBalance(b.balanceSol))
+      .catch(() => setWalletBalance(null));
+  }, [isAuthenticated]);
 
   const [activeTab, setActiveTab] = useState<'positions' | 'history' | 'trades'>('positions');
   const [collateral, setCollateral] = useState('');
@@ -463,7 +475,14 @@ export const Trade: FC = () => {
                 )}
                 {/* Capital */}
                 <div className="exec-field">
-                  <label className="exec-label">Collateral</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="exec-label">Collateral</label>
+                    {walletBalance && (
+                      <span style={{ fontSize: 11, color: '#888', fontFamily: 'var(--font-mono)' }}>
+                        Balance: <span style={{ color: '#f0b90b' }}>{parseFloat(walletBalance).toFixed(4)}</span> SOL
+                      </span>
+                    )}
+                  </div>
                   <div className="exec-input-wrap">
                     <input
                       className="exec-input"
@@ -613,18 +632,30 @@ export const Trade: FC = () => {
                 </div>
 
                 {/* Execute Button */}
-                <motion.button
-                  className={`exec-btn ${
-                    optimisticState === 'success' ? 'exec-btn-success' :
-                    optimisticState === 'error' ? 'exec-btn-error' : ''
-                  }`}
-                  onClick={handleBuyClick}
-                  disabled={tradingDisabled || optimisticState === 'submitting' || isOpening || collateralSol <= 0}
-                  whileHover={tradingDisabled ? {} : { scale: 1.01 }}
-                  whileTap={tradingDisabled ? {} : { scale: 0.99 }}
-                >
-                  {tradingDisabled ? 'Trading Unavailable' : apeButtonLabel()}
-                </motion.button>
+                {!isAuthenticated ? (
+                  <motion.button
+                    className="exec-btn"
+                    onClick={() => navigate('/auth')}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    style={{ background: 'linear-gradient(135deg, #f0b90b, #e5a800)' }}
+                  >
+                    Sign in to Trade
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    className={`exec-btn ${
+                      optimisticState === 'success' ? 'exec-btn-success' :
+                      optimisticState === 'error' ? 'exec-btn-error' : ''
+                    }`}
+                    onClick={handleBuyClick}
+                    disabled={tradingDisabled || optimisticState === 'submitting' || isOpening || collateralSol <= 0}
+                    whileHover={tradingDisabled ? {} : { scale: 1.01 }}
+                    whileTap={tradingDisabled ? {} : { scale: 0.99 }}
+                  >
+                    {tradingDisabled ? 'Trading Unavailable' : apeButtonLabel()}
+                  </motion.button>
+                )}
 
                 {/* Error message */}
                 {errorMessage && optimisticState === 'error' && (
