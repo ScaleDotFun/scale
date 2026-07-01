@@ -129,12 +129,12 @@ router.get('/dashboard', verifyWalletSignature, async (req, res) => {
         tierEmoji: config.emoji,
         listedAt: token.listedAt,
         isActive: token.isActive,
-        totalTradingVolume: token.totalTradingVolume,
-        totalFeesGenerated: token.totalFeesClaimed,
-        totalEarnings: token.totalCreatorPayouts,
-        todayTradingVolume: todayVolume,
-        todayEarnings: todayEarningsMap.get(token.id) ?? 0n,
-        unclaimedEarnings: unclaimedMap.get(token.id) ?? 0n,
+        totalTradingVolume: String(token.totalTradingVolume),
+        totalFeesGenerated: String(token.totalFeesClaimed),
+        totalEarnings: String(token.totalCreatorPayouts),
+        todayTradingVolume: String(todayVolume),
+        todayEarnings: String(todayEarningsMap.get(token.id) ?? 0n),
+        unclaimedEarnings: String(unclaimedMap.get(token.id) ?? 0n),
       };
     });
 
@@ -145,12 +145,12 @@ router.get('/dashboard', verifyWalletSignature, async (req, res) => {
     sendSuccess(res, {
       tokens: dashboardTokens,
       totals: {
-        totalTradingVolume: tokens.reduce((sum, t) => sum + t.totalTradingVolume, 0n),
-        totalEarnings: tokens.reduce((sum, t) => sum + t.totalCreatorPayouts, 0n),
-        totalFeesClaimed: tokens.reduce((sum, t) => sum + t.totalFeesClaimed, 0n),
-        unclaimedEarnings: unclaimedAgg._sum.amount ?? 0n,
-        todayVolume,
-        todayEarnings: todayEarningsAgg._sum.amount ?? 0n,
+        totalTradingVolume: String(tokens.reduce((sum, t) => sum + t.totalTradingVolume, 0n)),
+        totalEarnings: String(tokens.reduce((sum, t) => sum + t.totalCreatorPayouts, 0n)),
+        totalFeesClaimed: String(tokens.reduce((sum, t) => sum + t.totalFeesClaimed, 0n)),
+        unclaimedEarnings: String(unclaimedAgg._sum.amount ?? 0n),
+        todayVolume: String(todayVolume),
+        todayEarnings: String(todayEarningsAgg._sum.amount ?? 0n),
         tokenCount: tokens.length,
       },
     });
@@ -200,7 +200,7 @@ router.get('/payouts', verifyWalletSignature, async (req, res) => {
     const data = payouts.map((p) => ({
       id: p.id,
       token: p.token,
-      amount: p.amount,
+      amount: String(p.amount),
       status: p.status,
       claimTx: p.claimTx,
       createdAt: p.createdAt,
@@ -291,7 +291,7 @@ router.post('/claim', verifyWalletSignature, async (req, res) => {
     });
 
     sendSuccess(res, {
-      claimedAmount: result.totalAmount,
+      claimedAmount: String(result.totalAmount),
       payoutCount: result.count,
       message: 'Claim initiated. SOL will be transferred to your wallet shortly.',
     });
@@ -362,11 +362,11 @@ router.get('/volume/:tokenAddress', verifyWalletSignature, async (req, res) => {
       tokenName: token.name,
       tokenSymbol: token.symbol,
       volume: {
-        '1h': sumVolume(volume1h),
-        '24h': sumVolume(volume24h),
-        '7d': sumVolume(volume7d),
-        '30d': sumVolume(volume30d),
-        allTime: token.totalTradingVolume,
+        '1h': String(sumVolume(volume1h)),
+        '24h': String(sumVolume(volume24h)),
+        '7d': String(sumVolume(volume7d)),
+        '30d': String(sumVolume(volume30d)),
+        allTime: String(token.totalTradingVolume),
       },
       trades: {
         '1h': volume1h._count,
@@ -376,8 +376,8 @@ router.get('/volume/:tokenAddress', verifyWalletSignature, async (req, res) => {
         total: totalPositions,
         active: activePositions,
       },
-      totalFeesClaimed: token.totalFeesClaimed,
-      totalCreatorPayouts: token.totalCreatorPayouts,
+      totalFeesClaimed: String(token.totalFeesClaimed),
+      totalCreatorPayouts: String(token.totalCreatorPayouts),
     });
   } catch (err) {
     sendError(res, err);

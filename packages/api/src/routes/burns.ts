@@ -46,8 +46,8 @@ router.get('/', publicLimiter, async (req, res) => {
 
     const data = burns.map((burn) => ({
       id: burn.id,
-      solAmount: burn.solAmount,
-      tokenAmount: burn.tokenAmount,
+      solAmount: String(burn.solAmount),
+      tokenAmount: String(burn.tokenAmount),
       txSignature: burn.txSignature,
       burnedAt: burn.burnedAt,
       position: burn.position
@@ -127,21 +127,21 @@ router.get('/stats', publicLimiter, async (req, res) => {
       cumulativeToken += bucket.tokenAmount;
       return {
         date,
-        dailySolBurned: bucket.solAmount,
-        dailyTokensBurned: bucket.tokenAmount,
+        dailySolBurned: String(bucket.solAmount),
+        dailyTokensBurned: String(bucket.tokenAmount),
         dailyCount: bucket.count,
-        cumulativeSolBurned: cumulativeSol,
-        cumulativeTokensBurned: cumulativeToken,
+        cumulativeSolBurned: String(cumulativeSol),
+        cumulativeTokensBurned: String(cumulativeToken),
       };
     });
 
     sendSuccess(res, {
-      totalSolBurned: totalAgg._sum.solAmount ?? 0n,
-      totalTokensBurned: totalAgg._sum.tokenAmount ?? 0n,
+      totalSolBurned: String(totalAgg._sum.solAmount ?? 0n),
+      totalTokensBurned: String(totalAgg._sum.tokenAmount ?? 0n),
       totalBurnCount: totalCount,
       burnRate24h: {
-        solBurned: recent24hAgg._sum.solAmount ?? 0n,
-        tokensBurned: recent24hAgg._sum.tokenAmount ?? 0n,
+        solBurned: String(recent24hAgg._sum.solAmount ?? 0n),
+        tokensBurned: String(recent24hAgg._sum.tokenAmount ?? 0n),
         burnCount: recent24hCount,
       },
       cumulativeData,

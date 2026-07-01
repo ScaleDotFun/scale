@@ -62,12 +62,12 @@ router.get('/stats', publicLimiter, async (req, res) => {
     ]);
 
     sendSuccess(res, {
-      totalBurnedLamports: burnAgg._sum.solAmount ?? 0n,
-      totalBurnedTokens: burnAgg._sum.tokenAmount ?? 0n,
-      totalLockedLamports: lockAgg._sum.solAmount ?? 0n,
-      totalLockedTokens: lockAgg._sum.tokenAmount ?? 0n,
-      poolSizeLamports: poolAgg._sum.amount ?? 0n,
-      totalCreatorPayoutsLamports: creatorPayoutAgg._sum.amount ?? 0n,
+      totalBurnedLamports: String(burnAgg._sum.solAmount ?? 0n),
+      totalBurnedTokens: String(burnAgg._sum.tokenAmount ?? 0n),
+      totalLockedLamports: String(lockAgg._sum.solAmount ?? 0n),
+      totalLockedTokens: String(lockAgg._sum.tokenAmount ?? 0n),
+      poolSizeLamports: String(poolAgg._sum.amount ?? 0n),
+      totalCreatorPayoutsLamports: String(creatorPayoutAgg._sum.amount ?? 0n),
       totalTradesExecuted: totalPositions,
       totalListedTokens,
       activeListedTokens,
@@ -132,15 +132,17 @@ router.get('/pool', publicLimiter, async (req, res) => {
       : 0;
 
     sendSuccess(res, {
-      balance,
-      lockedCapital,
-      availableCapital: balance > lockedCapital ? balance - lockedCapital : 0n,
+      balance: String(balance),
+      lockedCapital: String(lockedCapital),
+      availableCapital: String(balance > lockedCapital ? balance - lockedCapital : 0n),
       utilizationRate,
       today: {
-        inflows: inflowsToday,
-        outflows: outflowsToday,
-        net: inflowsToday + outflowsToday,
-        byType: Object.fromEntries(flowsByType),
+        inflows: String(inflowsToday),
+        outflows: String(outflowsToday),
+        net: String(inflowsToday + outflowsToday),
+        byType: Object.fromEntries(
+          Array.from(flowsByType.entries()).map(([k, v]) => [k, String(v)])
+        ),
       },
     });
   } catch (err) {

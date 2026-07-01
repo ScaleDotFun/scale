@@ -87,7 +87,7 @@ router.get('/', verifyWalletSignature, async (req, res) => {
         items: openPositions.map((p) => ({
           id: p.id,
           token: p.token,
-          leverage: p.leverage,
+          leverage: Number(p.leverage),
           userCapital: String(p.userCapital),
           tier: p.tier,
           openedAt: p.openedAt,
@@ -139,7 +139,7 @@ router.get('/history', verifyWalletSignature, async (req, res) => {
       id: t.id,
       token: t.token,
       status: t.status,
-      leverage: t.leverage,
+      leverage: Number(t.leverage),
       tier: t.tier,
       userCapital: String(t.userCapital),
       protocolCapital: String(t.protocolCapital),

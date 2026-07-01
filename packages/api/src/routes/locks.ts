@@ -52,8 +52,8 @@ router.get('/', verifyWalletSignature, async (req, res) => {
 
     const data = locks.map((lock) => ({
       id: lock.id,
-      solAmount: lock.solAmount,
-      tokenAmount: lock.tokenAmount,
+      solAmount: String(lock.solAmount),
+      tokenAmount: String(lock.tokenAmount),
       lockedAt: lock.lockedAt,
       unlocksAt: lock.unlocksAt,
       isUnlocked: lock.isUnlocked,
@@ -86,9 +86,9 @@ router.get('/', verifyWalletSignature, async (req, res) => {
     sendSuccess(res, {
       locks: data,
       summary: {
-        totalLocked,
-        totalUnlocked,
-        pendingUnlock,
+        totalLocked: String(totalLocked),
+        totalUnlocked: String(totalUnlocked),
+        pendingUnlock: String(pendingUnlock),
         activeLockCount: locks.filter((l) => !l.isUnlocked).length,
       },
       pagination: {
@@ -170,24 +170,24 @@ router.get('/global', publicLimiter, async (req, res) => {
 
     sendSuccess(res, {
       totalLocked: {
-        tokenAmount: totalLockedAgg._sum.tokenAmount ?? 0n,
-        solAmount: totalLockedAgg._sum.solAmount ?? 0n,
+        tokenAmount: String(totalLockedAgg._sum.tokenAmount ?? 0n),
+        solAmount: String(totalLockedAgg._sum.solAmount ?? 0n),
       },
       totalUnlocked: {
-        tokenAmount: totalUnlockedAgg._sum.tokenAmount ?? 0n,
-        solAmount: totalUnlockedAgg._sum.solAmount ?? 0n,
+        tokenAmount: String(totalUnlockedAgg._sum.tokenAmount ?? 0n),
+        solAmount: String(totalUnlockedAgg._sum.solAmount ?? 0n),
       },
       upcoming7d: {
-        tokenAmount: upcomingUnlocksAgg._sum.tokenAmount ?? 0n,
-        solAmount: upcomingUnlocksAgg._sum.solAmount ?? 0n,
+        tokenAmount: String(upcomingUnlocksAgg._sum.tokenAmount ?? 0n),
+        solAmount: String(upcomingUnlocksAgg._sum.solAmount ?? 0n),
         count: upcomingUnlocksAgg._count,
       },
       activeLockCount,
       totalLockCount,
       nextUnlocks: upcomingUnlocks.map((u) => ({
         id: u.id,
-        tokenAmount: u.tokenAmount,
-        solAmount: u.solAmount,
+        tokenAmount: String(u.tokenAmount),
+        solAmount: String(u.solAmount),
         unlocksAt: u.unlocksAt,
         timeRemainingMs: Math.max(0, u.unlocksAt.getTime() - now.getTime()),
       })),

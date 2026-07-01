@@ -53,8 +53,8 @@ router.get('/listed', publicLimiter, async (req, res) => {
         exitThresholdPct: config.exitThresholdBps / 100,
         listedAt: token.listedAt,
         isActive: token.isActive,
-        totalTradingVolume: token.totalTradingVolume,
-        totalCreatorPayouts: token.totalCreatorPayouts,
+        totalTradingVolume: String(token.totalTradingVolume),
+        totalCreatorPayouts: String(token.totalCreatorPayouts),
       };
     });
 
@@ -114,7 +114,7 @@ router.get('/trending', publicLimiter, async (req, res) => {
           tier: token.tier,
           volume24h,
           trades24h: rp._count,
-          totalTradingVolume: token.totalTradingVolume,
+          totalTradingVolume: String(token.totalTradingVolume),
         };
       })
       .filter(Boolean);
@@ -162,7 +162,7 @@ router.get('/search', async (req, res) => {
         tier: token.tier,
         tierLabel: config.label,
         maxLeverage: config.maxLeverage,
-        totalTradingVolume: token.totalTradingVolume,
+        totalTradingVolume: String(token.totalTradingVolume),
       };
     });
 
@@ -227,11 +227,11 @@ router.get('/:address', publicLimiter, async (req, res) => {
       feeWalletPda: token.feeWalletPda,
       listedAt: token.listedAt,
       isActive: token.isActive,
-      totalFeesClaimed: token.totalFeesClaimed,
-      totalTradingVolume: token.totalTradingVolume,
-      totalCreatorPayouts: token.totalCreatorPayouts,
+      totalFeesClaimed: String(token.totalFeesClaimed),
+      totalTradingVolume: String(token.totalTradingVolume),
+      totalCreatorPayouts: String(token.totalCreatorPayouts),
       activePositions,
-      volume24h,
+      volume24h: String(volume24h),
       trades24h: recentVolume._count,
     });
   } catch (err) {
