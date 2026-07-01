@@ -285,10 +285,9 @@ router.post('/admin/reset-tokens', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
 
-    const { action } = req.body;
+    const { action, tokenAddress } = req.body;
 
     if (action === 'delete-all') {
-      // Delete positions first (foreign key), then tokens
       const delPositions = await prisma.position.deleteMany({});
       const delTokens = await prisma.token.deleteMany({});
       sendSuccess(res, {
@@ -296,6 +295,61 @@ router.post('/admin/reset-tokens', async (req, res) => {
         deletedTokens: delTokens.count,
         deletedPositions: delPositions.count,
       });
+    } else if (action === 'force-list' && tokenAddress) {
+      // Admin-verified listing — bypasses fee check for tokens we've
+      // manually confirmed have fees going to protocol
+      const existing = await prisma.token.findUnique({ where: { address: tokenAddress } });
+      if (existing) {
+        // Reactivate if deactivated
+        await prisma.token.update({ where: { address: tokenAddress }, data: { isActive: true } });
+        sendSuccess(res, { message: 'Token reactivated', address: tokenAddress });
+      } else {
+        // Fetch metadata from pump.fun
+        let name = 'Unknown', symbol = '???', imageUri = '', creator = '', marketCap = 0;
+        try {
+          const pumpRes = await fetch(`https://frontend-api-v3.pump.fun/coins/${tokenAddress}`);
+          if (pumpRes.ok) {
+            const pumpData = await pumpRes.json() as any;
+            name = pumpData.name || name;
+            symbol = pumpData.symbol || symbol;
+            imageUri = pumpData.image_uri || '';
+            creator = pumpData.creator || '';
+            marketCap = pumpData.usd_market_cap || pumpData.usdMarketCap || 0;
+          }
+        } catch { /* use defaults */ }
+
+        // Try DexScreener for image
+        try {
+          const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+          if (dexRes.ok) {
+            const dexData = await dexRes.json() as any;
+            const pairs = dexData.pairs || [];
+            if (pairs.length > 0) {
+              const best = pairs.sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+              imageUri = best.info?.imageUrl || imageUri;
+              marketCap = best.marketCap || best.fdv || marketCap;
+            }
+          }
+        } catch { /* use pump image */ }
+
+        const { determineTier } = await import('@front-protocol/core');
+        const tierConfig = determineTier(marketCap, marketCap * 0.1, false);
+        const tier = tierConfig ? tierConfig.tier : 'degen';
+
+        const token = await prisma.token.create({
+          data: {
+            address: tokenAddress,
+            name,
+            symbol,
+            imageUri,
+            creatorWallet: creator,
+            tier: tier as any,
+            isActive: true,
+            isAutoListed: true,
+          },
+        });
+        sendSuccess(res, { message: 'Token force-listed', token: { id: token.id, name, symbol, tier } });
+      }
     } else {
       const updated = await prisma.token.updateMany({
         data: { isActive: false },
