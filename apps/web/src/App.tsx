@@ -13,6 +13,7 @@ import { Stats } from './pages/Stats';
 import { Docs } from './pages/Docs';
 import { Auth } from './pages/Auth';
 import AuthCallback from './pages/AuthCallback';
+import { Creator } from './pages/Creator';
 
 export function App() {
   return (
@@ -30,7 +31,7 @@ export function App() {
               <Route path="/trade" element={<Trade />} />
               <Route path="/explore" element={<Explore />} />
               <Route path="/portfolio" element={<Portfolio />} />
-              <Route path="/creator" element={<Navigate to="/account" replace />} />
+              <Route path="/creator" element={<Creator />} />
               <Route path="/account" element={<Account />} />
               <Route path="/list" element={<ListToken />} />
               <Route path="/locks" element={<Locks />} />
