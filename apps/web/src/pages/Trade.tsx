@@ -644,28 +644,97 @@ export const Trade: FC = () => {
               </div>
             )}
 
-            {/* Mini positions */}
-            {activePositions.length > 0 && (
-              <div className="exec-mini-positions">
-                <div className="exec-mini-header">Active Positions</div>
-                {activePositions.slice(0, 4).map((pos) => (
-                  <div key={pos.id} className="exec-mini-row">
-                    <span className="exec-mini-token">{pos.token?.symbol ?? '???'} <span className="text-dim">{pos.leverage}x</span></span>
-                    <span
-                      className="mono"
-                      style={{
-                        fontSize: 11,
-                        color: (pos.livePnLPercent ?? 0) >= 0 ? 'var(--green)' : 'var(--red)',
-                      }}
-                    >
-                      {pos.livePnLPercent != null
-                        ? `${pos.livePnLPercent >= 0 ? '+' : ''}${pos.livePnLPercent.toFixed(1)}%`
-                        : '--'}
-                    </span>
+            {/* ── Your positions for this token ── */}
+            {(() => {
+              const tokenPositions = activePositions.filter(
+                (pos) => pos.token?.address === selectedToken?.address
+              );
+              if (tokenPositions.length === 0) return null;
+              return (
+                <div style={{
+                  marginTop: 16,
+                  padding: '14px 16px',
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid #1a1a1f',
+                  borderRadius: 12,
+                }}>
+                  <div style={{
+                    fontSize: 11, fontWeight: 700, color: '#888',
+                    textTransform: 'uppercase', letterSpacing: '0.5px',
+                    marginBottom: 10,
+                  }}>
+                    Your Positions · {selectedToken?.symbol}
                   </div>
-                ))}
-              </div>
-            )}
+                  {tokenPositions.map((pos) => {
+                    const pnl = pos.livePnLPercent ?? 0;
+                    const pnlSol = (pnl / 100) * Number(pos.userCapital || 0) / 1e9;
+                    const entryNum = parseFloat(pos.entryPrice ?? '0');
+                    const timeMs = pos.timeRemainingMs ?? 0;
+                    const timeStr = timeMs <= 0 ? 'Expired' : formatCountdown(timeMs);
+                    const timeColor = timeMs <= 0 ? '#ff3b3b' : timeMs > 12 * 3600000 ? '#34d399' : timeMs > 4 * 3600000 ? '#fbbf24' : '#ff3b3b';
+
+                    return (
+                      <div
+                        key={pos.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '10px 0',
+                          borderTop: '1px solid #111',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{pos.leverage}x</span>
+                            <span
+                              className="mono"
+                              style={{
+                                fontSize: 12,
+                                color: pnl >= 0 ? 'var(--green)' : 'var(--red)',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
+                            </span>
+                            <span className="mono" style={{
+                              fontSize: 10, color: pnl >= 0 ? 'var(--green)' : 'var(--red)', opacity: 0.7
+                            }}>
+                              ({pnlSol >= 0 ? '+' : ''}{pnlSol.toFixed(4)} SOL)
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#555' }}>
+                            <span>Entry: <span className="mono" style={{ color: '#888' }}>${formatPrice(entryNum)}</span></span>
+                            <span>Size: <span className="mono" style={{ color: '#888' }}>{formatSol(pos.userCapital)}</span></span>
+                            <span style={{ color: timeColor }}>{timeStr}</span>
+                          </div>
+                        </div>
+                        <motion.button
+                          onClick={() => closePosition(String(pos.id))}
+                          disabled={isClosing === String(pos.id)}
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.96 }}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: pnl >= 0
+                              ? 'linear-gradient(135deg, rgba(0,200,83,0.15), rgba(0,200,83,0.08))'
+                              : 'linear-gradient(135deg, rgba(255,59,59,0.15), rgba(255,59,59,0.08))',
+                            color: pnl >= 0 ? '#00c853' : '#ff3b3b',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: isClosing === String(pos.id) ? 'wait' : 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {isClosing === String(pos.id) ? 'Closing...' : 'Close'}
+                        </motion.button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
