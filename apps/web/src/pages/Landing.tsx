@@ -344,7 +344,7 @@ const ScenarioCards: FC = () => {
   ];
 
   return (
-    <div ref={ref} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, maxWidth: 900 }}>
+    <div ref={ref} className="landing-scenarios-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, maxWidth: 900 }}>
       {scenarios.map((s, i) => (
         <motion.div
           key={s.title}
@@ -597,7 +597,7 @@ const TrendingTokens: FC = () => {
       display: 'grid',
       gridTemplateColumns: 'repeat(3, 1fr)',
       gap: 12,
-    }}>
+    }} className="landing-features-grid">
       {FEATURE_CARDS.map((card, i) => (
         <motion.div
           key={card.title}
@@ -816,7 +816,7 @@ export const Landing: FC = () => {
   return (
     <div style={{ background: '#000', minHeight: '100vh', overflow: 'hidden' }}>
       {/* ── Nav ─────────────────────────────── */}
-      <nav style={{
+      <nav className="landing-nav" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -834,7 +834,7 @@ export const Landing: FC = () => {
           </svg>
           <span style={{ fontSize: 16, fontWeight: 700, color: '#fff', letterSpacing: '0.04em' }}>FRONT</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+        <div className="landing-nav-links" style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           <a href="#how-it-works" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>How It Works</a>
           <a href="#leverage" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>Leverage</a>
           <a href="#creators" style={{ fontSize: 13, color: '#666', textDecoration: 'none' }}>Creators</a>
@@ -857,7 +857,7 @@ export const Landing: FC = () => {
       </nav>
 
       {/* ── Hero ────────────────────────────── */}
-      <section style={{
+      <section className="landing-hero" style={{
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
@@ -968,7 +968,7 @@ export const Landing: FC = () => {
       </section>
 
       {/* ── Stats ───────────────────────────── */}
-      <section style={{
+      <section className="landing-stats-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(4, 1fr)',
         maxWidth: 800,
@@ -1101,7 +1101,7 @@ export const Landing: FC = () => {
       </section>
 
       {/* ── Footer ─────────────────────────── */}
-      <footer style={{
+      <footer className="landing-footer" style={{
         padding: '20px 32px',
         borderTop: '1px solid #111',
         display: 'flex',

@@ -468,7 +468,7 @@
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .landing-nav {
-    padding: 12px 20px;
+    padding: 12px 16px;
   }
 
   .landing-nav-links {
@@ -480,7 +480,7 @@
   }
 
   .landing-headline {
-    font-size: 40px;
+    font-size: 32px;
   }
 
   .landing-hero-stats {
@@ -525,5 +525,38 @@
     gap: 16px;
     text-align: center;
     padding: 24px 20px;
+  }
+
+  /* Feature cards: 2 columns on tablet, 1 on small */
+  .landing-features-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Scenario cards: stack vertically */
+  .landing-scenarios-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Stats: 2x2 grid on mobile */
+  .landing-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-headline {
+    font-size: 26px;
+  }
+
+  /* Feature cards: single column on small phones */
+  .landing-features-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .landing-nav {
+    padding: 10px 12px;
+    gap: 8px;
   }
 }
