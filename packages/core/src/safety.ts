@@ -85,14 +85,15 @@ export function maxSafePositionSize(
 ): bigint {
   if (liquidityUsd <= 0 || solPriceUsd <= 0) return 0n;
 
-  // Max impact percentages by tier:
-  //   bonded: up to 5% of liquidity
-  //   rising: up to 3% of liquidity
-  //   degen: up to 2% of liquidity
+  // Max impact percentages by tier.
+  // Note: the "position size" is the leveraged notional, but actual
+  // on-chain buy is only the user's collateral (1/leverage of this).
+  // These limits are generous because pump.fun tokens have thin
+  // liquidity and we don't want to block normal-sized trades.
   const maxImpactPct: Record<Tier, number> = {
-    bonded: 5,
-    rising: 3,
-    degen: 2,
+    bonded: 25,  // bonded tokens have deepest liquidity
+    rising: 15,
+    degen: 10,   // degen tokens have thin liquidity but still allow reasonable trades
   };
 
   const maxPositionUsd = liquidityUsd * (maxImpactPct[tier] / 100);
@@ -164,7 +165,7 @@ export function validatePositionSafety(
 
   // Check 3: Slippage risk assessment
   const slippageRisk = estimateSlippageRisk(positionSizeLamports, liquidityUsd, solPriceUsd);
-  if (slippageRisk > 80) {
+  if (slippageRisk > 95) {
     return {
       safe: false,
       reason: 'Slippage risk too high — token liquidity too thin for this position size',
