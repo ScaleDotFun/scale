@@ -242,22 +242,22 @@ router.post('/admin/backfill-tokens', async (req, res) => {
 
     for (const token of tokens) {
       try {
-        const jupRes = await fetch(`https://tokens.jup.ag/token/${token.address}`);
-        if (jupRes.ok) {
-          const meta = await jupRes.json() as { name?: string; symbol?: string; logoURI?: string };
-          await prisma.token.update({
-            where: { id: token.id },
-            data: {
-              name: token.name || meta.name || null,
-              symbol: token.symbol || meta.symbol || null,
-              imageUri: token.imageUri || meta.logoURI || null,
-            },
-          });
-          results.push({
-            address: token.address,
-            name: meta.name || null,
-            symbol: meta.symbol || null,
-          });
+        const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token.address}`);
+        if (dexRes.ok) {
+          const dexData = await dexRes.json() as {
+            pairs?: Array<{ baseToken?: { name?: string; symbol?: string }; info?: { imageUrl?: string } }>;
+          };
+          const pair = dexData.pairs?.[0];
+          if (pair?.baseToken) {
+            const newName = token.name || pair.baseToken.name || null;
+            const newSymbol = token.symbol || pair.baseToken.symbol || null;
+            const newImage = token.imageUri || pair.info?.imageUrl || null;
+            await prisma.token.update({
+              where: { id: token.id },
+              data: { name: newName, symbol: newSymbol, imageUri: newImage },
+            });
+            results.push({ address: token.address, name: newName, symbol: newSymbol });
+          }
         }
       } catch {
         // Skip failed lookups
