@@ -6,7 +6,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../providers/AuthProvider';
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+  : '/api';
 
 /**
  * Handles the OAuth callback redirect from the API.

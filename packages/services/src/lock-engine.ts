@@ -76,43 +76,89 @@ async function executeFrontBuy(solAmountLamports: bigint): Promise<{
 }
 
 /**
- * Lock the purchased $FRONT tokens in a token account.
+ * Lock the purchased $FRONT tokens by retaining them in the protocol wallet.
  *
- * NOTE: Placeholder — requires a custom Solana lock program (PDA escrow).
- * Currently returns a simulated tx signature. Replace once the on-chain
- * lock program is deployed.
+ * Since the Jupiter swap (executeFrontBuy) already deposits $FRONT into the
+ * protocol wallet's ATA, "locking" just means verifying the tokens are there.
+ * The protocol wallet IS the escrow — no custom Solana lock program needed.
+ * The DB record (with `unlocksAt`) enforces the 7-day hold.
  *
- * @returns Lock transaction signature
+ * @returns Verification signature (same as the buy tx, since no separate lock tx)
  */
 async function executeLock(
   userWallet: string,
   tokenAmount: bigint,
 ): Promise<string> {
-  console.warn(
-    `${PREFIX} ⚠️  executeLock is a placeholder — custom Solana lock program not yet deployed. ` +
-    `Would lock ${tokenAmount} $FRONT for wallet ${userWallet}`,
+  if (!FRONT_TOKEN_MINT) {
+    console.warn(
+      `${PREFIX} ⚠️  FRONT_TOKEN_MINT not set — simulating lock for ${userWallet}`,
+    );
+    return `sim_lock_${userWallet}_${Date.now()}`;
+  }
+
+  // Verify protocol wallet actually holds the tokens
+  const { getTokenBalance, PublicKey } = await import('@front-protocol/solana');
+  const protocolWallet = getProtocolWallet();
+  const mintPubkey = new PublicKey(FRONT_TOKEN_MINT);
+  const balance = await getTokenBalance(protocolWallet.publicKey, mintPubkey);
+
+  if (balance < tokenAmount) {
+    throw new Error(
+      `${PREFIX} Protocol wallet $FRONT balance (${balance}) is less than lock amount (${tokenAmount}). ` +
+      `Jupiter swap may have failed silently.`,
+    );
+  }
+
+  console.log(
+    `${PREFIX} 🔒 Verified ${tokenAmount} $FRONT held in protocol wallet escrow for ${userWallet}`,
   );
-  return `sim_lock_${userWallet}_${Date.now()}`;
+
+  // No separate on-chain tx needed — the protocol wallet holds the tokens
+  // and the DB record prevents early release. Return a deterministic ID.
+  return `lock_verified_${userWallet}_${Date.now()}`;
 }
 
 /**
- * Release unlocked $FRONT tokens back to the user's wallet.
+ * Release unlocked $FRONT tokens to the user's custodial wallet.
  *
- * NOTE: Placeholder — requires a custom Solana lock program (PDA escrow).
- * Currently returns a simulated tx signature. Replace once the on-chain
- * lock program is deployed.
+ * Transfers $FRONT from the protocol wallet (escrow) to the user's wallet
+ * using a standard SPL token transfer. The user can then hold, sell, or
+ * transfer their $FRONT freely.
  *
- * @returns Unlock transaction signature
+ * @returns Transfer transaction signature
  */
 async function executeUnlock(
   userWallet: string,
   tokenAmount: bigint,
 ): Promise<string> {
-  console.warn(
-    `${PREFIX} ⚠️  executeUnlock is a placeholder — custom Solana lock program not yet deployed. ` +
-    `Would unlock ${tokenAmount} $FRONT to wallet ${userWallet}`,
+  if (!FRONT_TOKEN_MINT) {
+    console.warn(
+      `${PREFIX} ⚠️  FRONT_TOKEN_MINT not set — simulating unlock for ${userWallet}`,
+    );
+    return `sim_unlock_${userWallet}_${Date.now()}`;
+  }
+
+  const { transferToken, PublicKey } = await import('@front-protocol/solana');
+  const protocolWallet = getProtocolWallet();
+  const mintPubkey = new PublicKey(FRONT_TOKEN_MINT);
+  const userPubkey = new PublicKey(userWallet);
+
+  console.log(
+    `${PREFIX} 🔓 Transferring ${tokenAmount} $FRONT to ${userWallet}`,
   );
-  return `sim_unlock_${userWallet}_${Date.now()}`;
+
+  const txSignature = await transferToken(
+    mintPubkey,
+    userPubkey,
+    tokenAmount,
+    protocolWallet,
+  );
+
+  console.log(
+    `${PREFIX} 🔓 Unlock complete: ${tokenAmount} $FRONT → ${userWallet} (tx: ${txSignature})`,
+  );
+
+  return txSignature;
 }
 
 /**

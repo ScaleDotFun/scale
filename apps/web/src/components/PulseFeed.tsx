@@ -12,7 +12,11 @@ interface PulseItem extends TokenInfo {
   _isNew: boolean;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
+// Build WebSocket URL: use VITE_WS_URL if set, otherwise derive from API URL
+const WS_BASE = import.meta.env.VITE_WS_URL
+  ?? (import.meta.env.VITE_API_URL
+    ? import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '').replace(/^http/, 'ws')
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`);
 
 /**
  * Real-time "Pulse" feed sidebar showing streaming trending token updates.
@@ -37,7 +41,7 @@ export const PulseFeed: FC<PulseFeedProps> = ({ tokens: initialTokens, onSelect,
 
   // WebSocket connection for real-time updates
   useEffect(() => {
-    const wsUrl = API_BASE.replace(/^http/, 'ws') + '/ws/pulse';
+    const wsUrl = WS_BASE + '/ws/pulse';
 
     function connect() {
       try {

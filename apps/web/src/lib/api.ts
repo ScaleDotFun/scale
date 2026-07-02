@@ -1,4 +1,9 @@
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// VITE_API_URL can be the server origin ("http://localhost:4001") or already
+// include /api ("http://localhost:4001/api"). We normalize both to end at /api.
+// In dev, the Vite proxy forwards /api/* to the backend, so the fallback is '/api'.
+const BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+  : '/api';
 
 const TOKEN_KEY = 'front_token';
 
@@ -179,7 +184,7 @@ export function getWalletBalance(): Promise<WalletBalance> {
 
 export function withdrawWallet(destinationAddress: string, amountLamports: string): Promise<{
   txSignature: string;
-  amount: string;
+  amountLamports: string;
   destination: string;
 }> {
   return request('/wallet/withdraw', {
@@ -371,6 +376,25 @@ export function getRecentLocks(limit?: number): Promise<LocksResponse> {
   return request(`/locks${q}`);
 }
 
+export interface GlobalLockStats {
+  totalLocked: { tokenAmount: string; solAmount: string };
+  totalUnlocked: { tokenAmount: string; solAmount: string };
+  upcoming7d: { tokenAmount: string; solAmount: string; count: number };
+  activeLockCount: number;
+  totalLockCount: number;
+  nextUnlocks: Array<{
+    id: number;
+    solAmount: string;
+    tokenAmount: string;
+    unlocksAt: string;
+  }>;
+}
+
+/** Public endpoint — no auth required */
+export function getGlobalLockStats(): Promise<GlobalLockStats> {
+  return request('/locks/global');
+}
+
 // ── Creator ──
 
 export interface CreatorDashboardTokenItem {
@@ -450,13 +474,15 @@ export function claimCreatorEarnings(tokenAddress: string): Promise<{
 export function listToken(
   tokenAddress: string,
 ): Promise<{
-  success: boolean;
+  id: number;
+  address: string;
+  name: string | null;
+  symbol: string | null;
+  imageUri: string | null;
+  tier: string;
+  tierLabel: string;
+  maxLeverage: number;
   message: string;
-  name?: string;
-  symbol?: string;
-  tier?: string;
-  tierLabel?: string;
-  maxLeverage?: number;
 }> {
   return request('/tokens/list', {
     method: 'POST',

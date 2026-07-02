@@ -1784,27 +1784,233 @@
    RESPONSIVE
    ═══════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Tablet (768px and below) ──────────────────────────────── */
 @media (max-width: 768px) {
+  /* Navigation */
+  .top-nav {
+    padding: 0 10px;
+    gap: 0;
+  }
+
+  .top-nav-logo {
+    margin-right: 12px;
+  }
+
+  .top-nav-logo span {
+    font-size: 13px;
+  }
+
   .top-nav-tabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .top-nav-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .top-nav-search {
     display: none;
   }
 
+  .top-nav-right {
+    gap: 6px;
+  }
+
+  .nav-tab {
+    font-size: 11px;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+
+  /* Bento Grid -- Trade page: stack vertically on mobile */
   .bento-grid {
     grid-template-columns: 1fr;
     height: auto;
+    min-height: calc(100vh - 48px);
+  }
+
+  .bento-left {
+    display: none;
+  }
+
+  .bento-center {
+    min-height: 0;
   }
 
   .bento-right {
+    border-left: none;
     border-top: 1px solid var(--panel-border);
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  /* Token selector bar on trade page */
+  .token-selector-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  /* Chart container */
+  .chart-container {
+    min-height: 280px;
+    max-height: 40vh;
+  }
+
+  /* Order form */
+  .order-panel {
+    padding: 12px;
+  }
+
+  .order-panel input,
+  .order-panel select {
+    font-size: 16px; /* prevents iOS zoom on input focus */
+  }
+
+  /* Panel sections */
+  .panel-section {
+    padding: 10px;
+  }
+
+  /* Positions/History tabs */
+  .positions-tabs {
+    gap: 0;
+  }
+
+  .positions-tabs button {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+
+  /* Confirm modal */
+  .confirm-modal {
+    width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* Stats grid */
+  .stats-row,
+  .stat-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Table overflow */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Page content padding */
+  .page-content,
+  .fade-in {
+    padding: 12px !important;
+  }
+
+  /* Token cards grid override */
+  .token-card {
+    padding: 14px !important;
+  }
+
+  /* Vibe command bar */
+  .vibe-bar {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  /* Burn/Lock tabs */
+  .tabs {
+    gap: 0;
+  }
+
+  .tab {
+    font-size: 12px;
+    padding: 8px 14px;
+  }
+
+  /* Account page cards */
+  .account-card {
+    padding: 14px;
+  }
+
+  /* Wallet address - truncate */
+  .mono {
+    word-break: break-all;
+    font-size: 11px;
+  }
+}
+
+/* ── Small phone (480px and below) ─────────────────────────── */
+@media (max-width: 480px) {
+  .top-nav {
+    height: 44px;
+    padding: 0 8px;
+  }
+
+  .top-nav-logo svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .top-nav-logo span {
+    display: none;
+  }
+
+  .nav-tab {
+    font-size: 10px;
+    padding: 5px 8px;
+  }
+
+  .bento-right {
+    padding: 8px;
+  }
+
+  .chart-container {
+    min-height: 220px;
+    max-height: 35vh;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+  }
+
+  h2 {
+    font-size: 1.1rem;
   }
 
   .confirm-modal {
-    width: 95vw;
+    width: 98vw;
+    padding: 12px;
+  }
+
+  /* Search */
+  .search-wrapper {
+    max-width: 100% !important;
+  }
+
+  .search-input {
+    font-size: 14px;
   }
 }
+
+/* ── Ensure touch targets are at least 44px ─────────────────── */
+@media (pointer: coarse) {
+  button, a, .nav-tab, .tab, .token-card {
+    min-height: 44px;
+  }
+
+  input, select, textarea {
+    min-height: 44px;
+    font-size: 16px; /* prevent iOS zoom */
+  }
+}
+
 

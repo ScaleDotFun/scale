@@ -1,38 +1,9 @@
 import { type FC, useState, useEffect, useCallback } from 'react';
 import { formatSol, formatTimeAgo, formatCountdown } from '../lib/format';
+import { getRecentLocks, getAuthToken, type ProfitLockEntry } from '../lib/api';
 
-interface LockItem {
-  id: number;
-  tokenAmount: string;
-  solAmount: string;
-  lockedAt: string;
-  unlocksAt: string;
-  isUnlocked: boolean;
-  isExpired: boolean;
-  timeRemainingMs: number;
-  buyTx: string;
-  unlockTx: string | null;
-  position: {
-    id: number;
-    tier: string;
-    tokenAddress: string;
-    tokenSymbol: string | null;
-  } | null;
-}
-
-interface LocksResponse {
-  data: {
-    locks: LockItem[];
-    summary: {
-      totalLocked: string;
-      totalUnlocked: string;
-      pendingUnlock: string;
-      activeLockCount: number;
-    };
-  };
-}
-
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
+// Use ProfitLockEntry from lib/api.ts as LockItem
+type LockItem = ProfitLockEntry;
 
 export const Locks: FC = () => {
   const [locks, setLocks] = useState<LockItem[]>([]);
@@ -43,26 +14,15 @@ export const Locks: FC = () => {
   const fetchLocks = useCallback(async () => {
     try {
       setError(null);
-      const token = localStorage.getItem('front_token');
+      const token = getAuthToken();
       if (!token) {
         setLocks([]);
         setLoading(false);
         return;
       }
 
-      const res = await fetch(`${API_BASE}/api/locks`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed to fetch locks (${res.status})`);
-      }
-
-      const json = (await res.json()) as LocksResponse;
-      setLocks(json.data.locks);
+      const response = await getRecentLocks();
+      setLocks(response.locks);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load locks');
     } finally {
@@ -92,8 +52,11 @@ export const Locks: FC = () => {
   const handleClaim = async (lockId: number) => {
     setClaiming(lockId);
     try {
-      const token = localStorage.getItem('front_token');
-      const res = await fetch(`${API_BASE}/api/locks/${lockId}/claim`, {
+      const token = getAuthToken();
+      const BASE_URL = import.meta.env.VITE_API_URL
+        ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+        : '/api';
+      const res = await fetch(`${BASE_URL}/locks/${lockId}/claim`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

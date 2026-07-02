@@ -17,7 +17,9 @@
 
 const API_BASE = 'https://public-api.birdeye.so';
 const WS_URL_FALLBACK = 'wss://public-api.birdeye.so/socket/solana';
-const BACKEND_URL = import.meta.env.VITE_API_URL || '/api';
+const BACKEND_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+  : '/api';
 
 function getApiKey(): string {
   return import.meta.env.VITE_BIRDEYE_API_KEY || '';

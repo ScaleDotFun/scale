@@ -2,7 +2,19 @@ import { Router } from 'express';
 import { prisma } from '@front-protocol/database';
 import { getTierConfig, determineTier, type Tier } from '@front-protocol/core';
 import { getConnection, PublicKey } from '@front-protocol/solana';
-import { feeSharingConfigPda, PumpSdk } from '@pump-fun/pump-sdk';
+import { createRequire } from 'node:module';
+
+// pump-sdk is CJS-only — use createRequire for ESM compatibility
+let feeSharingConfigPda: ((mint: InstanceType<typeof PublicKey>) => InstanceType<typeof PublicKey>) | null = null;
+let PumpSdk: (new () => { decodeSharingConfig: (info: any) => any }) | null = null;
+try {
+  const require = createRequire(import.meta.url);
+  const pumpSdk = require('@pump-fun/pump-sdk');
+  feeSharingConfigPda = pumpSdk.feeSharingConfigPda;
+  PumpSdk = pumpSdk.PumpSdk;
+} catch {
+  console.warn('[tokens] @pump-fun/pump-sdk not available — on-chain fee verification disabled');
+}
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -70,6 +82,7 @@ router.get('/listed', publicLimiter, async (req, res) => {
  * GET /tokens/trending
  *
  * Return top 10 tokens by recent trading volume (last 24h based on positions).
+ * Falls back to most recently listed active tokens if no recent trading activity.
  */
 router.get('/trending', publicLimiter, async (req, res) => {
   try {
@@ -94,32 +107,61 @@ router.get('/trending', publicLimiter, async (req, res) => {
       take: 10,
     });
 
-    // Fetch the token details for these IDs
-    const tokenIds = recentPositions.map((rp) => rp.tokenId);
-    const tokens = await prisma.token.findMany({
-      where: { id: { in: tokenIds }, isActive: true },
+    // If we have recent activity, return volume-based trending
+    if (recentPositions.length > 0) {
+      const tokenIds = recentPositions.map((rp) => rp.tokenId);
+      const tokens = await prisma.token.findMany({
+        where: { id: { in: tokenIds }, isActive: true },
+      });
+
+      const tokenMap = new Map(tokens.map((t) => [t.id, t]));
+
+      const data = recentPositions
+        .map((rp) => {
+          const token = tokenMap.get(rp.tokenId);
+          if (!token) return null;
+          const config = getTierConfig(token.tier as Tier);
+          const volume24h = (rp._sum.userCapital ?? 0n) + (rp._sum.protocolCapital ?? 0n);
+          return {
+            address: token.address,
+            name: token.name,
+            symbol: token.symbol,
+            imageUri: token.imageUri,
+            tier: token.tier,
+            tierLabel: config.label,
+            maxLeverage: config.maxLeverage,
+            volume24h: String(volume24h),
+            trades24h: rp._count,
+            totalTradingVolume: String(token.totalTradingVolume),
+          };
+        })
+        .filter(Boolean);
+
+      return sendSuccess(res, data);
+    }
+
+    // Fallback: return listed active tokens ordered by total volume
+    const fallbackTokens = await prisma.token.findMany({
+      where: { isActive: true },
+      orderBy: [{ totalTradingVolume: 'desc' }, { listedAt: 'desc' }],
+      take: 10,
     });
 
-    const tokenMap = new Map(tokens.map((t) => [t.id, t]));
-
-    const data = recentPositions
-      .map((rp) => {
-        const token = tokenMap.get(rp.tokenId);
-        if (!token) return null;
-        const config = getTierConfig(token.tier as Tier);
-        const volume24h = (rp._sum.userCapital ?? 0n) + (rp._sum.protocolCapital ?? 0n);
-        return {
-          address: token.address,
-          name: token.name,
-          symbol: token.symbol,
-          imageUri: token.imageUri,
-          tier: token.tier,
-          volume24h,
-          trades24h: rp._count,
-          totalTradingVolume: String(token.totalTradingVolume),
-        };
-      })
-      .filter(Boolean);
+    const data = fallbackTokens.map((token) => {
+      const config = getTierConfig(token.tier as Tier);
+      return {
+        address: token.address,
+        name: token.name,
+        symbol: token.symbol,
+        imageUri: token.imageUri,
+        tier: token.tier,
+        tierLabel: config.label,
+        maxLeverage: config.maxLeverage,
+        volume24h: '0',
+        trades24h: 0,
+        totalTradingVolume: String(token.totalTradingVolume),
+      };
+    });
 
     sendSuccess(res, data);
   } catch (err) {
@@ -293,7 +335,7 @@ router.post('/list', verifyWalletSignature, async (req, res) => {
         }
 
         // Method 2: Check on-chain sharing config via Pump SDK
-        if (!feeVerified) {
+        if (!feeVerified && feeSharingConfigPda && PumpSdk) {
           try {
             const connection = getConnection();
             const mintPubkey = new PublicKey(tokenAddress);

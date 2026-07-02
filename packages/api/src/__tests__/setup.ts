@@ -4,6 +4,14 @@
 
 import { vi } from 'vitest';
 
+// ─── Mock @pump-fun/pump-sdk (before route imports) ────
+vi.mock('@pump-fun/pump-sdk', () => ({
+  feeSharingConfigPda: vi.fn(() => 'mock-pda'),
+  PumpSdk: vi.fn(() => ({
+    decodeSharingConfig: vi.fn(() => ({ shareholders: [] })),
+  })),
+}));
+
 // ─── Mock @front-protocol/database (Prisma) ────
 vi.mock('@front-protocol/database', () => ({
   prisma: {

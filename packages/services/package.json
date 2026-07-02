@@ -17,7 +17,9 @@
     "dev": "tsx watch src/scheduler.ts",
     "start": "node dist/scheduler.js",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@front-protocol/core": "workspace:*",
@@ -34,6 +36,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.9"
   }
 }

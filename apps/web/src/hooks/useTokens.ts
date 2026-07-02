@@ -2,19 +2,30 @@ import { useState, useCallback } from 'react';
 import { useApi } from './useApi';
 import * as api from '../lib/api';
 
-/** Hook for token data: search, trending, and selection. */
+/** Hook for token data: listed tokens, trending, search, and selection. */
 export function useTokens() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<api.TokenInfo[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedToken, setSelectedToken] = useState<api.TokenInfo | null>(null);
 
+  // Fetch listed tokens (always available)
+  const listedResult = useApi<api.TokenInfo[]>(
+    () => api.getListedTokens(15),
+    [],
+  );
+
+  // Fetch trending tokens (may be empty if no recent volume)
   const trendingResult = useApi<api.TokenInfo[]>(
     () => api.getTrendingTokens(),
     [],
   );
 
-  const trending = trendingResult.data ?? [];
+  const listed = listedResult.data ?? [];
+  const trendingRaw = trendingResult.data ?? [];
+
+  // Use trending if available, otherwise fall back to listed
+  const trending = trendingRaw.length > 0 ? trendingRaw : listed;
 
   const search = useCallback(async (query: string) => {
     setSearchQuery(query);
@@ -49,8 +60,9 @@ export function useTokens() {
     searchResults,
     isSearching,
     selectedToken,
+    listed,
     trending,
-    trendingLoading: trendingResult.loading,
+    trendingLoading: trendingResult.loading || listedResult.loading,
     search,
     selectToken,
     clearSelection,

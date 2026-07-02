@@ -1,8 +1,14 @@
 node_modules
 .git
 .gitignore
-apps/
-*.md
+.turbo
+.vercel
 .env
 .env.*
+!.env.example
 dist/
+coverage/
+*.log
+.DS_Store
+.vscode
+.idea

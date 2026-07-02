@@ -15,7 +15,19 @@ import { Worker, type Job } from 'bullmq';
 import { prisma } from '@front-protocol/database';
 import { determineTier } from '@front-protocol/core';
 import { getConnection, PublicKey } from '@front-protocol/solana';
-import { feeSharingConfigPda, PumpSdk } from '@pump-fun/pump-sdk';
+import { createRequire } from 'node:module';
+
+// pump-sdk is CJS-only — use createRequire for ESM compat
+let feeSharingConfigPda: ((mint: InstanceType<typeof PublicKey>) => InstanceType<typeof PublicKey>) | null = null;
+let PumpSdkClass: (new () => { decodeSharingConfig: (info: any) => any }) | null = null;
+try {
+  const require = createRequire(import.meta.url);
+  const pumpSdk = require('@pump-fun/pump-sdk');
+  feeSharingConfigPda = pumpSdk.feeSharingConfigPda;
+  PumpSdkClass = pumpSdk.PumpSdk;
+} catch {
+  console.warn('[listing-scanner] @pump-fun/pump-sdk not available');
+}
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[listing-scanner]';
@@ -46,16 +58,18 @@ async function verifyFeeRedirect(mint: string): Promise<{
   let feeRecipient: string | null = null;
 
   // ── Method 1: Check on-chain sharing config via Pump SDK ──
+  if (!feeSharingConfigPda || !PumpSdkClass) {
+    return null; // SDK not available
+  }
   try {
     const connection = getConnection();
     const mintPubkey = new PublicKey(mint);
     const sharingPda = feeSharingConfigPda(mintPubkey);
     const sharingInfo = await connection.getAccountInfo(sharingPda);
-
     if (sharingInfo) {
       // Decode the sharing config to find shareholders
       try {
-        const pumpSdk = new PumpSdk();
+        const pumpSdk = new PumpSdkClass();
         const config = pumpSdk.decodeSharingConfig(sharingInfo);
         // config.shareholders is an array of { address, shareBps }
         const shareholders = (config as any).shareholders || (config as any).shares || [];

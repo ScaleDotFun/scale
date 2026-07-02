@@ -1,14 +1,20 @@
-FROM node:22-slim AS base
+# ──────────────────────────────────────────────
+# FRONT PROTOCOL — API Dockerfile (Railway)
+# ──────────────────────────────────────────────
+# Uses tsx to run TypeScript source directly,
+# avoiding ESM/CJS moduleResolution issues.
 
-# Install OpenSSL for Prisma
+FROM node:22-slim
+
+# OpenSSL for Prisma
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
-# Install pnpm and tsx
+# pnpm + tsx globally
 RUN npm install -g pnpm@9 tsx
 
 WORKDIR /app
 
-# Copy package files and root tsconfig
+# Copy package manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/database/package.json ./packages/database/
@@ -16,10 +22,10 @@ COPY packages/solana/package.json ./packages/solana/
 COPY packages/services/package.json ./packages/services/
 COPY packages/api/package.json ./packages/api/
 
-# Install dependencies
+# Install all deps
 RUN pnpm install --frozen-lockfile
 
-# Copy source for all needed packages
+# Copy all source
 COPY packages/core/ ./packages/core/
 COPY packages/database/ ./packages/database/
 COPY packages/solana/ ./packages/solana/
@@ -29,14 +35,14 @@ COPY packages/api/ ./packages/api/
 # Generate Prisma client
 RUN cd packages/database && npx prisma generate
 
-# Build library packages (their exports point to dist/)
+# Build library packages that export from dist/
 RUN cd packages/core && pnpm build
 RUN cd packages/solana && pnpm build
 RUN cd packages/services && pnpm build
 
-COPY entrypoint.sh ./
-RUN chmod +x entrypoint.sh
+ENV NODE_ENV=production
 
-EXPOSE 4001
+# Railway sets PORT env var dynamically.
+# The app reads: process.env.PORT || process.env.API_PORT || 4001
 
-CMD ["/app/entrypoint.sh"]
+CMD ["tsx", "packages/api/src/server.ts"]

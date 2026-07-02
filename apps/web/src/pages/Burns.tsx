@@ -4,7 +4,7 @@ import { useStats } from '../hooks/useStats';
 import { formatSol, formatTimeAgo, formatCountdown, formatNumber, solscanTxUrl } from '../lib/format';
 
 export const Burns: FC = () => {
-  const { burns, locks, totalBurned, totalLocked, loading } = useBurns();
+  const { burns, lockStats, totalBurned, totalLocked, loading } = useBurns();
   const { totalBurnedSol, totalLockedSol, totalCreatorPayoutsSol } = useStats();
   const [activeTab, setActiveTab] = useState<'burns' | 'locks'>('burns');
 
@@ -49,21 +49,19 @@ export const Burns: FC = () => {
             className={`tab ${activeTab === 'burns' ? 'active' : ''}`}
             onClick={() => setActiveTab('burns')}
           >
-            $FRONT Burns ({burns.length})
+            Burns
           </button>
           <button
             className={`tab ${activeTab === 'locks' ? 'active' : ''}`}
             onClick={() => setActiveTab('locks')}
           >
-            $FRONT Locks ({locks.length})
+            Locks
           </button>
         </div>
 
         {loading ? (
-          <div style={{ padding: 16 }}>
-            <div className="skeleton skeleton-text" style={{ width: '60%', marginBottom: 8 }} />
-            <div className="skeleton skeleton-text" style={{ width: '80%', marginBottom: 8 }} />
-            <div className="skeleton skeleton-text" style={{ width: '50%' }} />
+          <div className="empty-state">
+            <div className="spinner" />
           </div>
         ) : activeTab === 'burns' ? (
           burns.length === 0 ? (
@@ -102,47 +100,32 @@ export const Burns: FC = () => {
             </div>
           )
         ) : (
-          locks.length === 0 ? (
+          !lockStats || lockStats.activeLockCount === 0 ? (
             <div className="empty-state">
-              <div className="empty-state-title">No locks yet</div>
-              <div className="empty-state-text">Profit locks will appear here</div>
+              <div className="empty-state-title">No active locks</div>
+              <div className="empty-state-text">Profit locks will appear here as traders earn profits</div>
             </div>
           ) : (
-            <div className="table-wrapper" style={{ maxHeight: 500 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Amount (SOL)</th>
-                    <th>Status</th>
-                    <th className="text-right">Time</th>
-                    <th className="text-right">TX</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {locks.map((lock) => {
-                    return (
-                      <tr key={lock.id}>
-                        <td className="mono">{formatSol(BigInt(lock.solAmount || '0'), 4)}</td>
-                        <td>
-                          {lock.isUnlocked ? (
-                            <span className="badge badge-bonded">Unlocked</span>
-                          ) : (
-                            <span className="text-muted text-xs">
-                              {lock.timeRemainingMs > 0 ? `Unlocks in ${formatCountdown(lock.timeRemainingMs)}` : 'Ready to claim'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-right text-muted">{formatTimeAgo(lock.lockedAt)}</td>
-                        <td className="text-right">
-                          <a href={solscanTxUrl(lock.buyTx)} target="_blank" rel="noreferrer" className="text-xs">
-                            {lock.buyTx.slice(0, 8)}...
-                          </a>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="page-grid page-grid-3">
+                <div className="stat">
+                  <span className="stat-label">Active Locks</span>
+                  <span className="stat-value mono">{lockStats.activeLockCount}</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-label">Locked SOL</span>
+                  <span className="stat-value mono">{formatSol(BigInt(lockStats.totalLocked.solAmount || '0'), 4)}</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-label">Unlocked SOL</span>
+                  <span className="stat-value mono text-green">{formatSol(BigInt(lockStats.totalUnlocked.solAmount || '0'), 4)}</span>
+                </div>
+              </div>
+              {lockStats.upcoming7d.count > 0 && (
+                <div style={{ fontSize: '0.86rem', color: '#888' }}>
+                  {lockStats.upcoming7d.count} lock{lockStats.upcoming7d.count > 1 ? 's' : ''} unlocking in the next 7 days ({formatSol(BigInt(lockStats.upcoming7d.solAmount || '0'), 4)} SOL)
+                </div>
+              )}
             </div>
           )
         )}

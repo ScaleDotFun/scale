@@ -1,7 +1,9 @@
 import { type FC, type ReactNode, createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const TOKEN_KEY = 'front_token';
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+  : '/api';
 
 export interface User {
   id: number;

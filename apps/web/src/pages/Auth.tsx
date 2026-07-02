@@ -43,7 +43,9 @@ export const Auth: FC = () => {
   };
 
   const handleGoogleLogin = () => {
-    const apiUrl = import.meta.env.VITE_API_URL || '/api';
+    const apiUrl = import.meta.env.VITE_API_URL
+      ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+      : '/api';
     window.location.href = `${apiUrl}/auth/google`;
   };
 

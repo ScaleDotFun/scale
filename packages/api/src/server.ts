@@ -17,8 +17,10 @@ const PORT = parseInt(process.env.PORT || process.env.API_PORT || '4001', 10);
 // Start Server
 // ──────────────────────────────────────────────
 
-const server = app.listen(PORT, () => {
-  console.log(`\n🦧 FRONT PROTOCOL API server listening on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+
+const server = app.listen(PORT, HOST, () => {
+  console.log(`\nFRONT PROTOCOL API server listening on ${HOST}:${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Health:      http://localhost:${PORT}/health`);
   console.log(`   API base:    http://localhost:${PORT}/api\n`);

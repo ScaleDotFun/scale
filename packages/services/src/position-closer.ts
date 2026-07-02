@@ -13,6 +13,7 @@ import {
   calculateFullDistribution,
   splitRevenue,
   calculateInsuranceDeposit,
+  calculateInsuranceFundTarget,
   LAMPORTS_PER_SOL,
   formatSol,
   type Tier,
@@ -268,10 +269,20 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
     }
 
     // Insurance fund deposit — calculated based on flat fee and fund target
+    // Fetch real balances so we deposit correctly (not over-deposit)
+    const [insuranceFundAgg, poolAgg] = await Promise.all([
+      prisma.insuranceFund.aggregate({ _sum: { amount: true } }),
+      prisma.poolLedger.aggregate({ _sum: { amount: true } }),
+    ]);
+    const currentInsuranceBalance = insuranceFundAgg._sum.amount ?? 0n;
+    const currentPoolBalance = poolAgg._sum.amount ?? 0n;
+    // Target = 2% of pool (from INSURANCE_FUND_TARGET_BPS)
+    const insuranceTarget = calculateInsuranceFundTarget(currentPoolBalance);
+
     const insuranceDeposit = calculateInsuranceDeposit(
       flatFeeLamports,
-      0n, // Current balance checked inside the worker
-      LAMPORTS_PER_SOL * 100n, // Target: 100 SOL
+      currentInsuranceBalance,
+      insuranceTarget,
     );
     if (insuranceDeposit > 0n) {
       await insuranceFundQueue.add(

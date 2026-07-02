@@ -112,7 +112,7 @@ export const Explore: FC = () => {
 
       {/* Token Grid */}
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: 12 }}>
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <div key={i} className="skeleton" style={{ height: 160, borderRadius: 14 }} />
           ))}
@@ -130,7 +130,7 @@ export const Explore: FC = () => {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 14 }}>
           {displayTokens.map((token) => (
             <div
               key={token.address}

@@ -15,16 +15,27 @@ import { prisma } from '@front-protocol/database';
 import { LAMPORTS_PER_SOL, formatSol } from '@front-protocol/core';
 import { getConnection, getProtocolWallet, PublicKey, getSolBalance } from '@front-protocol/solana';
 import { redisConnection, QUEUE_NAMES, feeClaimsQueue } from './queues.js';
-import {
-  PumpSdk,
-  feeSharingConfigPda,
-  creatorVaultPda,
-  bondingCurvePda,
-} from '@pump-fun/pump-sdk';
+import { createRequire } from 'node:module';
 import {
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
+
+// pump-sdk is CJS-only — use createRequire for ESM compatibility
+let feeSharingConfigPda: any = null;
+let creatorVaultPda: any = null;
+let bondingCurvePda: any = null;
+let PumpSdkClass: any = null;
+try {
+  const require = createRequire(import.meta.url);
+  const pumpSdk = require('@pump-fun/pump-sdk');
+  feeSharingConfigPda = pumpSdk.feeSharingConfigPda;
+  creatorVaultPda = pumpSdk.creatorVaultPda;
+  bondingCurvePda = pumpSdk.bondingCurvePda;
+  PumpSdkClass = pumpSdk.PumpSdk;
+} catch {
+  console.warn('[fee-claimer] @pump-fun/pump-sdk not available');
+}
 
 const PREFIX = '[fee-claimer]';
 const PROTOCOL_WALLET = process.env.PROTOCOL_WALLET || '2uNqHvi3RrkFaFmtBM2KT9eWBDEqoj2eomL97A2v9hoM';
@@ -100,7 +111,7 @@ async function claimFeesForToken(
   const mintPubkey = new PublicKey(tokenAddress);
 
   try {
-    const pumpSdk = new PumpSdk();
+    const pumpSdk = new PumpSdkClass();
 
     // Step 1: Fetch and decode the sharing config
     const sharingConfigAddress = feeSharingConfigPda(mintPubkey);

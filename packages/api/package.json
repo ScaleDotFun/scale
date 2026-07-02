@@ -18,7 +18,6 @@
     "@front-protocol/database": "workspace:*",
     "@front-protocol/services": "workspace:*",
     "@front-protocol/solana": "workspace:*",
-    "@pump-fun/pump-sdk": "^1.36.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

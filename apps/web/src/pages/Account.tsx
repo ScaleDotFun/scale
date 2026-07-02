@@ -4,38 +4,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../lib/api';
 import { formatSol, formatAddress, formatCountdown, formatTimeAgo, solscanTxUrl } from '../lib/format';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
+// Normalize VITE_API_URL: strip trailing /api if present, then add /api
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+  : '/api';
 
-interface LockItem {
-  id: number;
-  tokenAmount: string;
-  solAmount: string;
-  lockedAt: string;
-  unlocksAt: string;
-  isUnlocked: boolean;
-  isExpired: boolean;
-  timeRemainingMs: number;
-  buyTx: string;
-  unlockTx: string | null;
-  position: {
-    id: number;
-    tier: string;
-    tokenAddress: string;
-    tokenSymbol: string | null;
-  } | null;
-}
-
-interface LocksResponse {
-  data: {
-    locks: LockItem[];
-    summary: {
-      totalLocked: string;
-      totalUnlocked: string;
-      pendingUnlock: string;
-      activeLockCount: number;
-    };
-  };
-}
+type LockItem = api.ProfitLockEntry;
 
 export const Account: FC = () => {
   const { isAuthenticated, user, logout } = useAuth();
@@ -74,19 +48,11 @@ export const Account: FC = () => {
   // ── Fetch locks ──
   const fetchLocks = useCallback(async () => {
     try {
-      const token = localStorage.getItem('front_token');
+      const token = api.getAuthToken();
       if (!token) { setLocksLoading(false); return; }
 
-      const res = await fetch(`${API_BASE}/api/locks`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-
-      if (!res.ok) throw new Error('Failed to fetch locks');
-      const json = (await res.json()) as LocksResponse;
-      setLocks(json.data.locks);
+      const response = await api.getRecentLocks();
+      setLocks(response.locks);
     } catch {
       setLocks([]);
     } finally {
@@ -139,8 +105,8 @@ export const Account: FC = () => {
   const handleClaim = useCallback(async (lockId: number) => {
     setClaiming(lockId);
     try {
-      const token = localStorage.getItem('front_token');
-      const res = await fetch(`${API_BASE}/api/locks/${lockId}/claim`, {
+      const token = api.getAuthToken();
+      const res = await fetch(`${API_BASE}/locks/${lockId}/claim`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

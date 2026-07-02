@@ -89,8 +89,6 @@ describe('validatePositionSafety', () => {
       'bonded',
     );
     expect(result.safe).toBe(true);
-    expect(result.slippageRisk).toBeDefined();
-    expect(result.slippageRisk!).toBeLessThan(80);
   });
 
   it('fails when pool has insufficient capital', () => {
@@ -107,34 +105,34 @@ describe('validatePositionSafety', () => {
     expect(result.reason).toContain('insufficient capital');
   });
 
-  it('fails when position is too large relative to liquidity', () => {
+  it('passes even with thin liquidity (liquidity checks removed for pump.fun tokens)', () => {
     const thinLiquidity = 5_000; // $5K liquidity
     const result = validatePositionSafety(
       ONE_SOL * 10n, // 10 SOL at $150 = $1500
-      7,             // 70 SOL total = $10500 → way over 5% of $5K
-      bigPool,
+      7,             // 70 SOL total = $10500
+      bigPool,       // pool has enough capital
       thinLiquidity,
       solPrice,
       'bonded',
     );
-    expect(result.safe).toBe(false);
-    expect(result.reason).toContain('liquidity');
+    // Liquidity-based limits were removed — only pool capital matters + 3% supply cap in API
+    expect(result.safe).toBe(true);
   });
 
-  it('fails when slippage risk exceeds 80', () => {
-    // Position that's enormous relative to liquidity
+  it('passes even with enormous position relative to liquidity (safety simplified)', () => {
+    // Liquidity-based slippage checks removed — 3% supply cap enforced in API layer instead
     const result = validatePositionSafety(
       ONE_SOL * 100n,
       3,
       bigPool,
-      20_000, // $20K liquidity, position = 300 SOL * $150 = $45K → >100% of liquidity
+      20_000, // $20K liquidity
       solPrice,
       'degen',
     );
-    expect(result.safe).toBe(false);
+    expect(result.safe).toBe(true);
   });
 
-  it('returns slippage risk score when safe', () => {
+  it('does not return slippage risk score (simplified safety)', () => {
     const result = validatePositionSafety(
       ONE_SOL / 10n, // 0.1 SOL
       2,             // 2x
@@ -144,7 +142,8 @@ describe('validatePositionSafety', () => {
       'rising',
     );
     expect(result.safe).toBe(true);
-    expect(typeof result.slippageRisk).toBe('number');
+    // slippageRisk is no longer computed in validatePositionSafety
+    expect(result.slippageRisk).toBeUndefined();
   });
 
   it('validates at 1x leverage (no protocol capital needed)', () => {

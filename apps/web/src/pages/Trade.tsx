@@ -103,12 +103,15 @@ export const Trade: FC = () => {
 
   const tradingDisabled = isTokenListed === false;
 
-  // Computed values
+  // Computed values — use real tier data from token API when available
   const collateralSol = parseFloat(collateral) || 0;
   const positionSize = collateralSol * leverage;
   const protocolCapital = collateralSol * (leverage - 1);
-  const flatFee = positionSize * 0.005;
-  const exitThreshold = -(100 / leverage); // dynamic: 3x→-33%, 5x→-20%, 7x→-14%
+  // Use tier-specific fee from API, fallback to 0.5% for display before token loads
+  const flatFeePct = selectedToken?.flatFeePct ?? 0.5;
+  const flatFee = positionSize * (flatFeePct / 100);
+  // Use tier-specific exit threshold from API, fallback to dynamic estimate
+  const exitThreshold = selectedToken?.exitThresholdPct ?? -(100 / leverage);
   const markPrice = tokenOverview?.price ?? 0;
   const tpPct = parseFloat(takeProfitPct) || 0;
   const slPct = parseFloat(stopLossPct) || 0;

@@ -122,7 +122,7 @@ describe('validatePositionOpen', () => {
       bigPool,
     );
     expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining('Minimum capital'));
+    expect(result.errors).toContainEqual(expect.stringContaining('Minimum collateral'));
   });
 
   it('rejects capital above maximum (10 SOL)', () => {
@@ -132,7 +132,7 @@ describe('validatePositionOpen', () => {
       bigPool,
     );
     expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining('Maximum capital'));
+    expect(result.errors).toContainEqual(expect.stringContaining('Maximum collateral'));
   });
 
   it('accepts capital at exact minimum (0.01 SOL)', () => {
@@ -160,7 +160,7 @@ describe('validatePositionOpen', () => {
       bigPool,
     );
     expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining('Leverage'));
+    expect(result.errors).toContainEqual(expect.stringContaining('Max leverage'));
   });
 
   it('rejects when pool has insufficient capital', () => {
@@ -171,7 +171,7 @@ describe('validatePositionOpen', () => {
       tinyPool,
     );
     expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.stringContaining('insufficient capital'));
+    expect(result.errors).toContainEqual(expect.stringContaining("doesn't have enough capital"));
   });
 
   it('rejects invalid wallet address (too short)', () => {

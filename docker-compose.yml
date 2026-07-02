@@ -1,4 +1,4 @@
-version: '3.8'
+name: front-protocol
 
 services:
   # ──────────────────────────────────────────────
@@ -11,7 +11,7 @@ services:
     environment:
       POSTGRES_DB: frontprotocol
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - '5432:5432'
     volumes:
@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
     ports:
       - '6379:6379'
-    command: redis-server --maxmemory-policy noeviction
+    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction --appendonly yes
     volumes:
       - redisdata:/data
     healthcheck:
@@ -37,44 +37,48 @@ services:
       retries: 5
 
   # ──────────────────────────────────────────────
-  # Application
+  # Application — API Server
   # ──────────────────────────────────────────────
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
-      target: api
     restart: unless-stopped
     ports:
-      - '3001:3001'
+      - '${API_PORT:-4001}:4001'
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/frontprotocol?schema=public
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/frontprotocol?schema=public
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
+      PORT: 4001
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3001/api/health']
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:4001/health || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
 
-  services:
+  # ──────────────────────────────────────────────
+  # Application — Background Workers
+  # ──────────────────────────────────────────────
+
+  workers:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: services
+      dockerfile: Dockerfile.workers
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/frontprotocol?schema=public
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/frontprotocol?schema=public
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
     depends_on:
@@ -83,32 +87,28 @@ services:
       redis:
         condition: service_healthy
 
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: web
-    restart: unless-stopped
-    ports:
-      - '3000:3000'
-    environment:
-      VITE_API_URL: http://api:3001
-    depends_on:
-      - api
+  # ──────────────────────────────────────────────
+  # Database Migrations (run once, then exit)
+  # ──────────────────────────────────────────────
 
-  bot:
+  migrate:
     build:
       context: .
       dockerfile: Dockerfile
-      target: bot
-    restart: unless-stopped
-    env_file:
-      - .env
+    command: >
+      sh -c "
+        cd /app/packages/database &&
+        npx prisma migrate deploy &&
+        echo '✅ Migrations applied successfully'
+      "
     environment:
-      API_URL: http://api:3001
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/frontprotocol?schema=public
       NODE_ENV: production
     depends_on:
-      - api
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
 
 volumes:
   pgdata:

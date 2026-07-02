@@ -10,6 +10,10 @@
       "persistent": true
     },
     "lint": {},
+    "test": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },

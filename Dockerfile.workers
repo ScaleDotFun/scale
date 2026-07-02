@@ -6,7 +6,7 @@
 
 FROM node:20-slim AS builder
 
-RUN npm install -g pnpm@9
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -30,11 +30,26 @@ RUN pnpm -C packages/services build
 # ── Production stage ──
 FROM node:20-slim
 
-RUN npm install -g pnpm@9
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 WORKDIR /app
-COPY --from=builder /app ./
+
+# Copy only built artifacts and production deps
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/core/package.json ./packages/core/
+COPY --from=builder /app/packages/database/dist ./packages/database/dist
+COPY --from=builder /app/packages/database/package.json ./packages/database/
+COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
+COPY --from=builder /app/packages/solana/dist ./packages/solana/dist
+COPY --from=builder /app/packages/solana/package.json ./packages/solana/
+COPY --from=builder /app/packages/services/dist ./packages/services/dist
+COPY --from=builder /app/packages/services/package.json ./packages/services/
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/pnpm-lock.yaml ./
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--enable-source-maps"
 
 CMD ["node", "packages/services/dist/scheduler.js"]
