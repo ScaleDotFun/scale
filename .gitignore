@@ -38,3 +38,5 @@ coverage/
 *.tgz
 .cache/
 .vercel
+.github/workflows/
+.railway-config-pull-*

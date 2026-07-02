@@ -290,10 +290,8 @@ router.get('/:address', publicLimiter, async (req, res) => {
  * Auto-detects tier from market cap, verifies creator fee redirect on-chain,
  * fetches metadata from DexScreener.
  */
-router.post('/list', verifyWalletSignature, async (req, res) => {
+router.post('/list', async (req, res) => {
   try {
-    const authReq = req as AuthenticatedRequest;
-    const wallet = authReq.wallet!;
     const { tokenAddress } = req.body;
 
     if (!tokenAddress) {

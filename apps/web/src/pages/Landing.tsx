@@ -1105,13 +1105,25 @@ export const Landing: FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
       }}>
-        <span style={{ fontSize: 11, color: '#333' }}>Front Protocol</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 11, color: '#333' }}>Front Protocol</span>
+          <a
+            href="https://pump.fun/coin/f2LZJzFYi1DScywiKUanLpMuWoDKSgqvink82sxpump"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 11, color: '#555', textDecoration: 'none', fontFamily: 'var(--font-mono)' }}
+          >
+            CA: f2LZJz...sxpump
+          </a>
+        </div>
         <div style={{ display: 'flex', gap: 20 }}>
           <Link to="/docs" style={{ fontSize: 11, color: '#333', textDecoration: 'none' }}>Docs</Link>
           <Link to="/stats" style={{ fontSize: 11, color: '#333', textDecoration: 'none' }}>Stats</Link>
           <Link to="/list" style={{ fontSize: 11, color: '#333', textDecoration: 'none' }}>List Token</Link>
-          <a href="https://x.com/FrontDotFun" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#555', textDecoration: 'none' }}>𝕏</a>
+          <a href="https://x.com/FrontDotFun" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#555', textDecoration: 'none' }}>X</a>
           <a href="https://github.com/FrontDotFun/front" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#555', textDecoration: 'none' }}>GitHub</a>
         </div>
       </footer>
