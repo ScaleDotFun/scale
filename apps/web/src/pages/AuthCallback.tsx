@@ -66,8 +66,8 @@ export default function AuthCallback() {
       alignItems: 'center',
       justifyContent: 'center',
       height: '100vh',
-      background: '#000',
-      color: '#f0b90b',
+      background: '#050408',
+      color: '#8b5cff',
       fontSize: '1.2rem',
       fontFamily: 'Inter, sans-serif',
     }}>

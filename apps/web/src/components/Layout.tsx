@@ -164,8 +164,8 @@ export const Layout: FC = () => {
             }}>
               {Array.from({ length: 20 }).map((_, i) => (
                 <div className="ticker-item" key={`skel-${i}`}>
-                  <span className="ticker-name" style={{ width: 40, height: 10, background: '#111', borderRadius: 3, display: 'inline-block' }} />
-                  <span className="ticker-price" style={{ width: 50, height: 10, background: '#0a0a0a', borderRadius: 3, display: 'inline-block' }} />
+                  <span className="ticker-name" style={{ width: 40, height: 10, background: '#0f0c1a', borderRadius: 3, display: 'inline-block' }} />
+                  <span className="ticker-price" style={{ width: 50, height: 10, background: '#0c0a16', borderRadius: 3, display: 'inline-block' }} />
                 </div>
               ))}
             </div>

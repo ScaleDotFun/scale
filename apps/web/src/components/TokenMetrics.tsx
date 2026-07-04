@@ -36,10 +36,10 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
   }, [token.address]);
 
   const tierConfig = {
-    bonded: { label: 'BONDED', color: '#34d399', bg: 'rgba(52, 211, 153, 0.08)' },
-    rising: { label: 'RISING', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.08)' },
-    degen: { label: 'DEGEN', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.08)' },
-  }[token.tier] ?? { label: token.tier.toUpperCase(), color: '#888', bg: 'rgba(128,128,128,0.08)' };
+    bonded: { label: 'BONDED', color: '#00ffa3', bg: 'rgba(52, 211, 153, 0.08)' },
+    rising: { label: 'RISING', color: '#a78bff', bg: 'rgba(251, 191, 36, 0.08)' },
+    degen: { label: 'DEGEN', color: '#ff3d71', bg: 'rgba(239, 68, 68, 0.08)' },
+  }[token.tier] ?? { label: token.tier.toUpperCase(), color: '#9d95b8', bg: 'rgba(128,128,128,0.08)' };
 
   // Use Birdeye data if available, otherwise fallback to token data
   const mcap = overview?.marketCap ?? token.marketCapUsd ?? 0;
@@ -111,9 +111,9 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
           <div className="token-metrics-item">
             <span className="token-metrics-label">B/S</span>
             <span className="token-metrics-value">
-              <span style={{ color: '#34d399' }}>{buyRatio.toFixed(0)}%</span>
-              <span style={{ color: '#333', margin: '0 2px' }}>/</span>
-              <span style={{ color: '#ef4444' }}>{(100 - buyRatio).toFixed(0)}%</span>
+              <span style={{ color: '#00ffa3' }}>{buyRatio.toFixed(0)}%</span>
+              <span style={{ color: '#352a58', margin: '0 2px' }}>/</span>
+              <span style={{ color: '#ff3d71' }}>{(100 - buyRatio).toFixed(0)}%</span>
             </span>
           </div>
           <div className="token-metrics-sep" />
@@ -137,7 +137,7 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
           <div className="token-metrics-item">
             <span className="token-metrics-label">TOP 10</span>
             <span className="token-metrics-value" style={{
-              color: top10Pct > 60 ? '#ef4444' : top10Pct > 40 ? '#fbbf24' : '#34d399',
+              color: top10Pct > 60 ? '#ff3d71' : top10Pct > 40 ? '#a78bff' : '#00ffa3',
             }}>
               {top10Pct.toFixed(1)}%
             </span>
@@ -152,7 +152,7 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
           <div className="token-metrics-item">
             <span className="token-metrics-label">MINT</span>
             <span className="token-metrics-value" style={{
-              color: hasMintAuth ? '#ef4444' : '#34d399',
+              color: hasMintAuth ? '#ff3d71' : '#00ffa3',
               fontSize: 9,
               fontWeight: 700,
             }}>
@@ -163,7 +163,7 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
           <div className="token-metrics-item">
             <span className="token-metrics-label">FREEZE</span>
             <span className="token-metrics-value" style={{
-              color: hasFreezeAuth ? '#ef4444' : '#34d399',
+              color: hasFreezeAuth ? '#ff3d71' : '#00ffa3',
               fontSize: 9,
               fontWeight: 700,
             }}>
@@ -191,7 +191,7 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
         <span className="token-metrics-label">24H</span>
         <span
           className="token-metrics-value"
-          style={{ color: priceChange >= 0 ? '#34d399' : '#ef4444' }}
+          style={{ color: priceChange >= 0 ? '#00ffa3' : '#ff3d71' }}
         >
           {priceChange >= 0 ? '+' : ''}
           {priceChange.toFixed(2)}%

@@ -14,8 +14,8 @@ const numStyle = {
   width: 28,
   height: 28,
   borderRadius: '50%',
-  background: '#f0b90b',
-  color: '#000',
+  background: '#8b5cff',
+  color: '#050408',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -118,7 +118,7 @@ export const ListToken: FC = () => {
             style={inputStyle}
             required
           />
-          <div style={{ fontSize: '0.72rem', color: '#555', marginTop: 4 }}>
+          <div style={{ fontSize: '0.72rem', color: '#5e5680', marginTop: 4 }}>
             Tier is auto-detected by market cap. Creator fee wallet is verified on-chain.
           </div>
         </div>
@@ -131,8 +131,8 @@ export const ListToken: FC = () => {
             padding: '12px 0',
             fontSize: '0.93rem',
             fontWeight: 600,
-            background: '#f0b90b',
-            color: '#000',
+            background: '#8b5cff',
+            color: '#050408',
             border: 'none',
             borderRadius: 'var(--radius-md)',
             cursor: loading ? 'wait' : 'pointer',
@@ -147,9 +147,9 @@ export const ListToken: FC = () => {
           <div style={{
             padding: '12px 16px',
             borderRadius: 'var(--radius-md)',
-            background: result.success ? 'rgba(0, 200, 83, 0.08)' : 'rgba(255, 59, 59, 0.08)',
-            border: `1px solid ${result.success ? '#00c853' : '#ff3b3b'}`,
-            color: result.success ? '#00c853' : '#ff3b3b',
+            background: result.success ? 'rgba(0, 255, 163, 0.08)' : 'rgba(255, 61, 113, 0.08)',
+            border: `1px solid ${result.success ? '#00ffa3' : '#ff3d71'}`,
+            color: result.success ? '#00ffa3' : '#ff3d71',
             fontSize: '0.86rem',
           }}>
             {result.message}

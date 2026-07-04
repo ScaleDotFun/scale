@@ -64,11 +64,15 @@ async function authRequest<T>(path: string, body: Record<string, string>, token?
   return json as T;
 }
 
+/** Error thrown when the server explicitly rejects the token (as opposed to a network failure). */
+class AuthRejectedError extends Error {}
+
 async function fetchMe(token: string): Promise<User> {
   const res = await fetch(`${BASE_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error('Session expired');
+  if (res.status === 401 || res.status === 403) throw new AuthRejectedError('Session expired');
+  if (!res.ok) throw new Error(`Auth check failed (${res.status})`);
   const json = await res.json();
   if (json && typeof json === 'object' && 'data' in json) {
     return json.data as User;
@@ -93,8 +97,14 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
         setUser(u);
         setTokenState(stored);
       })
-      .catch(() => {
-        localStorage.removeItem(TOKEN_KEY);
+      .catch((err) => {
+        // Only discard the token if the server explicitly rejected it.
+        // On network failures / API downtime, keep it so a reload recovers the session.
+        if (err instanceof AuthRejectedError) {
+          localStorage.removeItem(TOKEN_KEY);
+        } else {
+          setTokenState(stored);
+        }
       })
       .finally(() => {
         setLoading(false);
@@ -126,9 +136,11 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
     setTokenState(newToken);
     fetchMe(newToken)
       .then((u) => setUser(u))
-      .catch(() => {
-        localStorage.removeItem(TOKEN_KEY);
-        setTokenState(null);
+      .catch((err) => {
+        if (err instanceof AuthRejectedError) {
+          localStorage.removeItem(TOKEN_KEY);
+          setTokenState(null);
+        }
       });
   }, []);
 

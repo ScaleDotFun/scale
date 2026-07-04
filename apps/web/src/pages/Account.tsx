@@ -137,7 +137,7 @@ export const Account: FC = () => {
     return (
       <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 400, gap: 16 }}>
         <h2>Sign in to view your account</h2>
-        <p style={{ fontSize: 13, color: '#666' }}>Manage your wallet, locks, and profile</p>
+        <p style={{ fontSize: 13, color: '#6f668f' }}>Manage your wallet, locks, and profile</p>
         <button className="btn btn-primary" onClick={() => navigate('/auth')}>Sign In</button>
       </div>
     );
@@ -145,8 +145,8 @@ export const Account: FC = () => {
 
   // ── Styles ──
   const cardStyle = {
-    background: '#0a0a0a',
-    border: '1px solid #1a1a1a',
+    background: '#0c0a16',
+    border: '1px solid #211a38',
     borderRadius: 14,
     padding: '18px 20px',
   };
@@ -154,7 +154,7 @@ export const Account: FC = () => {
   const sectionLabel = {
     fontSize: 10,
     fontWeight: 600 as const,
-    color: '#555',
+    color: '#5e5680',
     textTransform: 'uppercase' as const,
     letterSpacing: '0.06em',
     marginBottom: 10,
@@ -162,7 +162,7 @@ export const Account: FC = () => {
 
   const statLabel = {
     fontSize: 11,
-    color: '#555',
+    color: '#5e5680',
     marginBottom: 4,
     textTransform: 'uppercase' as const,
     letterSpacing: '0.04em',
@@ -171,17 +171,17 @@ export const Account: FC = () => {
   const statValue = {
     fontSize: 20,
     fontWeight: 700 as const,
-    color: '#fff',
+    color: '#f4f2ff',
     fontFamily: "'JetBrains Mono', monospace",
   };
 
   const inputStyle = {
     width: '100%',
     padding: '10px 14px',
-    background: '#111',
-    border: '1px solid #1a1a1a',
+    background: '#0f0c1a',
+    border: '1px solid #211a38',
     borderRadius: 6,
-    color: '#fff',
+    color: '#f4f2ff',
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: 13,
     outline: 'none',
@@ -201,14 +201,14 @@ export const Account: FC = () => {
           <div>
             <div style={statLabel}>Address</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, color: '#ccc', fontFamily: "'JetBrains Mono', monospace" }}>
+              <span style={{ fontSize: 13, color: '#c9c3e0', fontFamily: "'JetBrains Mono', monospace" }}>
                 {balance?.address ? formatAddress(balance.address, 6) : user?.walletAddress ? formatAddress(user.walletAddress, 6) : '—'}
               </span>
               <button
                 onClick={() => handleCopy(balance?.address || user?.walletAddress || '')}
                 style={{
-                  background: 'none', border: '1px solid #222', borderRadius: 4,
-                  padding: '2px 8px', fontSize: 11, color: copied ? '#22c55e' : '#666',
+                  background: 'none', border: '1px solid #241d3d', borderRadius: 4,
+                  padding: '2px 8px', fontSize: 11, color: copied ? '#00ffa3' : '#6f668f',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
@@ -218,7 +218,7 @@ export const Account: FC = () => {
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={statLabel}>SOL Balance</div>
-            <div style={{ ...statValue, color: '#f0b90b' }}>
+            <div style={{ ...statValue, color: '#8b5cff' }}>
               {balanceLoading ? (
                 <span className="skeleton" style={{ display: 'inline-block', width: 80, height: 24, borderRadius: 4 }} />
               ) : (
@@ -229,15 +229,15 @@ export const Account: FC = () => {
         </div>
 
         {/* Deposit */}
-        <div style={{ borderTop: '1px solid #111', paddingTop: 14, marginBottom: 16 }}>
+        <div style={{ borderTop: '1px solid #0f0c1a', paddingTop: 14, marginBottom: 16 }}>
           <div style={sectionLabel}>Deposit</div>
-          <p style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
+          <p style={{ fontSize: 12, color: '#6f668f', marginBottom: 8 }}>
             Send SOL to this address to deposit
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <code style={{
-              flex: 1, padding: '10px 12px', background: '#080808', border: '1px solid #1a1a1a',
-              borderRadius: 6, fontSize: 12, color: '#f0b90b', fontFamily: "'JetBrains Mono', monospace",
+              flex: 1, padding: '10px 12px', background: '#080808', border: '1px solid #211a38',
+              borderRadius: 6, fontSize: 12, color: '#8b5cff', fontFamily: "'JetBrains Mono', monospace",
               wordBreak: 'break-all',
             }}>
               {balance?.address || user?.walletAddress || '...'}
@@ -253,7 +253,7 @@ export const Account: FC = () => {
         </div>
 
         {/* Withdraw */}
-        <div style={{ borderTop: '1px solid #111', paddingTop: 14 }}>
+        <div style={{ borderTop: '1px solid #0f0c1a', paddingTop: 14 }}>
           <div style={sectionLabel}>Withdraw</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <input
@@ -286,13 +286,13 @@ export const Account: FC = () => {
           {withdrawResult && (
             <div style={{
               marginTop: 10, padding: '10px 14px', borderRadius: 8, fontSize: 12,
-              background: withdrawResult.success ? 'rgba(0, 200, 83, 0.05)' : 'rgba(255, 59, 59, 0.05)',
-              border: `1px solid ${withdrawResult.success ? 'rgba(0, 200, 83, 0.15)' : 'rgba(255, 59, 59, 0.15)'}`,
-              color: withdrawResult.success ? '#22c55e' : '#ff3b3b',
+              background: withdrawResult.success ? 'rgba(0, 255, 163, 0.05)' : 'rgba(255, 61, 113, 0.05)',
+              border: `1px solid ${withdrawResult.success ? 'rgba(0, 255, 163, 0.15)' : 'rgba(255, 61, 113, 0.15)'}`,
+              color: withdrawResult.success ? '#00ffa3' : '#ff3d71',
             }}>
               {withdrawResult.message}
               {withdrawResult.txSig && (
-                <> · <a href={solscanTxUrl(withdrawResult.txSig)} target="_blank" rel="noreferrer" style={{ color: '#f0b90b' }}>View on Solscan →</a></>
+                <> · <a href={solscanTxUrl(withdrawResult.txSig)} target="_blank" rel="noreferrer" style={{ color: '#8b5cff' }}>View on Solscan →</a></>
               )}
             </div>
           )}
@@ -308,7 +308,7 @@ export const Account: FC = () => {
             <div className="spinner" />
           </div>
         ) : locks.length === 0 ? (
-          <div style={{ padding: '20px 0', textAlign: 'center', color: '#444', fontSize: 13 }}>
+          <div style={{ padding: '20px 0', textAlign: 'center', color: '#453a6b', fontSize: 13 }}>
             No locks yet. Make profitable trades to earn $FRONT!
           </div>
         ) : (
@@ -317,7 +317,7 @@ export const Account: FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
               <div>
                 <div style={statLabel}>Active Locks</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#f4f2ff', fontFamily: "'JetBrains Mono', monospace" }}>
                   {activeLocks.length}
                 </div>
               </div>
@@ -325,14 +325,14 @@ export const Account: FC = () => {
                 <div style={statLabel}>Claimable</div>
                 <div style={{
                   fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
-                  color: claimable.length > 0 ? '#22c55e' : '#fff',
+                  color: claimable.length > 0 ? '#00ffa3' : '#f4f2ff',
                 }}>
                   {claimable.length}
                 </div>
               </div>
               <div>
                 <div style={statLabel}>Total Locks</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#f4f2ff', fontFamily: "'JetBrains Mono', monospace" }}>
                   {locks.length}
                 </div>
               </div>
@@ -341,21 +341,21 @@ export const Account: FC = () => {
             {/* Claimable locks */}
             {claimable.length > 0 && (
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#22c55e', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#00ffa3', marginBottom: 8 }}>
                   Ready to Claim
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {claimable.map((lock) => (
                     <div key={lock.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '10px 14px', background: '#050505', border: '1px solid rgba(52, 211, 153, 0.15)',
+                      padding: '10px 14px', background: '#07060d', border: '1px solid rgba(52, 211, 153, 0.15)',
                       borderRadius: 8,
                     }}>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: "'JetBrains Mono', monospace" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f2ff', fontFamily: "'JetBrains Mono', monospace" }}>
                           {formatSol(BigInt(lock.tokenAmount))} $FRONT
                         </div>
-                        <div style={{ fontSize: 11, color: '#555' }}>
+                        <div style={{ fontSize: 11, color: '#5e5680' }}>
                           From {lock.position?.tokenSymbol ?? 'token'} trade · Locked {formatTimeAgo(lock.lockedAt)}
                         </div>
                       </div>
@@ -376,29 +376,29 @@ export const Account: FC = () => {
             {/* Active locks */}
             {activeLocks.length > 0 && (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#9d95b8', marginBottom: 8 }}>
                   Active Locks
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {activeLocks.map((lock) => (
                     <div key={lock.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '10px 14px', background: '#050505', border: '1px solid #111',
+                      padding: '10px 14px', background: '#07060d', border: '1px solid #0f0c1a',
                       borderRadius: 8,
                     }}>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: "'JetBrains Mono', monospace" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f2ff', fontFamily: "'JetBrains Mono', monospace" }}>
                           {formatSol(BigInt(lock.tokenAmount))} $FRONT
                         </div>
-                        <div style={{ fontSize: 11, color: '#555' }}>
+                        <div style={{ fontSize: 11, color: '#5e5680' }}>
                           From {lock.position?.tokenSymbol ?? 'token'} trade · Locked {formatTimeAgo(lock.lockedAt)}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#f0b90b', fontFamily: "'JetBrains Mono', monospace" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#8b5cff', fontFamily: "'JetBrains Mono', monospace" }}>
                           {formatCountdown(lock.timeRemainingMs)}
                         </div>
-                        <div style={{ fontSize: 10, color: '#555' }}>until unlock</div>
+                        <div style={{ fontSize: 10, color: '#5e5680' }}>until unlock</div>
                       </div>
                     </div>
                   ))}
@@ -409,7 +409,7 @@ export const Account: FC = () => {
         )}
 
         <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <Link to="/locks" style={{ fontSize: 11, color: '#666', textDecoration: 'none' }}>
+          <Link to="/locks" style={{ fontSize: 11, color: '#6f668f', textDecoration: 'none' }}>
             View all locks →
           </Link>
         </div>
@@ -421,14 +421,14 @@ export const Account: FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={statLabel}>Email</div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: '#ccc' }}>
+            <div style={{ fontSize: 14, fontWeight: 500, color: '#c9c3e0' }}>
               {user?.email || '—'}
             </div>
           </div>
           <button
             className="btn btn-outline"
             onClick={handleSignOut}
-            style={{ color: '#ff3b3b', borderColor: 'rgba(255, 59, 59, 0.2)', fontSize: 12 }}
+            style={{ color: '#ff3d71', borderColor: 'rgba(255, 61, 113, 0.2)', fontSize: 12 }}
           >
             Sign Out
           </button>

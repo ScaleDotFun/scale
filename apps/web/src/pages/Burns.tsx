@@ -122,7 +122,7 @@ export const Burns: FC = () => {
                 </div>
               </div>
               {lockStats.upcoming7d.count > 0 && (
-                <div style={{ fontSize: '0.86rem', color: '#888' }}>
+                <div style={{ fontSize: '0.86rem', color: '#9d95b8' }}>
                   {lockStats.upcoming7d.count} lock{lockStats.upcoming7d.count > 1 ? 's' : ''} unlocking in the next 7 days ({formatSol(BigInt(lockStats.upcoming7d.solAmount || '0'), 4)} SOL)
                 </div>
               )}
