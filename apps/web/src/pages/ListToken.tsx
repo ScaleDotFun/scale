@@ -118,7 +118,7 @@ export const ListToken: FC = () => {
             style={inputStyle}
             required
           />
-          <div style={{ fontSize: '0.72rem', color: '#52667d', marginTop: 4 }}>
+          <div style={{ fontSize: '0.72rem', color: '#5c6b60', marginTop: 4 }}>
             Tier is auto-detected by market cap. Creator fee wallet is verified on-chain.
           </div>
         </div>
@@ -147,9 +147,9 @@ export const ListToken: FC = () => {
           <div style={{
             padding: '12px 16px',
             borderRadius: 0,
-            background: result.success ? 'rgba(143, 208, 255, 0.08)' : 'rgba(74, 111, 153, 0.08)',
-            border: `1px solid ${result.success ? '#8fd0ff' : '#4a6f99'}`,
-            color: result.success ? '#8fd0ff' : '#4a6f99',
+            background: result.success ? 'rgba(0, 200, 5, 0.08)' : 'rgba(255, 77, 77, 0.08)',
+            border: `1px solid ${result.success ? '#00c805' : '#ff4d4d'}`,
+            color: result.success ? '#00c805' : '#ff4d4d',
             fontSize: '0.86rem',
           }}>
             {result.message}

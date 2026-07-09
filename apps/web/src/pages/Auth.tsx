@@ -67,7 +67,7 @@ export const Auth: FC = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#060605',
+      background: '#060807',
       display: 'flex',
       position: 'relative',
       overflow: 'hidden',
@@ -76,7 +76,7 @@ export const Auth: FC = () => {
       <div style={{
         position: 'absolute',
         inset: 0,
-        background: 'radial-gradient(ellipse at 30% 20%, rgba(255, 179, 0,0.04) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(255, 179, 0,0.03) 0%, transparent 60%)',
+        background: 'radial-gradient(ellipse at 30% 20%, rgba(0,200,5,0.04) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(0,200,5,0.04) 0%, transparent 60%)',
         pointerEvents: 'none',
       }} />
 
@@ -96,7 +96,7 @@ export const Auth: FC = () => {
               <path d="M2 17l10 5 10-5" />
               <path d="M2 12l10 5 10-5" />
             </svg>
-            <span style={{ fontSize: 20, fontWeight: 700, color: '#e8f0fa', letterSpacing: '0.04em' }}>SCALE</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: '#eef3ef', letterSpacing: '0.04em' }}>SCALE</span>
           </div>
         </Link>
 
@@ -108,23 +108,23 @@ export const Auth: FC = () => {
           <h1 style={{
             fontSize: '2.2rem',
             fontWeight: 800,
-            color: '#e8f0fa',
+            color: '#eef3ef',
             lineHeight: 1.2,
             marginBottom: 16,
           }}>
             Leverage trade<br />
             any memecoin<br />
-            <span style={{ color: 'var(--primary)' }}>on Solana.</span>
+            <span style={{ color: 'var(--primary)' }}>on Robinhood.</span>
           </h1>
           <p style={{
             fontSize: 15,
-            color: '#5d7590',
+            color: '#66786a',
             lineHeight: 1.6,
             maxWidth: 400,
             marginBottom: 40,
           }}>
-            Deposit SOL, choose your leverage, and the protocol fills the rest.
-            Real on-chain execution via Jupiter. No synthetic perps.
+            Deposit ETH, choose your leverage, and the protocol fills the rest.
+            Real on-chain execution via Uniswap V3. No synthetic perps.
           </p>
 
           {/* Stats */}
@@ -138,7 +138,7 @@ export const Auth: FC = () => {
                 <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary)', fontFamily: "'JetBrains Mono', monospace" }}>
                   {s.value}
                 </div>
-                <div style={{ fontSize: 11, color: '#52667d', marginTop: 4 }}>{s.label}</div>
+                <div style={{ fontSize: 11, color: '#5c6b60', marginTop: 4 }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -165,7 +165,7 @@ export const Auth: FC = () => {
             display: 'flex',
             gap: 0,
             marginBottom: 32,
-            borderBottom: '1px solid #1a2636',
+            borderBottom: '1px solid #1c261f',
           }}>
             <button
               onClick={() => { setMode('login'); setError(''); }}
@@ -174,7 +174,7 @@ export const Auth: FC = () => {
                 padding: '12px 0',
                 fontSize: 14,
                 fontWeight: 600,
-                color: mode === 'login' ? '#e8f0fa' : '#52667d',
+                color: mode === 'login' ? '#eef3ef' : '#5c6b60',
                 background: 'none',
                 border: 'none',
                 borderBottom: mode === 'login' ? '2px solid var(--primary)' : '2px solid transparent',
@@ -191,7 +191,7 @@ export const Auth: FC = () => {
                 padding: '12px 0',
                 fontSize: 14,
                 fontWeight: 600,
-                color: mode === 'register' ? '#e8f0fa' : '#52667d',
+                color: mode === 'register' ? '#eef3ef' : '#5c6b60',
                 background: 'none',
                 border: 'none',
                 borderBottom: mode === 'register' ? '2px solid var(--primary)' : '2px solid transparent',
@@ -214,10 +214,10 @@ export const Auth: FC = () => {
               justifyContent: 'center',
               gap: 10,
               padding: '12px 16px',
-              background: '#0a0e14',
-              border: '1px solid #1a2636',
+              background: '#0a0e0b',
+              border: '1px solid #1c261f',
               borderRadius: 0,
-              color: '#a9c0d8',
+              color: '#a6bcae',
               fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
@@ -225,12 +225,12 @@ export const Auth: FC = () => {
               marginBottom: 20,
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#2a3d55';
+              e.currentTarget.style.borderColor = '#2a3d2e';
               e.currentTarget.style.background = '#12110c';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#1a2636';
-              e.currentTarget.style.background = '#0a0e14';
+              e.currentTarget.style.borderColor = '#1c261f';
+              e.currentTarget.style.background = '#0a0e0b';
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24">
@@ -249,9 +249,9 @@ export const Auth: FC = () => {
             gap: 12,
             marginBottom: 20,
           }}>
-            <div style={{ flex: 1, height: 1, background: '#1a2636' }} />
-            <span style={{ fontSize: 11, color: '#3a4d63' }}>or</span>
-            <div style={{ flex: 1, height: 1, background: '#1a2636' }} />
+            <div style={{ flex: 1, height: 1, background: '#1c261f' }} />
+            <span style={{ fontSize: 11, color: '#3d4d40' }}>or</span>
+            <div style={{ flex: 1, height: 1, background: '#1c261f' }} />
           </div>
 
           {/* Form */}
@@ -262,7 +262,7 @@ export const Auth: FC = () => {
                 background: 'rgba(239, 68, 68, 0.08)',
                 border: '1px solid rgba(239, 68, 68, 0.2)',
                 borderRadius: 0,
-                color: '#4a6f99',
+                color: '#ff4d4d',
                 fontSize: 12,
                 marginBottom: 16,
               }}>
@@ -271,7 +271,7 @@ export const Auth: FC = () => {
             )}
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 11, color: '#52667d', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#5c6b60', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Email
               </label>
               <input
@@ -284,22 +284,22 @@ export const Auth: FC = () => {
                 style={{
                   width: '100%',
                   padding: '12px 14px',
-                  background: '#0a0e14',
-                  border: '1px solid #1a2636',
+                  background: '#0a0e0b',
+                  border: '1px solid #1c261f',
                   borderRadius: 0,
-                  color: '#e8f0fa',
+                  color: '#eef3ef',
                   fontSize: 13,
                   outline: 'none',
                   transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
                 onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(var(--primary-rgb),0.25)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = '#1a2636'}
+                onBlur={(e) => e.currentTarget.style.borderColor = '#1c261f'}
               />
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 11, color: '#52667d', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#5c6b60', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Password
               </label>
               <input
@@ -311,23 +311,23 @@ export const Auth: FC = () => {
                 style={{
                   width: '100%',
                   padding: '12px 14px',
-                  background: '#0a0e14',
-                  border: '1px solid #1a2636',
+                  background: '#0a0e0b',
+                  border: '1px solid #1c261f',
                   borderRadius: 0,
-                  color: '#e8f0fa',
+                  color: '#eef3ef',
                   fontSize: 13,
                   outline: 'none',
                   transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
                 onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(var(--primary-rgb),0.25)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = '#1a2636'}
+                onBlur={(e) => e.currentTarget.style.borderColor = '#1c261f'}
               />
             </div>
 
             {mode === 'register' && (
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 11, color: '#52667d', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#5c6b60', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Confirm Password
                 </label>
                 <input
@@ -339,17 +339,17 @@ export const Auth: FC = () => {
                   style={{
                     width: '100%',
                     padding: '12px 14px',
-                    background: '#0a0e14',
-                    border: '1px solid #1a2636',
+                    background: '#0a0e0b',
+                    border: '1px solid #1c261f',
                     borderRadius: 0,
-                    color: '#e8f0fa',
+                    color: '#eef3ef',
                     fontSize: 13,
                     outline: 'none',
                     transition: 'border-color 0.2s',
                     boxSizing: 'border-box',
                   }}
                   onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(var(--primary-rgb),0.25)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#1a2636'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = '#1c261f'}
                 />
               </div>
             )}
@@ -385,11 +385,11 @@ export const Auth: FC = () => {
           <div style={{
             marginTop: 24,
             padding: '14px 16px',
-            background: '#0a0e14',
-            border: '1px solid #1a2636',
+            background: '#0a0e0b',
+            border: '1px solid #1c261f',
             borderRadius: 0,
           }}>
-            <div style={{ fontSize: 11, color: '#52667d', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 11, color: '#5c6b60', lineHeight: 1.6 }}>
               {mode === 'register' ? (
                 <>A fresh Solana wallet will be generated for your account. You can deposit SOL to start trading with leverage.</>
               ) : (

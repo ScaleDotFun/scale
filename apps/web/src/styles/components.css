@@ -168,7 +168,7 @@
   display: flex;
   align-items: center;
   height: 26px;
-  background: #030406;
+  background: #020402;
   border-bottom: 1px solid var(--panel-border);
   overflow: hidden;
   padding: 0;
@@ -187,8 +187,8 @@
   pointer-events: none;
 }
 
-.ticker-bar::before { left: 0; background: linear-gradient(to right, #030406 0%, transparent 100%); }
-.ticker-bar::after { right: 0; background: linear-gradient(to left, #030406 0%, transparent 100%); }
+.ticker-bar::before { left: 0; background: linear-gradient(to right, #020402 0%, transparent 100%); }
+.ticker-bar::after { right: 0; background: linear-gradient(to left, #020402 0%, transparent 100%); }
 
 @keyframes ticker-scroll {
   0% { transform: translateX(0); }
@@ -327,8 +327,8 @@
   border: 1px solid;
 }
 
-.status-profit { color: var(--green); background: rgba(143, 208, 255, 0.06); border-color: rgba(143, 208, 255, 0.3); }
-.status-loss { color: var(--red); background: rgba(74, 111, 153, 0.06); border-color: rgba(74, 111, 153, 0.3); }
+.status-profit { color: var(--green); background: rgba(0, 200, 5, 0.06); border-color: rgba(0, 200, 5, 0.3); }
+.status-loss { color: var(--red); background: rgba(255, 77, 77, 0.06); border-color: rgba(255, 77, 77, 0.3); }
 
 .link-dim { font-size: 11px; color: var(--text-2); text-decoration: none; }
 .link-dim:hover { color: var(--primary); }
@@ -349,9 +349,9 @@
 
 .tier-dot { width: 5px; height: 5px; background: currentColor; }
 
-.tier-bonded { color: var(--green); border-color: rgba(143, 208, 255, 0.35); }
+.tier-bonded { color: var(--green); border-color: rgba(0, 200, 5, 0.35); }
 .tier-rising { color: var(--primary); border-color: rgba(var(--primary-rgb), 0.4); }
-.tier-degen { color: var(--red); border-color: rgba(74, 111, 153, 0.35); }
+.tier-degen { color: var(--red); border-color: rgba(255, 77, 77, 0.35); }
 .tier-blocked { color: var(--text-2); }
 
 /* ── Stat rows (StatValue) ─────────────────────────────────── */
@@ -745,7 +745,7 @@
   text-transform: uppercase;
   color: var(--red);
   background: transparent;
-  border: 1px solid rgba(74, 111, 153, 0.35);
+  border: 1px solid rgba(255, 77, 77, 0.35);
   border-radius: 0;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -882,7 +882,7 @@
 }
 
 .auth-dropdown-item:hover { color: var(--primary); background: var(--primary-subtle); }
-.auth-signout:hover { color: var(--red); background: rgba(74, 111, 153, 0.06); }
+.auth-signout:hover { color: var(--red); background: rgba(255, 77, 77, 0.06); }
 
 .auth-field { padding: 0 8px; margin-bottom: 8px; }
 
@@ -908,8 +908,8 @@
   padding: 6px 8px;
   font-size: 11px;
   color: var(--red);
-  background: rgba(74, 111, 153, 0.06);
-  border: 1px solid rgba(74, 111, 153, 0.2);
+  background: rgba(255, 77, 77, 0.06);
+  border: 1px solid rgba(255, 77, 77, 0.2);
   border-radius: 0;
 }
 
@@ -1365,7 +1365,7 @@
   bottom: -2px;
   width: 2px;
   background: var(--red);
-  box-shadow: 0 0 6px rgba(74, 111, 153, 0.6);
+  box-shadow: 0 0 6px rgba(255, 77, 77, 0.6);
 }
 
 .liq-bar-label {
@@ -1821,20 +1821,20 @@
 
 .pos-row { transition: background 0.15s; }
 .pos-row:hover { background: var(--bg-2) !important; }
-.pos-row-profit { background: rgba(143, 208, 255, 0.02); }
-.pos-row-loss { background: rgba(74, 111, 153, 0.02); }
-.pos-row-profit:hover { background: rgba(143, 208, 255, 0.05) !important; }
-.pos-row-loss:hover { background: rgba(74, 111, 153, 0.05) !important; }
+.pos-row-profit { background: rgba(0, 200, 5, 0.02); }
+.pos-row-loss { background: rgba(255, 77, 77, 0.02); }
+.pos-row-profit:hover { background: rgba(0, 200, 5, 0.05) !important; }
+.pos-row-loss:hover { background: rgba(255, 77, 77, 0.05) !important; }
 
 /* ═══════════════════════════════════════════════════════════════
    TRADES FEED
    ═══════════════════════════════════════════════════════════════ */
 
 .trades-feed-table { font-size: 11px; }
-.trade-row-buy { background: rgba(143, 208, 255, 0.02); }
-.trade-row-sell { background: rgba(74, 111, 153, 0.02); }
-.trade-row-buy:hover { background: rgba(143, 208, 255, 0.05); }
-.trade-row-sell:hover { background: rgba(74, 111, 153, 0.05); }
+.trade-row-buy { background: rgba(0, 200, 5, 0.02); }
+.trade-row-sell { background: rgba(255, 77, 77, 0.02); }
+.trade-row-buy:hover { background: rgba(0, 200, 5, 0.05); }
+.trade-row-sell:hover { background: rgba(255, 77, 77, 0.05); }
 
 .trade-side-badge {
   font-size: 9px;
@@ -1846,8 +1846,8 @@
   border: 1px solid;
 }
 
-.trade-side-buy { color: var(--green); background: rgba(143, 208, 255, 0.07); border-color: rgba(143, 208, 255, 0.3); }
-.trade-side-sell { color: var(--red); background: rgba(74, 111, 153, 0.07); border-color: rgba(74, 111, 153, 0.3); }
+.trade-side-buy { color: var(--green); background: rgba(0, 200, 5, 0.07); border-color: rgba(0, 200, 5, 0.3); }
+.trade-side-sell { color: var(--red); background: rgba(255, 77, 77, 0.07); border-color: rgba(255, 77, 77, 0.3); }
 
 /* ═══════════════════════════════════════════════════════════════
    COMMAND PALETTE (⌘K)

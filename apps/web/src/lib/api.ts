@@ -591,6 +591,11 @@ export function getMarketPriceHistory(
   return request(`/market/token/${address}/price-history${q}`);
 }
 
+/** WETH/USD OHLCV on Robinhood Chain — the landing hero reference feed. */
+export function getReferenceHistory(type = '15m'): Promise<OHLCVCandle[]> {
+  return request(`/market/reference-history?type=${encodeURIComponent(type)}`);
+}
+
 // ── Portfolio ──
 
 export interface PortfolioData {

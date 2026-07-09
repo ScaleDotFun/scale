@@ -20,14 +20,14 @@ export const HoldingsPanel: FC = () => {
   }, []);
 
   const cardStyle = {
-    background: '#0a0e14',
-    border: '1px solid #1a2636',
+    background: '#0a0e0b',
+    border: '1px solid #1c261f',
     borderRadius: 0,
     padding: '18px 20px',
   };
 
-  const statLabel = { fontSize: 11, color: '#52667d', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' };
-  const statValue = { fontSize: 20, fontWeight: 700 as const, color: '#e8f0fa', fontFamily: "'JetBrains Mono', monospace" };
+  const statLabel = { fontSize: 11, color: '#5c6b60', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' };
+  const statValue = { fontSize: 20, fontWeight: 700 as const, color: '#eef3ef', fontFamily: "'JetBrains Mono', monospace" };
 
   if (loading) {
     return (
@@ -66,9 +66,9 @@ export const HoldingsPanel: FC = () => {
 
       {/* Open Positions */}
       <div style={cardStyle}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#a9c0d8' }}>Open Positions</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#a6bcae' }}>Open Positions</h3>
         {!portfolio?.positions.items.length ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#3a4d63', fontSize: 13 }}>
+          <div style={{ padding: '24px 0', textAlign: 'center', color: '#3d4d40', fontSize: 13 }}>
             No open positions.{' '}
             <span
               style={{ color: 'var(--primary)', cursor: 'pointer' }}
@@ -84,7 +84,7 @@ export const HoldingsPanel: FC = () => {
                 key={p.id}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '12px 16px', background: '#070a0f', border: '1px solid #141d2b',
+                  padding: '12px 16px', background: '#080a08', border: '1px solid #141c16',
                   borderRadius: 0, cursor: 'pointer',
                 }}
                 onClick={() => navigate(`/trade?token=${p.token.address}`)}
@@ -99,15 +99,15 @@ export const HoldingsPanel: FC = () => {
                     {p.token.symbol?.charAt(0) || '?'}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#e8f0fa' }}>{p.token.symbol || 'Unknown'}</div>
-                    <div style={{ fontSize: 11, color: '#52667d' }}>{p.leverage}x • {p.tier}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#eef3ef' }}>{p.token.symbol || 'Unknown'}</div>
+                    <div style={{ fontSize: 11, color: '#5c6b60' }}>{p.leverage}x • {p.tier}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e8f0fa', fontFamily: "'JetBrains Mono', monospace" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#eef3ef', fontFamily: "'JetBrains Mono', monospace" }}>
                     {(Number(p.userCapital) / 1e9).toFixed(3)} SOL
                   </div>
-                  <div style={{ fontSize: 11, color: '#52667d' }}>
+                  <div style={{ fontSize: 11, color: '#5c6b60' }}>
                     {new Date(p.openedAt).toLocaleDateString()}
                   </div>
                 </div>
@@ -119,14 +119,14 @@ export const HoldingsPanel: FC = () => {
 
       {/* P&L Summary */}
       <div style={cardStyle}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#a9c0d8' }}>Performance</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#a6bcae' }}>Performance</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div>
             <div style={statLabel}>Total P&L</div>
             <div style={{
               ...statValue,
               fontSize: 16,
-              color: Number(portfolio?.history.totalPnlLamports || 0) >= 0 ? '#8fd0ff' : '#4a6f99',
+              color: Number(portfolio?.history.totalPnlLamports || 0) >= 0 ? '#00c805' : '#ff4d4d',
             }}>
               {((Number(portfolio?.history.totalPnlLamports || 0)) / 1e9).toFixed(4)} SOL
             </div>

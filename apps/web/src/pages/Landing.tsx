@@ -14,9 +14,7 @@ import * as api from '../lib/api';
    POST boot · live market wall · risk computer · spec plates
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Market wall — REAL SOL/USD candles, drawn phosphor-style ─ */
-const WSOL = 'So11111111111111111111111111111111111111112';
-
+/* ── Market wall — REAL ETH/USD candles on Robinhood Chain ──── */
 interface WallCandle { o: number; c: number; h: number; l: number }
 
 const MarketWall: FC = () => {
@@ -27,13 +25,12 @@ const MarketWall: FC = () => {
 
   useEffect(() => onThemeChange(() => setThemeTick((v) => v + 1)), []);
 
-  // Real 15-minute SOL/USD candles, last 24h, refreshed every 60s
+  // Real 15-minute ETH/USD candles, last 24h, refreshed every 60s
   useEffect(() => {
     let dead = false;
     const load = async () => {
       try {
-        const now = Math.floor(Date.now() / 1000);
-        const data = await api.getMarketPriceHistory(WSOL, '15m', now - 24 * 3600, now);
+        const data = await api.getReferenceHistory('15m');
         if (dead || data.length === 0) return;
         candlesRef.current = data.map((d) => ({ o: d.open, c: d.close, h: d.high, l: d.low }));
         const last = data[data.length - 1];
@@ -107,7 +104,7 @@ const MarketWall: FC = () => {
         candles.forEach((cd, i) => {
           const x = i * cw + cw / 2;
           const up = cd.c >= cd.o;
-          const col = up ? 'rgba(143, 208, 255, 0.20)' : 'rgba(74, 111, 153, 0.18)';
+          const col = up ? 'rgba(0, 200, 5, 0.20)' : 'rgba(255, 77, 77, 0.18)';
           ctx.strokeStyle = col;
           ctx.beginPath(); ctx.moveTo(x, yOf(cd.h)); ctx.lineTo(x, yOf(cd.l)); ctx.stroke();
           ctx.fillStyle = col;
@@ -156,7 +153,7 @@ const MarketWall: FC = () => {
       <div className="lp-feed-tag mono">
         {feedInfo ? (
           <>
-            <span className="lp-feed-dot" /> LIVE FEED · SOL/USD ·{' '}
+            <span className="lp-feed-dot" /> LIVE FEED · ETH/USD ·{' '}
             <b style={{ color: feedInfo.up ? 'var(--green)' : 'var(--red)' }}>
               ${feedInfo.price.toFixed(2)}
             </b>{' '}
@@ -204,11 +201,11 @@ const LiveStats: FC = () => {
     { k: 'MAX LEVERAGE', v: '10.0X' },
     {
       k: 'LENDING POOL',
-      v: stats ? `${lam(stats.poolSizeLamports).toFixed(2)}◎` : '—',
+      v: stats ? `${lam(stats.poolSizeLamports).toFixed(2)}Ξ` : '—',
     },
     {
-      k: 'SOL BURNED',
-      v: stats ? `${lam(stats.totalBurnedLamports).toFixed(2)}◎` : '—',
+      k: 'ETH BURNED',
+      v: stats ? `${lam(stats.totalBurnedLamports).toFixed(2)}Ξ` : '—',
     },
     {
       k: 'TRADES EXECUTED',
@@ -289,7 +286,7 @@ export const Landing: FC = () => {
           <Typewriter
             className="lp-sub"
             delay={1300}
-            text="Up to 10x on any Pump.fun token. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
+            text="Up to 10x on any Noxa token. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
           />
 
           <motion.div
@@ -320,7 +317,7 @@ export const Landing: FC = () => {
           {[0, 1].map((k) => (
             <div className="lp-marquee-seg" key={k} aria-hidden={k === 1}>
               <span>NO CEX</span><i>◆</i><span>PURE ON-CHAIN</span><i>◆</i><span>10X LEVERAGE</span><i>◆</i>
-              <span>REAL JUPITER SWAPS</span><i>◆</i><span>CREATORS GET PAID</span><i>◆</i><span>THE POOL NEVER LOSES</span><i>◆</i>
+              <span>Real Uniswap V3 swaps</span><i>◆</i><span>CREATORS GET PAID</span><i>◆</i><span>THE POOL NEVER LOSES</span><i>◆</i>
             </div>
           ))}
         </div>
@@ -347,9 +344,9 @@ export const Landing: FC = () => {
         </Reveal>
         <div className="lp-steps">
           {[
-            { n: '01', t: 'DEPOSIT', d: 'Sign in with email. A custodial Solana wallet is generated — no extension, no seed-phrase anxiety. Fund it with SOL.' },
-            { n: '02', t: 'PICK & SIZE', d: 'Choose any listed Pump.fun token. Set collateral and dial leverage 2–10x. The lending pool fronts the rest — instantly.' },
-            { n: '03', t: 'RIDE OR DIE', d: 'Position executes as a real Jupiter swap. Take profit, stop loss, or 24h auto-close. Profits split 70/30 with $SCALE buybacks.' },
+            { n: '01', t: 'DEPOSIT', d: 'Sign in with email. A custodial Robinhood Chain wallet is generated — no extension, no seed-phrase anxiety. Fund it with ETH.' },
+            { n: '02', t: 'PICK & SIZE', d: 'Choose any listed Noxa token. Set collateral and dial leverage 2–10x. The lending pool fronts the rest — instantly.' },
+            { n: '03', t: 'RIDE OR DIE', d: 'Position executes as a real Uniswap swap. Take profit, stop loss, or 24h auto-close. Profits split 70/30 with $SCALE buybacks.' },
           ].map((c, i) => (
             <Reveal delay={i * 0.1} key={c.n}>
               <div className="lp-step">
@@ -378,7 +375,7 @@ export const Landing: FC = () => {
               <span>CLASS</span><span>MAX LEV</span><span>LIQ. AT</span><span>DESCRIPTION</span>
             </div>
             {[
-              { name: 'BONDED', lev: '10X', liq: '-15%', desc: 'Graduated to Raydium. Deep liquidity, maximum send.', cls: 'lp-tier-bonded' },
+              { name: 'BONDED', lev: '10X', liq: '-15%', desc: 'Graduated on Noxa. Deep liquidity, maximum send.', cls: 'lp-tier-bonded' },
               { name: 'RISING', lev: '5X', liq: '-12%', desc: '$100K+ market cap and climbing. Balanced degen.', cls: 'lp-tier-rising' },
               { name: 'DEGEN', lev: '3X', liq: '-10%', desc: 'Fresh off the curve. Tight leash, pure adrenaline.', cls: 'lp-tier-degen' },
             ].map((t) => (

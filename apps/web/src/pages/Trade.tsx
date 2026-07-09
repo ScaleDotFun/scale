@@ -256,9 +256,9 @@ export const Trade: FC = () => {
   const getTimeLeft = (pos: any) => {
     const elapsed = nowTick - positionsFetchedAt.current;
     const ms = Math.max(0, (pos.timeRemainingMs ?? 0) - elapsed);
-    if (ms <= 0) return { text: 'Expired', color: '#4a6f99' };
+    if (ms <= 0) return { text: 'Expired', color: '#ff4d4d' };
     const hours = ms / 3600000;
-    const color = hours > 12 ? '#8fd0ff' : hours > 4 ? 'var(--primary-hover)' : '#4a6f99';
+    const color = hours > 12 ? '#00c805' : hours > 4 ? 'var(--primary-hover)' : '#ff4d4d';
     return { text: formatCountdown(ms), color };
   };
 
@@ -481,7 +481,7 @@ export const Trade: FC = () => {
                   {markPrice > 0 && (
                     <span style={{
                       fontSize: 11,
-                      color: '#8aa3bf',
+                      color: '#93a89a',
                       fontFamily: 'var(--font-mono)',
                     }}>
                       ${formatPrice(markPrice)}
@@ -503,15 +503,15 @@ export const Trade: FC = () => {
                 {tradingDisabled && (
                   <div style={{
                     padding: '14px 16px',
-                    background: 'rgba(74, 111, 153, 0.04)',
+                    background: 'rgba(255, 77, 77, 0.04)',
                     border: '1px solid rgba(255, 100, 50, 0.2)',
                     borderRadius: 0,
                     marginBottom: 4,
                   }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#a9d4ff', marginBottom: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#b8ff5e', marginBottom: 4 }}>
                       This token is not listed on Front.
                     </div>
-                    <div style={{ fontSize: 12, color: '#8aa3bf' }}>
+                    <div style={{ fontSize: 12, color: '#93a89a' }}>
                       Trading is not available for unlisted tokens.
                     </div>
                     <Link to="/list" style={{
@@ -527,7 +527,7 @@ export const Trade: FC = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <label className="exec-label">Collateral</label>
                     {walletBalance && (
-                      <span style={{ fontSize: 11, color: '#8aa3bf', fontFamily: 'var(--font-mono)' }}>
+                      <span style={{ fontSize: 11, color: '#93a89a', fontFamily: 'var(--font-mono)' }}>
                         Balance: <span style={{ color: 'var(--primary)' }}>{parseFloat(walletBalance).toFixed(4)}</span> SOL
                       </span>
                     )}
@@ -601,7 +601,7 @@ export const Trade: FC = () => {
                   <label className="exec-label">Take Profit / Stop Loss</label>
                   <div className="exec-tpsl-row">
                     <div className="exec-tpsl-input-wrap">
-                      <span className="exec-tpsl-icon" style={{ color: '#8fd0ff' }}>TP</span>
+                      <span className="exec-tpsl-icon" style={{ color: '#00c805' }}>TP</span>
                       <input
                         className="exec-tpsl-input"
                         type="number"
@@ -614,7 +614,7 @@ export const Trade: FC = () => {
                       <span className="exec-tpsl-unit">%</span>
                     </div>
                     <div className="exec-tpsl-input-wrap">
-                      <span className="exec-tpsl-icon" style={{ color: '#a9d4ff' }}>SL</span>
+                      <span className="exec-tpsl-icon" style={{ color: '#b8ff5e' }}>SL</span>
                       <input
                         className="exec-tpsl-input"
                         type="number"
@@ -629,8 +629,8 @@ export const Trade: FC = () => {
                   </div>
                   {(tpPrice > 0 || slPrice > 0) && (
                     <div className="exec-tpsl-prices">
-                      {tpPrice > 0 && <span style={{ color: '#8fd0ff', fontSize: 10 }}>TP: ${formatPrice(tpPrice)}</span>}
-                      {slPrice > 0 && <span style={{ color: '#a9d4ff', fontSize: 10 }}>SL: ${formatPrice(slPrice)}</span>}
+                      {tpPrice > 0 && <span style={{ color: '#00c805', fontSize: 10 }}>TP: ${formatPrice(tpPrice)}</span>}
+                      {slPrice > 0 && <span style={{ color: '#b8ff5e', fontSize: 10 }}>SL: ${formatPrice(slPrice)}</span>}
                     </div>
                   )}
                 </div>
@@ -645,7 +645,7 @@ export const Trade: FC = () => {
                     <div style={{ textAlign: 'right' }}>
                       <span className="mono">{positionSize.toFixed(3)} SOL</span>
                       {positionSizeUsd > 0 && (
-                        <span className="mono" style={{ color: '#52667d', fontSize: 10, marginLeft: 4 }}>
+                        <span className="mono" style={{ color: '#5c6b60', fontSize: 10, marginLeft: 4 }}>
                           (${positionSizeUsd.toFixed(2)})
                         </span>
                       )}
@@ -664,7 +664,7 @@ export const Trade: FC = () => {
                     <div style={{ textAlign: 'right' }}>
                       <span className="mono" style={{ color: 'var(--red)' }}>{exitThreshold.toFixed(1)}%</span>
                       {liqPrice > 0 && (
-                        <span className="mono" style={{ color: '#52667d', fontSize: 10, marginLeft: 4 }}>
+                        <span className="mono" style={{ color: '#5c6b60', fontSize: 10, marginLeft: 4 }}>
                           (${formatPrice(liqPrice)})
                         </span>
                       )}
@@ -712,8 +712,8 @@ export const Trade: FC = () => {
                     marginTop: 8,
                     padding: '10px 14px',
                     borderRadius: 0,
-                    background: 'rgba(74, 111, 153, 0.08)',
-                    border: '1px solid rgba(74, 111, 153, 0.2)',
+                    background: 'rgba(255, 77, 77, 0.08)',
+                    border: '1px solid rgba(255, 77, 77, 0.2)',
                     color: '#ff6b6b',
                     fontSize: '0.82rem',
                     lineHeight: 1.5,
@@ -735,11 +735,11 @@ export const Trade: FC = () => {
                   marginTop: 16,
                   padding: '14px 16px',
                   background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid #1a2636',
+                  border: '1px solid #1c261f',
                   borderRadius: 0,
                 }}>
                   <div style={{
-                    fontSize: 11, fontWeight: 700, color: '#8aa3bf',
+                    fontSize: 11, fontWeight: 700, color: '#93a89a',
                     textTransform: 'uppercase', letterSpacing: '0.5px',
                     marginBottom: 10,
                   }}>
@@ -751,7 +751,7 @@ export const Trade: FC = () => {
                     const entryNum = parseFloat(pos.entryPrice ?? '0');
                     const timeMs = pos.timeRemainingMs ?? 0;
                     const timeStr = timeMs <= 0 ? 'Expired' : formatCountdown(timeMs);
-                    const timeColor = timeMs <= 0 ? '#4a6f99' : timeMs > 12 * 3600000 ? '#8fd0ff' : timeMs > 4 * 3600000 ? 'var(--primary-hover)' : '#4a6f99';
+                    const timeColor = timeMs <= 0 ? '#ff4d4d' : timeMs > 12 * 3600000 ? '#00c805' : timeMs > 4 * 3600000 ? 'var(--primary-hover)' : '#ff4d4d';
 
                     return (
                       <div
@@ -765,7 +765,7 @@ export const Trade: FC = () => {
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: '#e8f0fa' }}>{pos.leverage}x</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: '#eef3ef' }}>{pos.leverage}x</span>
                             <span
                               className="mono"
                               style={{
@@ -782,9 +782,9 @@ export const Trade: FC = () => {
                               ({pnlSol >= 0 ? '+' : ''}{pnlSol.toFixed(4)} SOL)
                             </span>
                           </div>
-                          <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#52667d' }}>
-                            <span>Entry: <span className="mono" style={{ color: '#8aa3bf' }}>${formatPrice(entryNum)}</span></span>
-                            <span>Size: <span className="mono" style={{ color: '#8aa3bf' }}>{formatSol(pos.userCapital)}</span></span>
+                          <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#5c6b60' }}>
+                            <span>Entry: <span className="mono" style={{ color: '#93a89a' }}>${formatPrice(entryNum)}</span></span>
+                            <span>Size: <span className="mono" style={{ color: '#93a89a' }}>{formatSol(pos.userCapital)}</span></span>
                             <span style={{ color: timeColor }}>{timeStr}</span>
                           </div>
                         </div>
@@ -798,9 +798,9 @@ export const Trade: FC = () => {
                             borderRadius: 0,
                             border: 'none',
                             background: pnl >= 0
-                              ? 'linear-gradient(135deg, rgba(143, 208, 255,0.15), rgba(143, 208, 255,0.08))'
-                              : 'linear-gradient(135deg, rgba(74, 111, 153,0.15), rgba(74, 111, 153,0.08))',
-                            color: pnl >= 0 ? '#8fd0ff' : '#4a6f99',
+                              ? 'linear-gradient(135deg, rgba(0, 200, 5,0.15), rgba(0, 200, 5,0.08))'
+                              : 'linear-gradient(135deg, rgba(255, 77, 77,0.15), rgba(255, 77, 77,0.08))',
+                            color: pnl >= 0 ? '#00c805' : '#ff4d4d',
                             fontSize: 12,
                             fontWeight: 700,
                             cursor: isClosing === String(pos.id) ? 'wait' : 'pointer',
@@ -873,18 +873,18 @@ export const Trade: FC = () => {
                 </div>
                 <div className="confirm-row">
                   <span>Liquidation Price</span>
-                  <span className="mono" style={{ color: '#4a6f99' }}>{liqPrice > 0 ? `$${formatPrice(liqPrice)}` : '--'}</span>
+                  <span className="mono" style={{ color: '#ff4d4d' }}>{liqPrice > 0 ? `$${formatPrice(liqPrice)}` : '--'}</span>
                 </div>
                 {tpPrice > 0 && (
                   <div className="confirm-row">
                     <span>Take Profit</span>
-                    <span className="mono" style={{ color: '#8fd0ff' }}>${formatPrice(tpPrice)} (+{tpPct}%)</span>
+                    <span className="mono" style={{ color: '#00c805' }}>${formatPrice(tpPrice)} (+{tpPct}%)</span>
                   </div>
                 )}
                 {slPrice > 0 && (
                   <div className="confirm-row">
                     <span>Stop Loss</span>
-                    <span className="mono" style={{ color: '#a9d4ff' }}>${formatPrice(slPrice)} (-{slPct}%)</span>
+                    <span className="mono" style={{ color: '#b8ff5e' }}>${formatPrice(slPrice)} (-{slPct}%)</span>
                   </div>
                 )}
                 <div className="confirm-divider" />

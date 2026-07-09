@@ -7,7 +7,7 @@ export const Docs: FC = () => {
       <div className="docs-header">
         <h1>Scale Protocol Documentation</h1>
         <p className="docs-header-sub">
-          Leveraged memecoin trading on Solana. Backed by Pump.fun creator rewards. Permissionless token listing.
+          Leveraged memecoin trading on Robinhood Chain. Backed by Noxa creator rewards. Permissionless token listing.
         </p>
       </div>
 
@@ -29,12 +29,12 @@ export const Docs: FC = () => {
       <section id="overview" className="docs-section">
         <h2>Overview</h2>
         <p>
-          Scale Protocol enables leveraged spot trading on Pump.fun and Raydium-listed memecoins on Solana.
+          Scale Protocol enables leveraged spot trading on Noxa and Noxa-listed memecoins on Robinhood Chain.
           Traders deposit SOL as collateral, and the protocol supplies the remaining capital from a shared lending pool
-          to open a larger position. Trades are executed as real spot buys on-chain via Jupiter aggregator — not synthetic perpetuals.
+          to open a larger position. Trades are executed as real spot buys on-chain via Uniswap V3 — not synthetic perpetuals.
         </p>
         <p>
-          The lending pool is funded by Pump.fun creator rewards. Token creators who redirect 100% of their creator
+          The lending pool is funded by Noxa creator rewards. Token creators who redirect 100% of their creator
           reward allocation to the protocol wallet get their token automatically listed for leveraged trading.
           This creates a self-sustaining cycle: creator rewards fund the pool, the pool enables leveraged trades,
           trade fees generate revenue for creators, the protocol, and $SCALE token holders.
@@ -56,7 +56,7 @@ export const Docs: FC = () => {
         <h3>1. Select a Token</h3>
         <p>
           Browse listed tokens on the Explore page or the Pulse feed sidebar. Only tokens whose creators have redirected
-          their Pump.fun creator rewards to the protocol wallet are available for trading. This requirement ensures
+          their Noxa creator rewards to the protocol wallet are available for trading. This requirement ensures
           continuous capital inflow to the lending pool.
         </p>
 
@@ -70,7 +70,7 @@ export const Docs: FC = () => {
           <p>
             You deposit <span className="mono">0.5 SOL</span> at <span className="mono">5x</span> leverage.
             The protocol supplies <span className="mono">2.0 SOL</span> from the lending pool.
-            A real spot buy of <span className="mono">2.5 SOL</span> worth of tokens is executed on-chain via Jupiter.
+            A real spot buy of <span className="mono">2.5 SOL</span> worth of tokens is executed on-chain via Uniswap.
             You pay a flat fee of <span className="mono">0.5%</span> (0.0125 SOL) on the total position size.
           </p>
         </div>
@@ -78,7 +78,7 @@ export const Docs: FC = () => {
         <h3>3. Profit Scenario</h3>
         <p>
           If the token price increases, you can close the position manually at any time or let it auto-close after 24 hours.
-          The tokens are sold back to SOL via Jupiter. The protocol recovers its capital (2.0 SOL) first. Of the remaining profit:
+          The tokens are sold back to SOL via Uniswap. The protocol recovers its capital (2.0 SOL) first. Of the remaining profit:
         </p>
         <ul className="docs-list">
           <li><strong>70%</strong> is returned to you as SOL immediately</li>
@@ -125,7 +125,7 @@ export const Docs: FC = () => {
                 <td className="mono">7x</td>
                 <td className="mono">2%</td>
                 <td className="mono">-15%</td>
-                <td>Graduated to Raydium, $1M+ market cap, $50K+ liquidity</td>
+                <td>Graduated on Noxa, $1M+ market cap, $50K+ liquidity</td>
               </tr>
               <tr>
                 <td><span className="badge badge-rising">Rising</span></td>
@@ -139,7 +139,7 @@ export const Docs: FC = () => {
                 <td className="mono">3x</td>
                 <td className="mono">5%</td>
                 <td className="mono">-10%</td>
-                <td>Any Pump.fun token with $5K+ liquidity</td>
+                <td>Any Noxa token with $5K+ liquidity</td>
               </tr>
             </tbody>
           </table>
@@ -160,7 +160,7 @@ export const Docs: FC = () => {
 
         <h3>Auto-Close Thresholds</h3>
         <p>
-          The price monitor service polls live prices every 5 seconds via the Jupiter Price API.
+          The price monitor service polls live prices every 5 seconds via the Uniswap Price API.
           When a position's unrealized loss reaches the tier-specific threshold, the system
           automatically sells the tokens and recovers the protocol's capital. A 5% safety buffer
           above the mathematical break-even point ensures full recovery even with swap slippage.
@@ -204,7 +204,7 @@ export const Docs: FC = () => {
             <div>
               <h4>Configure Creator Rewards</h4>
               <p>
-                In your Pump.fun token settings, set the fee-sharing allocation to direct 100% of creator
+                In your Noxa token settings, set the fee-sharing allocation to direct 100% of creator
                 rewards to the Scale Protocol wallet address.
               </p>
             </div>

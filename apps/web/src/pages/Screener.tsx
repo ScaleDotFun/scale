@@ -4,7 +4,7 @@ import * as api from '../lib/api';
 import { blip } from '../lib/sfx';
 
 /* ═══════════════════════════════════════════════════════════════
-   SCREENER — live Solana market wall. Real Birdeye trending data
+   SCREENER — live Robinhood Chain market wall. Real Birdeye trending data
    through the protocol proxy, refreshed every 30s. Keyboard-first:
    j/k or ↑/↓ to move, enter to open the trade terminal, s to
    cycle sort. LISTED = tradeable with leverage on SCALE.
@@ -129,7 +129,7 @@ export const Screener: FC = () => {
         <div>
           <h2>MARKET SCREENER</h2>
           <p className="scr-sub">
-            Trending memecoins — live DexScreener feed · refreshes every 30s ·{' '}
+            Trending memecoins — live Robinhood Chain feed (GeckoTerminal) · refreshes every 30s ·{' '}
             <span className="text-primary">j/k</span> move · <span className="text-primary">↵</span> trade ·{' '}
             <span className="text-primary">s</span> sort
           </p>
