@@ -86,23 +86,62 @@ export const ListToken: FC = () => {
     }
   };
 
+  const shotFrame = {
+    border: '1px solid var(--border)',
+    background: 'var(--bg-1)',
+    padding: 6,
+  } as const;
+  const shotImg = { width: '100%', display: 'block' } as const;
+  const stepHead = {
+    fontSize: '0.78rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  } as const;
+
   return (
-    <div className="fade-in" style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="fade-in" style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
         <h2 style={{ marginBottom: 4 }}>List Your Token</h2>
         <p className="text-muted" style={{ fontSize: '0.93rem', margin: 0 }}>
-          Redirect your Noxa creator fees (fun.noxa.fi) to the Scale Protocol wallet, then paste your token address below. Tier, name, and logo are auto-detected.
+          Launch on Noxa, point the fee wallet at the SCALE pool, paste your address —
+          the fee redirect is verified <b>instantly on-chain</b> against Noxa's own FeeRouter contract.
+          No fees routed, no listing. Tier, name, and logo are auto-detected.
         </p>
       </div>
 
-      {/* Protocol Wallet */}
+      {/* Step 1 — Launch on Noxa */}
       <div className="card" style={{ padding: '16px 20px' }}>
-        <span className="text-muted" style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Step 1 — Redirect Noxa Creator Fees to This Wallet
+        <span className="text-muted" style={stepHead}>
+          Step 1 — Launch on Noxa (fun.noxa.fi/robinhood/launch)
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
-          <code className="mono" style={{ fontSize: '0.86rem', color: 'var(--text-0)', flex: 1, wordBreak: 'break-all' }}>
-            {protocolWallet ?? 'Pool wallet not configured yet — listing opens at launch'}
+        <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
+          Uniswap + WETH is the default config — one transaction, liquidity locked, 0.0005 ETH launch fee.
+        </p>
+        <div style={shotFrame}>
+          <img src="/guide/noxa-launch.png" alt="Noxa launch form on fun.noxa.fi — DEX and pair token selection, logo, name and symbol fields" style={shotImg} loading="lazy" />
+        </div>
+      </div>
+
+      {/* Step 2 — Fee wallet */}
+      <div className="card" style={{ padding: '16px 20px' }}>
+        <span className="text-muted" style={stepHead}>
+          Step 2 — Set CUSTOM FEE WALLET to the SCALE pool
+        </span>
+        <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
+          In <b>ADVANCED SETTINGS</b> on the launch form, paste the pool wallet below into{' '}
+          <b>CUSTOM FEE WALLET</b> — that's the address that "will receive trading fees".
+          Already launched? Open your token on Noxa → <b>Manage</b> and set the fee receiver there
+          (same on-chain effect).
+        </p>
+        <div style={shotFrame}>
+          <img src="/guide/noxa-feewallet.png" alt="Noxa advanced settings — CUSTOM FEE WALLET input where the SCALE pool wallet address goes" style={shotImg} loading="lazy" />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, padding: '10px 12px', border: '1px solid var(--border-hover)', background: 'var(--bg-2)' }}>
+          <span className="text-muted" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.5px', flexShrink: 0 }}>
+            Pool wallet
+          </span>
+          <code className="mono" style={{ fontSize: '0.86rem', color: 'var(--primary)', flex: 1, wordBreak: 'break-all' }}>
+            {protocolWallet ?? 'Not configured yet — listing opens at launch'}
           </code>
           {protocolWallet && (
             <button className="btn btn-outline btn-sm" onClick={handleCopy} type="button">
@@ -112,11 +151,11 @@ export const ListToken: FC = () => {
         </div>
       </div>
 
-      {/* Listing Form */}
+      {/* Step 3 — Listing Form */}
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
           <label style={{ fontSize: '0.82rem', color: 'var(--text-1)', marginBottom: 6, display: 'block' }}>
-            Step 2 — Paste Token Contract Address
+            Step 3 — Paste Token Contract Address
           </label>
           <input
             type="text"
@@ -168,10 +207,10 @@ export const ListToken: FC = () => {
       {/* Steps */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
-          { title: 'Redirect Creator Rewards', desc: 'On Pump.fun, redirect your token\'s creator rewards to the Scale Protocol wallet above. This funds the capital pool for leveraged trading.' },
-          { title: 'Paste Token Address', desc: 'Paste your token contract address above. Front auto-detects your token\'s name, symbol, logo, and risk tier based on market cap.' },
-          { title: 'On-Chain Verification', desc: 'Front verifies on-chain that your creator fee wallet is redirected to the protocol. Tokens without valid fee redirects are rejected.' },
-          { title: 'Live on Front', desc: 'Your token appears on the Explore page. Traders can take leveraged positions, driving volume and attention to your token.' },
+          { title: 'Route Your Noxa Fees', desc: 'On Noxa, set the fee wallet (at launch, or later via Manage) to the SCALE pool wallet above. Those trading fees fund the capital pool for leveraged trading.' },
+          { title: 'Paste Token Address', desc: 'Paste your token contract address above. SCALE auto-detects your token\'s name, symbol, logo, and risk tier based on market cap.' },
+          { title: 'On-Chain Verification', desc: 'SCALE reads Noxa\'s FeeRouter contract on Robinhood Chain and verifies your fees genuinely route to the pool — instantly. Faked or missing redirects are rejected with the exact reason; a redirect removed later gets the listing deactivated within minutes.' },
+          { title: 'Live on SCALE', desc: 'Your token appears on the Explorer. Traders take leveraged positions with real Uniswap V3 swaps, driving volume and attention to your token.' },
         ].map((step, i) => (
           <div key={i} style={stepStyle}>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>

@@ -49,6 +49,16 @@ export const CONTRACTS = {
 /** Noxa launches pools at the 1% fee tier. */
 export const NOXA_FEE_TIER = 10_000;
 
+// ── Noxa launchpad contracts (Robinhood Chain) ───────────────
+// Extracted from Noxa's own frontend chain config and verified live
+// on-chain (getLaunchedToken/feeRouting reads succeed for real
+// launches like CASHCAT and return exists:false for non-Noxa tokens).
+export const NOXA = {
+  LAUNCH_FACTORY: '0xD9eC2db5f3D1b236843925949fe5bd8a3836FCcB' as Address,
+  LAUNCH_LOCKER: '0x7F03effbd7ceB22A3f80Dd468f67eF27826acD85' as Address,
+  FEE_ROUTER: '0x9eFdC1A8e6E94f16A228e44f3025E1f346EE0417' as Address,
+} as const;
+
 export const explorerTxUrl = (hash: string) =>
   `https://robinhoodchain.blockscout.com/tx/${hash}`;
 export const explorerAddressUrl = (addr: string) =>
@@ -321,4 +331,111 @@ export async function swapTokenForEth(
   }
 
   return { txHash: swapHash, amountOut: got };
+}
+
+// ── Noxa launchpad reads (fee-redirect verification) ─────────
+const noxaFactoryAbi = parseAbi([
+  'struct LaunchedToken { address token; address deployer; address pairedToken; address positionManager; uint256 positionId; uint256 dexId; uint256 launchConfigId; uint256 restrictionsEndBlock; uint256 supply; bool isToken0; uint24 poolFee; bool exists; uint256 initialBuyAmount; }',
+  'function getLaunchedToken(address token) view returns (LaunchedToken)',
+]);
+
+const noxaFeeRouterAbi = parseAbi([
+  'function feeRouting(address token) view returns ((uint256 protocolShare, address[] receivers, uint8[] percents, bool overridden) routing)',
+]);
+
+export interface NoxaLaunch {
+  exists: boolean;
+  deployer: string;
+  poolFee: number;
+  positionId: bigint;
+}
+
+/** Launch record from Noxa's factory — exists:false for non-Noxa tokens. */
+export async function noxaLaunchedToken(token: string): Promise<NoxaLaunch> {
+  const r = await getPublicClient().readContract({
+    address: NOXA.LAUNCH_FACTORY, abi: noxaFactoryAbi,
+    functionName: 'getLaunchedToken', args: [token as Address],
+  });
+  return { exists: r.exists, deployer: r.deployer, poolFee: r.poolFee, positionId: r.positionId };
+}
+
+export interface NoxaFeeRouting {
+  protocolShare: bigint;
+  receivers: string[];
+  percents: number[];
+  /** false + zero-address receiver = creator never configured routing */
+  overridden: boolean;
+}
+
+/** Effective creator-fee routing for a token, straight from Noxa's FeeRouter. */
+export async function noxaFeeRouting(token: string): Promise<NoxaFeeRouting> {
+  const r = await getPublicClient().readContract({
+    address: NOXA.FEE_ROUTER, abi: noxaFeeRouterAbi,
+    functionName: 'feeRouting', args: [token as Address],
+  });
+  return {
+    protocolShare: r.protocolShare,
+    receivers: [...r.receivers],
+    percents: [...r.percents],
+    overridden: r.overridden,
+  };
+}
+
+export type NoxaVerifyStatus =
+  | 'verified'          // wallet receives ≥ minPct of the creator fee share
+  | 'partial'           // wallet is a receiver but below minPct
+  | 'not_redirected'    // routing exists but wallet isn't a receiver
+  | 'not_configured'    // creator never set fee routing
+  | 'not_noxa_token';   // token wasn't launched via Noxa
+
+export interface NoxaVerifyResult {
+  status: NoxaVerifyStatus;
+  /** percent of the creator fee share routed to `wallet` (0-100) */
+  walletPct: number;
+  /** current receivers with their percents, for actionable errors */
+  receivers: Array<{ address: string; pct: number }>;
+  deployer: string | null;
+}
+
+/**
+ * The real anti-fake gate: verifies on-chain that `token` is a genuine
+ * Noxa launch AND that its creator-fee routing sends at least `minPct`
+ * percent of the creator share to `wallet`. Reads Noxa's own contracts —
+ * nothing self-reported, nothing faked.
+ */
+export async function verifyNoxaFeeRedirect(
+  token: string,
+  wallet: string,
+  minPct = 51,
+): Promise<NoxaVerifyResult> {
+  const launch = await noxaLaunchedToken(token);
+  if (!launch.exists) {
+    return { status: 'not_noxa_token', walletPct: 0, receivers: [], deployer: null };
+  }
+
+  const routing = await noxaFeeRouting(token);
+  const receivers = routing.receivers.map((address, i) => ({
+    address,
+    pct: routing.percents[i] ?? 0,
+  }));
+
+  const zero = '0x0000000000000000000000000000000000000000';
+  const configured = routing.overridden ||
+    receivers.some((r) => r.address.toLowerCase() !== zero);
+  if (!configured) {
+    return { status: 'not_configured', walletPct: 0, receivers: [], deployer: launch.deployer };
+  }
+
+  const walletPct = receivers
+    .filter((r) => r.address.toLowerCase() === wallet.toLowerCase())
+    .reduce((sum, r) => sum + r.pct, 0);
+
+  const real = receivers.filter((r) => r.address.toLowerCase() !== zero);
+  if (walletPct >= minPct) {
+    return { status: 'verified', walletPct, receivers: real, deployer: launch.deployer };
+  }
+  if (walletPct > 0) {
+    return { status: 'partial', walletPct, receivers: real, deployer: launch.deployer };
+  }
+  return { status: 'not_redirected', walletPct: 0, receivers: real, deployer: launch.deployer };
 }

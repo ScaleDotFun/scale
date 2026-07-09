@@ -2,28 +2,36 @@
 // SCALE PROTOCOL — Listing Scanner Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// On Solana this decoded pump.fun fee-sharing configs on-chain to
-// auto-list tokens. Noxa (fun.noxa.fi) doesn't publish its fee-config
-// contracts yet, so automatic fee-redirect verification isn't possible
-// on Robinhood Chain — we don't pretend otherwise.
-//
-// What runs today:
-//   • checkAndListToken(mint): verifies the token is a real ERC-20 on
-//     Robinhood Chain with a live Uniswap V3 pool (GeckoTerminal), and
-//     lists it if it's on the manually-verified allowlist
-//     (SCALE_VERIFIED_TOKENS env) — same gate the API uses.
-//   • Periodic scan: sweeps the allowlist so newly-added env entries
-//     get listed without a manual API call.
+// Verifies Noxa creator-fee redirects ON-CHAIN via Noxa's own
+// FeeRouter + LaunchFactory (same gate the API /tokens/list uses):
+//   • checkAndListToken(mint): lists a token when feeRouting routes
+//     ≥ the minimum share to the SCALE pool wallet (or when it's on
+//     the SCALE_VERIFIED_TOKENS admin allowlist).
+//   • Periodic scan: re-verifies every ACTIVE token and deactivates
+//     any whose creator later re-routed fees away from the pool —
+//     nobody keeps leverage listings without paying for them.
 //
 
 import { Worker, type Job } from 'bullmq';
 import { prisma } from '@front-protocol/database';
 import { determineTier } from '@front-protocol/core';
-import { erc20TotalSupply } from '@front-protocol/evm';
+import {
+  erc20TotalSupply,
+  verifyNoxaFeeRedirect,
+  hasEvmProtocolKey,
+  getProtocolAccount,
+} from '@front-protocol/evm';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[listing-scanner]';
 const PROTOCOL_WALLET = (process.env.PROTOCOL_WALLET || '').trim();
+
+function poolWalletAddress(): string {
+  if (hasEvmProtocolKey()) return getProtocolAccount().address;
+  return PROTOCOL_WALLET;
+}
+
+const MIN_FEE_SHARE_PCT = Math.min(100, Math.max(1, Number(process.env.SCALE_MIN_FEE_SHARE_PCT) || 51));
 
 const GT = 'https://api.geckoterminal.com/api/v2';
 const GT_NETWORK = 'robinhood';
@@ -42,9 +50,8 @@ interface ListingScanJobData {
 }
 
 /**
- * Verify a token exists on Robinhood Chain + fetch metadata from
- * GeckoTerminal. Fee-redirect verification is the env allowlist —
- * Noxa exposes no programmatic check yet.
+ * List (or reactivate) a token after verifying its Noxa fee redirect
+ * ON-CHAIN — same gate as POST /tokens/list. Metadata from GeckoTerminal.
  */
 async function checkAndListToken(mint: string): Promise<boolean> {
   const addr = mint.toLowerCase();
@@ -53,19 +60,34 @@ async function checkAndListToken(mint: string): Promise<boolean> {
     return false;
   }
 
+  // Real on-chain verification via Noxa's contracts; the env allowlist
+  // remains as an admin escape hatch for edge cases.
+  let deployer: string | null = null;
+  if (!verifiedTokens().includes(addr)) {
+    const pool = poolWalletAddress();
+    if (!pool) return false;
+    try {
+      const check = await verifyNoxaFeeRedirect(addr, pool, MIN_FEE_SHARE_PCT);
+      if (check.status !== 'verified') {
+        console.log(`${PREFIX} ${addr} fee redirect ${check.status} (${check.walletPct}%) — skipping`);
+        return false;
+      }
+      deployer = check.deployer;
+    } catch (err) {
+      console.warn(`${PREFIX} ${addr} verification read failed:`, err instanceof Error ? err.message : err);
+      return false;
+    }
+  }
+
   const existing = await prisma.token.findUnique({ where: { address: addr } });
   if (existing) {
     if (!existing.isActive) {
+      // verification above already passed — safe to reactivate
       await prisma.token.update({ where: { id: existing.id }, data: { isActive: true } });
-      console.log(`${PREFIX} Reactivated ${existing.symbol ?? addr}`);
+      console.log(`${PREFIX} Reactivated ${existing.symbol ?? addr} (fee redirect re-verified)`);
       return true;
     }
     return false; // already listed and active
-  }
-
-  if (!verifiedTokens().includes(addr)) {
-    console.log(`${PREFIX} ${addr} not on the verified allowlist — skipping`);
-    return false;
   }
 
   // Must be a real ERC-20 on Robinhood Chain
@@ -112,7 +134,7 @@ async function checkAndListToken(mint: string): Promise<boolean> {
       name,
       symbol,
       imageUri,
-      creatorWallet: PROTOCOL_WALLET || addr, // creator unknown until Noxa exposes it
+      creatorWallet: deployer ?? PROTOCOL_WALLET ?? addr, // real Noxa deployer when verified
       tier: tierConfig.tier,
       isActive: true,
       isAutoListed: true,
@@ -126,7 +148,10 @@ async function checkAndListToken(mint: string): Promise<boolean> {
 }
 
 /**
- * Periodic scan: sweep the verified allowlist for anything not yet listed.
+ * Periodic scan:
+ *   1. Sweep the admin allowlist for anything not yet listed.
+ *   2. RE-VERIFY every active listing's fee redirect on-chain and
+ *      deactivate tokens whose creator re-routed fees away.
  */
 async function processScan(job: Job<ListingScanJobData>): Promise<void> {
   if (job.data.mint) {
@@ -134,13 +159,9 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
     return;
   }
 
-  const allow = verifiedTokens();
-  if (allow.length === 0) {
-    return; // nothing verified yet — quiet no-op
-  }
-
+  // 1. allowlist sweep
   let listed = 0;
-  for (const addr of allow) {
+  for (const addr of verifiedTokens()) {
     try {
       if (await checkAndListToken(addr)) listed++;
     } catch (err) {
@@ -148,6 +169,31 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
     }
   }
   if (listed > 0) console.log(`${PREFIX} Scan complete — ${listed} new listing(s)`);
+
+  // 2. re-verify active listings
+  const pool = poolWalletAddress();
+  if (!pool) return;
+  const allow = new Set(verifiedTokens());
+  const SCALE_MINT = (process.env.FRONT_TOKEN_MINT || '').toLowerCase();
+  const active = await prisma.token.findMany({ where: { isActive: true } });
+
+  for (const token of active) {
+    const addr = token.address.toLowerCase();
+    if (addr === SCALE_MINT || allow.has(addr)) continue; // exempt
+    try {
+      const check = await verifyNoxaFeeRedirect(addr, pool, MIN_FEE_SHARE_PCT);
+      if (check.status !== 'verified') {
+        await prisma.token.update({ where: { id: token.id }, data: { isActive: false } });
+        console.warn(
+          `${PREFIX} ⛔ Deactivated ${token.symbol ?? addr} — fee redirect now ${check.status} ` +
+          `(${check.walletPct}% to pool, receivers: ${check.receivers.map((r) => `${r.address}:${r.pct}%`).join(',') || 'none'})`,
+        );
+      }
+    } catch (err) {
+      // chain read hiccup — keep the listing, retry next sweep
+      console.warn(`${PREFIX} re-verify failed for ${addr}:`, err instanceof Error ? err.message : err);
+    }
+  }
 }
 
 // ──────────────────────────────────────────────

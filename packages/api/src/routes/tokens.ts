@@ -1,18 +1,31 @@
 import { Router } from 'express';
 import { prisma } from '@front-protocol/database';
 import { getTierConfig, determineTier, type Tier } from '@front-protocol/core';
-import { erc20TotalSupply } from '@front-protocol/evm';
+import {
+  erc20TotalSupply,
+  verifyNoxaFeeRedirect,
+  hasEvmProtocolKey,
+  getProtocolAccount,
+} from '@front-protocol/evm';
 import { fetchToken as gtFetchToken } from '../lib/geckoterminal';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
 import { ValidationError, NotFoundError } from '../lib/errors';
 
-const PROTOCOL_WALLET = (process.env.PROTOCOL_WALLET || '').trim();
+/** The wallet Noxa creator fees must route to — the live pool wallet
+ *  when the EVM key is installed, else the configured public address.
+ *  Read at call time so env changes and tests behave predictably. */
+export function poolWalletAddress(): string {
+  if (hasEvmProtocolKey()) return getProtocolAccount().address;
+  return (process.env.PROTOCOL_WALLET || '').trim();
+}
 
-/** Tokens whose Noxa creator-fee redirect to the protocol wallet has been
- *  verified manually (comma-separated env). Noxa doesn't expose a public
- *  fee-config read yet, so we don't pretend to verify it on-chain. */
+/** Minimum percent of the creator fee share that must route to the
+ *  pool wallet for a listing to verify (creators normally set 100). */
+const MIN_FEE_SHARE_PCT = Math.min(100, Math.max(1, Number(process.env.SCALE_MIN_FEE_SHARE_PCT) || 51));
+
+/** Admin escape hatch for edge cases (comma-separated addresses). */
 const VERIFIED_FEE_TOKENS = new Set(
   (process.env.SCALE_VERIFIED_TOKENS ?? '')
     .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
@@ -318,21 +331,64 @@ router.post('/list', async (req, res) => {
       );
     }
 
-    // ── Fee verification ──
-    // Skip verification for the protocol's own $SCALE token.
+    // ── Fee verification — REAL, on Noxa's own contracts ──
+    // getLaunchedToken proves the token is a genuine Noxa launch;
+    // feeRouting proves where the creator fees actually go. Nothing
+    // self-reported: a faked claim simply fails these reads.
     const SCALE_MINT = (process.env.FRONT_TOKEN_MINT || '').toLowerCase();
     const addrLower = tokenAddress.toLowerCase();
+    const poolWallet = poolWalletAddress();
     let feeVerified =
       (addrLower === SCALE_MINT && SCALE_MINT.length > 0) ||
       VERIFIED_FEE_TOKENS.has(addrLower);
+    let creatorWallet: string | null = null;
 
     if (!feeVerified) {
-      throw new ValidationError(
-        'Creator-fee redirect not verified yet. On Noxa (fun.noxa.fi), redirect your ' +
-        "token's creator fees to the protocol wallet" +
-        (PROTOCOL_WALLET ? `: ${PROTOCOL_WALLET}` : '') +
-        ', then contact the team to activate listing. Automatic verification is coming.',
-      );
+      if (!poolWallet) {
+        throw new ValidationError('Listing is not open yet — protocol pool wallet not configured.');
+      }
+      const manageUrl = `https://fun.noxa.fi/robinhood/token/${tokenAddress}/manage`;
+      let check;
+      try {
+        check = await verifyNoxaFeeRedirect(tokenAddress, poolWallet, MIN_FEE_SHARE_PCT);
+      } catch (err) {
+        console.error('[tokens] Noxa verification read failed:', err);
+        throw new ValidationError(
+          'Could not reach Robinhood Chain to verify the fee redirect — try again in a minute.',
+        );
+      }
+
+      switch (check.status) {
+        case 'verified':
+          feeVerified = true;
+          creatorWallet = check.deployer;
+          console.log(
+            `[tokens] ✅ Noxa fee redirect verified for ${tokenAddress}: ${check.walletPct}% → ${poolWallet}`,
+          );
+          break;
+        case 'not_noxa_token':
+          throw new ValidationError(
+            'This token was not launched via Noxa on Robinhood Chain — only Noxa launches ' +
+            'can redirect creator fees to SCALE. Launch at fun.noxa.fi/robinhood/launch.',
+          );
+        case 'not_configured':
+          throw new ValidationError(
+            'Fee redirect not set yet. Open your token on Noxa → Manage → Fee Receivers, ' +
+            `set the receiver to ${poolWallet} (100%), save the on-chain transaction, ` +
+            `then list again — verification is instant. (${manageUrl})`,
+          );
+        case 'not_redirected':
+          throw new ValidationError(
+            `Creator fees currently route to ${check.receivers.map((r) => `${r.address} (${r.pct}%)`).join(', ')} — ` +
+            `not the SCALE pool wallet. On Noxa → Manage → Fee Receivers, set ${poolWallet} ` +
+            `to at least ${MIN_FEE_SHARE_PCT}% and try again. (${manageUrl})`,
+          );
+        case 'partial':
+          throw new ValidationError(
+            `Only ${check.walletPct}% of creator fees route to the SCALE pool wallet — ` +
+            `${MIN_FEE_SHARE_PCT}% minimum required. Raise it on Noxa → Manage → Fee Receivers. (${manageUrl})`,
+          );
+      }
     }
 
     // ── Metadata + tier from GeckoTerminal (Robinhood Chain) ──
@@ -368,7 +424,7 @@ router.post('/list', async (req, res) => {
         name: resolvedName,
         symbol: resolvedSymbol,
         imageUri: resolvedImage,
-        creatorWallet: PROTOCOL_WALLET,
+        creatorWallet: creatorWallet ?? poolWalletAddress(),
         tier: resolvedTier,
         isActive: true,
       },

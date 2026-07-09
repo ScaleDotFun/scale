@@ -83,6 +83,16 @@ vi.mock('@front-protocol/evm', () => ({
   erc20TotalSupply: vi.fn(() => Promise.resolve(0n)),
   swapEthForToken: vi.fn(() => Promise.resolve({ txHash: '0xmock-tx', amountOut: 0n })),
   swapTokenForEth: vi.fn(() => Promise.resolve({ txHash: '0xmock-tx', amountOut: 0n })),
+  NOXA: {
+    LAUNCH_FACTORY: '0xD9eC2db5f3D1b236843925949fe5bd8a3836FCcB',
+    LAUNCH_LOCKER: '0x7F03effbd7ceB22A3f80Dd468f67eF27826acD85',
+    FEE_ROUTER: '0x9eFdC1A8e6E94f16A228e44f3025E1f346EE0417',
+  },
+  noxaLaunchedToken: vi.fn(() => Promise.resolve({ exists: false, deployer: '0x0', poolFee: 10000, positionId: 0n })),
+  noxaFeeRouting: vi.fn(() => Promise.resolve({ protocolShare: 65n, receivers: [], percents: [], overridden: false })),
+  verifyNoxaFeeRedirect: vi.fn(() => Promise.resolve({
+    status: 'not_noxa_token', walletPct: 0, receivers: [], deployer: null,
+  })),
   encryptPrivateKey: vi.fn(() => 'iv:tag:cipher'),
   decryptPrivateKey: vi.fn(() => '0x' + '11'.repeat(32)),
 }));
@@ -97,10 +107,13 @@ vi.mock('@front-protocol/core', () => ({
   LAMPORTS_PER_SOL: BigInt(1_000_000_000),
   getTierConfig: vi.fn(() => ({
     name: 'Bronze',
+    label: 'DEGEN',
     minBurned: 0,
     feePercent: 1,
     leverageCap: 10,
+    maxLeverage: 5,
   })),
+  determineTier: vi.fn(() => ({ tier: 'degen', label: 'DEGEN', maxLeverage: 5 })),
   validatePositionOpen: vi.fn(() => ({ valid: true })),
   validatePositionSafety: vi.fn(() => ({ safe: true })),
   generatePositionPreview: vi.fn(() => ({})),
