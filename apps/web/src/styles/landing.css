@@ -17,7 +17,7 @@
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: #030302;
+  background: #030406;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -73,7 +73,7 @@
   justify-content: space-between;
   padding: 0 22px;
   height: 52px;
-  background: rgba(6, 6, 5, 0.92);
+  background: rgba(5, 7, 10, 0.92);
   border-bottom: 1px solid var(--panel-border);
   backdrop-filter: blur(8px);
 }
@@ -150,7 +150,7 @@
   gap: 9px;
   padding: 5px 12px;
   border: 1px solid rgba(var(--primary-rgb), 0.3);
-  background: rgba(6, 6, 5, 0.7);
+  background: rgba(5, 7, 10, 0.7);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.26em;
@@ -193,7 +193,7 @@
   color: var(--text-1);
   margin-bottom: 36px;
   min-height: 72px;
-  background: rgba(6, 6, 5, 0.55);
+  background: rgba(5, 7, 10, 0.55);
 }
 
 .lp-cta-row {
@@ -236,7 +236,7 @@
   letter-spacing: 0.12em;
   color: var(--text-1);
   border: 1px dashed var(--border-hover);
-  background: rgba(6, 6, 5, 0.55);
+  background: rgba(5, 7, 10, 0.55);
   transition: all var(--transition-fast);
 }
 
@@ -249,7 +249,7 @@
   display: flex;
   gap: 0;
   border: 1px solid var(--panel-border);
-  background: rgba(6, 6, 5, 0.82);
+  background: rgba(5, 7, 10, 0.82);
   width: fit-content;
   max-width: 100%;
   flex-wrap: wrap;
@@ -432,7 +432,7 @@
   cursor: grab;
 }
 
-.pg-slider-move { background: linear-gradient(to right, rgba(255,77,77,0.5), var(--bg-4) 33%, rgba(61,255,158,0.5)); }
+.pg-slider-move { background: linear-gradient(to right, rgba(74, 111, 153,0.5), var(--bg-4) 33%, rgba(143, 208, 255,0.5)); }
 
 .pg-out {
   display: flex;
@@ -491,9 +491,9 @@
 }
 
 .pg-win {
-  border-color: rgba(61, 255, 158, 0.4);
-  background: rgba(61, 255, 158, 0.05);
-  box-shadow: 0 0 30px rgba(61, 255, 158, 0.08) inset;
+  border-color: rgba(143, 208, 255, 0.4);
+  background: rgba(143, 208, 255, 0.05);
+  box-shadow: 0 0 30px rgba(143, 208, 255, 0.08) inset;
 }
 
 .pg-loss {
@@ -502,23 +502,23 @@
 }
 
 .pg-rekt {
-  border-color: rgba(255, 77, 77, 0.5);
-  background: rgba(255, 77, 77, 0.06);
-  box-shadow: 0 0 40px rgba(255, 77, 77, 0.12) inset;
+  border-color: rgba(74, 111, 153, 0.5);
+  background: rgba(74, 111, 153, 0.06);
+  box-shadow: 0 0 40px rgba(74, 111, 153, 0.12) inset;
   animation: rektFlash 0.35s steps(2) 2;
 }
 
 @keyframes rektFlash {
-  50% { background: rgba(255, 77, 77, 0.18); }
+  50% { background: rgba(74, 111, 153, 0.18); }
 }
 
 .pg-result-label { font-size: 9px; font-weight: 800; letter-spacing: 0.3em; color: var(--text-2); }
 .pg-rekt .pg-result-label { color: var(--red); }
 
 .pg-result-num { font-size: 2rem; font-weight: 800; }
-.pg-win .pg-result-num { color: var(--green); text-shadow: 0 0 18px rgba(61, 255, 158, 0.4); }
+.pg-win .pg-result-num { color: var(--green); text-shadow: 0 0 18px rgba(143, 208, 255, 0.4); }
 .pg-loss .pg-result-num { color: var(--yellow); }
-.pg-rekt .pg-result-num { color: var(--red); text-shadow: 0 0 18px rgba(255, 77, 77, 0.4); }
+.pg-rekt .pg-result-num { color: var(--red); text-shadow: 0 0 18px rgba(74, 111, 153, 0.4); }
 
 .pg-result-sub { font-size: 10px; color: var(--text-2); letter-spacing: 0.06em; }
 
@@ -727,7 +727,7 @@
   letter-spacing: 0.18em;
   color: var(--text-2);
   border: 1px dashed var(--border);
-  background: rgba(6, 6, 5, 0.75);
+  background: rgba(5, 7, 10, 0.75);
   padding: 4px 10px;
 }
 

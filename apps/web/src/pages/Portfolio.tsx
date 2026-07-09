@@ -40,14 +40,14 @@ export const Portfolio: FC = () => {
   }
 
   const cardStyle = {
-    background: '#0b0b08',
-    border: '1px solid #262418',
+    background: '#0a0e14',
+    border: '1px solid #1a2636',
     borderRadius: 0,
     padding: '18px 20px',
   };
 
-  const statLabel = { fontSize: 11, color: '#6b664f', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' };
-  const statValue = { fontSize: 20, fontWeight: 700 as const, color: '#f2eee2', fontFamily: "'JetBrains Mono', monospace" };
+  const statLabel = { fontSize: 11, color: '#52667d', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' };
+  const statValue = { fontSize: 20, fontWeight: 700 as const, color: '#e8f0fa', fontFamily: "'JetBrains Mono', monospace" };
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -58,7 +58,7 @@ export const Portfolio: FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={statLabel}>Wallet Address</div>
-            <div style={{ fontSize: 13, color: '#c9c4ae', fontFamily: "'JetBrains Mono', monospace" }}>
+            <div style={{ fontSize: 13, color: '#a9c0d8', fontFamily: "'JetBrains Mono', monospace" }}>
               {portfolio?.wallet.address
                 ? `${portfolio.wallet.address.slice(0, 6)}...${portfolio.wallet.address.slice(-4)}`
                 : '—'}
@@ -97,9 +97,9 @@ export const Portfolio: FC = () => {
 
       {/* Open Positions */}
       <div style={cardStyle}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#c9c4ae' }}>Open Positions</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#a9c0d8' }}>Open Positions</h3>
         {!portfolio?.positions.items.length ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#4d4936', fontSize: 13 }}>
+          <div style={{ padding: '24px 0', textAlign: 'center', color: '#3a4d63', fontSize: 13 }}>
             No open positions.{' '}
             <span
               style={{ color: 'var(--primary)', cursor: 'pointer' }}
@@ -115,7 +115,7 @@ export const Portfolio: FC = () => {
                 key={p.id}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '12px 16px', background: '#070706', border: '1px solid #12110c',
+                  padding: '12px 16px', background: '#070a0f', border: '1px solid #12110c',
                   borderRadius: 0, cursor: 'pointer',
                 }}
                 onClick={() => navigate(`/trade?token=${p.token.address}`)}
@@ -130,15 +130,15 @@ export const Portfolio: FC = () => {
                     {p.token.symbol?.charAt(0) || '?'}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#f2eee2' }}>{p.token.symbol || 'Unknown'}</div>
-                    <div style={{ fontSize: 11, color: '#6b664f' }}>{p.leverage}x • {p.tier}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#e8f0fa' }}>{p.token.symbol || 'Unknown'}</div>
+                    <div style={{ fontSize: 11, color: '#52667d' }}>{p.leverage}x • {p.tier}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#f2eee2', fontFamily: "'JetBrains Mono', monospace" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e8f0fa', fontFamily: "'JetBrains Mono', monospace" }}>
                     {(Number(p.userCapital) / 1e9).toFixed(3)} SOL
                   </div>
-                  <div style={{ fontSize: 11, color: '#6b664f' }}>
+                  <div style={{ fontSize: 11, color: '#52667d' }}>
                     {new Date(p.openedAt).toLocaleDateString()}
                   </div>
                 </div>
@@ -150,14 +150,14 @@ export const Portfolio: FC = () => {
 
       {/* P&L Summary */}
       <div style={cardStyle}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#c9c4ae' }}>Performance</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: '#a9c0d8' }}>Performance</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div>
             <div style={statLabel}>Total P&L</div>
             <div style={{
               ...statValue,
               fontSize: 16,
-              color: Number(portfolio?.history.totalPnlLamports || 0) >= 0 ? '#3dff9e' : '#ff4d4d',
+              color: Number(portfolio?.history.totalPnlLamports || 0) >= 0 ? '#8fd0ff' : '#4a6f99',
             }}>
               {((Number(portfolio?.history.totalPnlLamports || 0)) / 1e9).toFixed(4)} SOL
             </div>

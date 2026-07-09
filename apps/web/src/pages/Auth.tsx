@@ -81,7 +81,7 @@ export const Auth: FC = () => {
               <path d="M2 17l10 5 10-5" />
               <path d="M2 12l10 5 10-5" />
             </svg>
-            <span style={{ fontSize: 20, fontWeight: 700, color: '#f2eee2', letterSpacing: '0.04em' }}>SCALE</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: '#e8f0fa', letterSpacing: '0.04em' }}>SCALE</span>
           </div>
         </Link>
 
@@ -93,7 +93,7 @@ export const Auth: FC = () => {
           <h1 style={{
             fontSize: '2.2rem',
             fontWeight: 800,
-            color: '#f2eee2',
+            color: '#e8f0fa',
             lineHeight: 1.2,
             marginBottom: 16,
           }}>
@@ -103,7 +103,7 @@ export const Auth: FC = () => {
           </h1>
           <p style={{
             fontSize: 15,
-            color: '#76705a',
+            color: '#5d7590',
             lineHeight: 1.6,
             maxWidth: 400,
             marginBottom: 40,
@@ -123,7 +123,7 @@ export const Auth: FC = () => {
                 <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--primary)', fontFamily: "'JetBrains Mono', monospace" }}>
                   {s.value}
                 </div>
-                <div style={{ fontSize: 11, color: '#6b664f', marginTop: 4 }}>{s.label}</div>
+                <div style={{ fontSize: 11, color: '#52667d', marginTop: 4 }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -150,7 +150,7 @@ export const Auth: FC = () => {
             display: 'flex',
             gap: 0,
             marginBottom: 32,
-            borderBottom: '1px solid #262418',
+            borderBottom: '1px solid #1a2636',
           }}>
             <button
               onClick={() => { setMode('login'); setError(''); }}
@@ -159,7 +159,7 @@ export const Auth: FC = () => {
                 padding: '12px 0',
                 fontSize: 14,
                 fontWeight: 600,
-                color: mode === 'login' ? '#f2eee2' : '#6b664f',
+                color: mode === 'login' ? '#e8f0fa' : '#52667d',
                 background: 'none',
                 border: 'none',
                 borderBottom: mode === 'login' ? '2px solid var(--primary)' : '2px solid transparent',
@@ -176,7 +176,7 @@ export const Auth: FC = () => {
                 padding: '12px 0',
                 fontSize: 14,
                 fontWeight: 600,
-                color: mode === 'register' ? '#f2eee2' : '#6b664f',
+                color: mode === 'register' ? '#e8f0fa' : '#52667d',
                 background: 'none',
                 border: 'none',
                 borderBottom: mode === 'register' ? '2px solid var(--primary)' : '2px solid transparent',
@@ -199,10 +199,10 @@ export const Auth: FC = () => {
               justifyContent: 'center',
               gap: 10,
               padding: '12px 16px',
-              background: '#0b0b08',
-              border: '1px solid #262418',
+              background: '#0a0e14',
+              border: '1px solid #1a2636',
               borderRadius: 0,
-              color: '#c9c4ae',
+              color: '#a9c0d8',
               fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
@@ -210,12 +210,12 @@ export const Auth: FC = () => {
               marginBottom: 20,
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#3f3b26';
+              e.currentTarget.style.borderColor = '#2a3d55';
               e.currentTarget.style.background = '#12110c';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#262418';
-              e.currentTarget.style.background = '#0b0b08';
+              e.currentTarget.style.borderColor = '#1a2636';
+              e.currentTarget.style.background = '#0a0e14';
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24">
@@ -234,9 +234,9 @@ export const Auth: FC = () => {
             gap: 12,
             marginBottom: 20,
           }}>
-            <div style={{ flex: 1, height: 1, background: '#262418' }} />
-            <span style={{ fontSize: 11, color: '#4d4936' }}>or</span>
-            <div style={{ flex: 1, height: 1, background: '#262418' }} />
+            <div style={{ flex: 1, height: 1, background: '#1a2636' }} />
+            <span style={{ fontSize: 11, color: '#3a4d63' }}>or</span>
+            <div style={{ flex: 1, height: 1, background: '#1a2636' }} />
           </div>
 
           {/* Form */}
@@ -247,7 +247,7 @@ export const Auth: FC = () => {
                 background: 'rgba(239, 68, 68, 0.08)',
                 border: '1px solid rgba(239, 68, 68, 0.2)',
                 borderRadius: 0,
-                color: '#ff4d4d',
+                color: '#4a6f99',
                 fontSize: 12,
                 marginBottom: 16,
               }}>
@@ -256,7 +256,7 @@ export const Auth: FC = () => {
             )}
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 11, color: '#6b664f', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#52667d', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Email
               </label>
               <input
@@ -269,22 +269,22 @@ export const Auth: FC = () => {
                 style={{
                   width: '100%',
                   padding: '12px 14px',
-                  background: '#0b0b08',
-                  border: '1px solid #262418',
+                  background: '#0a0e14',
+                  border: '1px solid #1a2636',
                   borderRadius: 0,
-                  color: '#f2eee2',
+                  color: '#e8f0fa',
                   fontSize: 13,
                   outline: 'none',
                   transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
                 onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(var(--primary-rgb),0.25)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = '#262418'}
+                onBlur={(e) => e.currentTarget.style.borderColor = '#1a2636'}
               />
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 11, color: '#6b664f', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#52667d', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Password
               </label>
               <input
@@ -296,23 +296,23 @@ export const Auth: FC = () => {
                 style={{
                   width: '100%',
                   padding: '12px 14px',
-                  background: '#0b0b08',
-                  border: '1px solid #262418',
+                  background: '#0a0e14',
+                  border: '1px solid #1a2636',
                   borderRadius: 0,
-                  color: '#f2eee2',
+                  color: '#e8f0fa',
                   fontSize: 13,
                   outline: 'none',
                   transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
                 onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(var(--primary-rgb),0.25)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = '#262418'}
+                onBlur={(e) => e.currentTarget.style.borderColor = '#1a2636'}
               />
             </div>
 
             {mode === 'register' && (
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 11, color: '#6b664f', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#52667d', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Confirm Password
                 </label>
                 <input
@@ -324,17 +324,17 @@ export const Auth: FC = () => {
                   style={{
                     width: '100%',
                     padding: '12px 14px',
-                    background: '#0b0b08',
-                    border: '1px solid #262418',
+                    background: '#0a0e14',
+                    border: '1px solid #1a2636',
                     borderRadius: 0,
-                    color: '#f2eee2',
+                    color: '#e8f0fa',
                     fontSize: 13,
                     outline: 'none',
                     transition: 'border-color 0.2s',
                     boxSizing: 'border-box',
                   }}
                   onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(var(--primary-rgb),0.25)'}
-                  onBlur={(e) => e.currentTarget.style.borderColor = '#262418'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = '#1a2636'}
                 />
               </div>
             )}
@@ -370,11 +370,11 @@ export const Auth: FC = () => {
           <div style={{
             marginTop: 24,
             padding: '14px 16px',
-            background: '#0b0b08',
-            border: '1px solid #262418',
+            background: '#0a0e14',
+            border: '1px solid #1a2636',
             borderRadius: 0,
           }}>
-            <div style={{ fontSize: 11, color: '#6b664f', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 11, color: '#52667d', lineHeight: 1.6 }}>
               {mode === 'register' ? (
                 <>A fresh Solana wallet will be generated for your account. You can deposit SOL to start trading with leverage.</>
               ) : (

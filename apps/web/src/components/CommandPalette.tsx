@@ -1,12 +1,11 @@
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as api from '../lib/api';
-import { THEMES, THEME_LABELS, applyTheme } from '../lib/theme';
 import { blip } from '../lib/sfx';
 
 interface Command {
   id: string;
-  group: 'GOTO' | 'TOKENS' | 'PHOSPHOR';
+  group: 'GOTO' | 'TOKENS';
   icon: string;
   label: string;
   hint?: string;
@@ -78,13 +77,6 @@ export const CommandPalette: FC = () => {
       { id: 'creator', group: 'GOTO', icon: '▸', label: 'Creator Dashboard', action: () => go('/creator') },
     ];
 
-    const themes: Command[] = THEMES.map((t) => ({
-      id: `theme-${t}`,
-      group: 'PHOSPHOR' as const,
-      icon: '◉',
-      label: `Theme: ${THEME_LABELS[t]}`,
-      action: () => { applyTheme(t); setOpen(false); },
-    }));
 
     const tok: Command[] = tokens.map((t) => ({
       id: `tok-${t.address}`,
@@ -95,7 +87,7 @@ export const CommandPalette: FC = () => {
       action: () => go(`/trade?token=${t.address}`),
     }));
 
-    return [...nav, ...tok, ...themes];
+    return [...nav, ...tok];
   }, [tokens, go]);
 
   const filtered = useMemo(() => {

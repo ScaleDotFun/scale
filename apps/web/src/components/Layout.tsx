@@ -2,7 +2,6 @@ import { type FC, useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { WalletButton } from './WalletButton';
 import { CommandPalette } from './CommandPalette';
-import { ThemeSwitcher } from './ThemeSwitcher';
 import { SfxToggle } from './SfxToggle';
 import { Logo } from './Logo';
 import { HelpOverlay } from './HelpOverlay';
@@ -156,7 +155,6 @@ export const Layout: FC = () => {
         </div>
 
         <div className="top-nav-right">
-          <ThemeSwitcher />
           <SfxToggle />
           <UtcClock />
           <WalletButton />

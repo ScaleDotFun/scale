@@ -150,7 +150,7 @@ export const PulseFeed: FC<PulseFeedProps> = ({ tokens: initialTokens, onSelect,
                 </span>
                 <span
                   className="pulse-item-change"
-                  style={{ color: (token.priceChange24hPct ?? 0) >= 0 ? '#3dff9e' : '#ff4d4d' }}
+                  style={{ color: (token.priceChange24hPct ?? 0) >= 0 ? '#8fd0ff' : '#4a6f99' }}
                 >
                   {(token.priceChange24hPct ?? 0) >= 0 ? '+' : ''}
                   {(token.priceChange24hPct ?? 0).toFixed(1)}%

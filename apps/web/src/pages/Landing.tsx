@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Scramble } from '../components/fx/Scramble';
 import { ReplaySim } from '../components/ReplaySim';
-import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { SfxToggle } from '../components/SfxToggle';
 import { HelpOverlay } from '../components/HelpOverlay';
 import { Logo } from '../components/Logo';
@@ -165,7 +164,7 @@ const MarketWall: FC = () => {
         candles.forEach((cd, i) => {
           const x = i * cw + cw / 2;
           const up = cd.c >= cd.o;
-          const col = up ? 'rgba(61, 255, 158, 0.20)' : 'rgba(255, 77, 77, 0.18)';
+          const col = up ? 'rgba(143, 208, 255, 0.20)' : 'rgba(74, 111, 153, 0.18)';
           ctx.strokeStyle = col;
           ctx.beginPath(); ctx.moveTo(x, yOf(cd.h)); ctx.lineTo(x, yOf(cd.l)); ctx.stroke();
           ctx.fillStyle = col;
@@ -331,7 +330,6 @@ export const Landing: FC = () => {
           <Link to="/docs">MANUAL</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ThemeSwitcher />
           <SfxToggle />
           <Link to="/trade" className="lp-cta-sm">ENTER TERMINAL</Link>
         </div>

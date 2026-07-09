@@ -26,7 +26,6 @@ const SECTIONS: Array<{ title: string; rows: Array<[string, string]> }> = [
   {
     title: 'TERMINAL',
     rows: [
-      ['phosphor chips (top right)', 'amber · green · cyan · violet tube'],
       ['SND', 'synthesized terminal audio on/off'],
       ['drag on replay sim', 'move your entry across real history'],
     ],
