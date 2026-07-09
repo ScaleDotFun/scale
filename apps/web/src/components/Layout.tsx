@@ -1,4 +1,4 @@
-import { type FC, useState, useEffect, useRef } from 'react';
+import { type FC, useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { WalletButton } from './WalletButton';
 import { CommandPalette } from './CommandPalette';
@@ -57,7 +57,6 @@ export const Layout: FC = () => {
   const isTradePage = location.pathname === '/trade';
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
   const [tickerHidden, setTickerHidden] = useState(false);
-  const tickerLoaded = useRef(false);
 
   // Number-key page jumps (1-8) when not typing in a field
   useEffect(() => {
@@ -74,10 +73,10 @@ export const Layout: FC = () => {
 
   // Fetch listed tokens from API, then enrich with Birdeye prices
   useEffect(() => {
-    if (tickerLoaded.current) return;
-    tickerLoaded.current = true;
+    let dead = false;
 
     const loadTicker = async () => {
+      if (dead) return;
       try {
         const listedTokens = await api.getListedTokens(15);
 
@@ -126,12 +125,9 @@ export const Layout: FC = () => {
 
     loadTicker();
 
-    const interval = setInterval(() => {
-      tickerLoaded.current = false;
-      loadTicker();
-    }, 60000);
+    const interval = setInterval(loadTicker, 60000);
 
-    return () => clearInterval(interval);
+    return () => { dead = true; clearInterval(interval); };
   }, []);
 
   return (

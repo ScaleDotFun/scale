@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useApi } from './useApi';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useApi, usePolling } from './useApi';
 import * as api from '../lib/api';
 
 /** Hook for managing positions: active positions, trade history, open/close. */
@@ -7,8 +7,11 @@ export function usePositions() {
   const [isOpening, setIsOpening] = useState(false);
   const [isClosing, setIsClosing] = useState<string | null>(null);
 
-  const activeResult = useApi<api.PositionInfo[]>(
+  // Active positions poll every 15s — countdowns and liquidation
+  // state must not freeze at page load
+  const activeResult = usePolling<api.PositionInfo[]>(
     () => api.getActivePositions(),
+    15_000,
     [],
   );
 
@@ -19,6 +22,11 @@ export function usePositions() {
 
   const activePositions = activeResult.data ?? [];
   const tradeHistory = historyResult.data ?? [];
+
+  // When this batch of positions was fetched — lets the UI run the
+  // time-remaining countdown client-side between polls
+  const fetchedAtRef = useRef(Date.now());
+  useEffect(() => { fetchedAtRef.current = Date.now(); }, [activeResult.data]);
 
   const openPosition = useCallback(
     async (tokenAddress: string, capitalLamports: string, leverage: number) => {
@@ -74,6 +82,7 @@ export function usePositions() {
   return {
     activePositions,
     tradeHistory,
+    positionsFetchedAt: fetchedAtRef,
     stats,
     loading: activeResult.loading || historyResult.loading,
     error: activeResult.error || historyResult.error,

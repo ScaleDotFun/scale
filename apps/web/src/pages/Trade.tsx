@@ -26,6 +26,7 @@ export const Trade: FC = () => {
   const {
     activePositions,
     tradeHistory,
+    positionsFetchedAt,
     loading: positionsLoading,
     isOpening,
     isClosing,
@@ -103,6 +104,34 @@ export const Trade: FC = () => {
 
   const tradingDisabled = isTokenListed === false;
 
+  // ── Live engine ──────────────────────────────────────────────
+  // Streamed price from the chart (per-txn, throttled to 2/s) —
+  // drives PnL, mark price and entry-line labels without any polling
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const handleLivePrice = useCallback((p: number) => setLivePrice(p), []);
+  useEffect(() => { setLivePrice(null); }, [selectedToken?.address]);
+
+  // 1s heartbeat for countdowns
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  /**
+   * Live PnL in collateral terms (price move % × leverage) — the same
+   * scale as exitThreshold, so the liq bar compares like-for-like.
+   * Only computable for the token whose price is streaming; positions
+   * on other tokens show '—' rather than a fake 0.
+   */
+  const livePnLFor = useCallback((pos: api.PositionInfo): number | null => {
+    if (pos.token?.address !== selectedToken?.address) return pos.livePnLPercent ?? null;
+    const entry = parseFloat(pos.entryPrice ?? '0');
+    const price = livePrice ?? tokenOverview?.price ?? 0;
+    if (!(entry > 0) || !(price > 0)) return pos.livePnLPercent ?? null;
+    return ((price / entry) - 1) * 100 * pos.leverage;
+  }, [selectedToken?.address, livePrice, tokenOverview?.price]);
+
   // Computed values — use real tier data from token API when available
   const collateralSol = parseFloat(collateral) || 0;
   const positionSize = collateralSol * leverage;
@@ -120,7 +149,8 @@ export const Trade: FC = () => {
   const liqPrice = markPrice ? markPrice * (1 + exitThreshold / (100 * leverage)) : 0;
   const positionSizeUsd = markPrice ? positionSize * markPrice : 0;
 
-  // Chart position annotations
+  // Chart position annotations — pnlPercent updates with each tick,
+  // so the ENTRY line label breathes with the market
   const chartPositions: ChartPosition[] = activePositions
     .filter((pos) => pos.token?.address === selectedToken?.address)
     .map((pos) => {
@@ -131,7 +161,7 @@ export const Trade: FC = () => {
         liquidationPrice: entry > 0 ? entry * (1 + exitPct / (100 * pos.leverage)) : 0,
         side: 'long' as const,
         leverage: pos.leverage,
-        pnlPercent: pos.livePnLPercent ?? undefined,
+        pnlPercent: livePnLFor(pos) ?? undefined,
       };
     });
 
@@ -214,9 +244,10 @@ export const Trade: FC = () => {
     return `Buy ${positionSize > 0 ? positionSize.toFixed(2) + ' SOL' : ''}`;
   };
 
-  // Time remaining helper
+  // Time remaining — counts down live between position polls
   const getTimeLeft = (pos: any) => {
-    const ms = pos.timeRemainingMs ?? 0;
+    const elapsed = nowTick - positionsFetchedAt.current;
+    const ms = Math.max(0, (pos.timeRemainingMs ?? 0) - elapsed);
     if (ms <= 0) return { text: 'Expired', color: '#ff4d4d' };
     const hours = ms / 3600000;
     const color = hours > 12 ? '#3dff9e' : hours > 4 ? 'var(--primary-hover)' : '#ff4d4d';
@@ -241,6 +272,7 @@ export const Trade: FC = () => {
               tokenAddress={selectedToken?.address}
               positions={allChartPositions}
               supply={tokenOverview?.supply}
+              onPrice={handleLivePrice}
             />
           </div>
 
@@ -291,7 +323,9 @@ export const Trade: FC = () => {
                     </thead>
                     <tbody>
                       {activePositions.map((pos) => {
-                        const pnl = pos.livePnLPercent ?? 0;
+                        const livePnl = livePnLFor(pos);
+                        const pnl = livePnl ?? 0;
+                        const hasPnl = livePnl != null;
                         const pnlSol = (pnl / 100) * Number(pos.userCapital || 0) / 1e9;
                         const timeLeft = getTimeLeft(pos);
                         const isExpanded = expandedPosition === pos.id;
@@ -302,7 +336,7 @@ export const Trade: FC = () => {
                         return (
                           <tr
                             key={pos.id}
-                            className={`pos-row ${pnl >= 0 ? 'pos-row-profit' : 'pos-row-loss'}`}
+                            className={`pos-row ${hasPnl ? (pnl >= 0 ? 'pos-row-profit' : 'pos-row-loss') : ''}`}
                             onClick={() => setExpandedPosition(isExpanded ? null : pos.id)}
                             style={{ cursor: 'pointer' }}
                           >
@@ -313,25 +347,29 @@ export const Trade: FC = () => {
                             <td className="mono">{pos.leverage}x</td>
                             <td className="mono">{pos.entryPrice ? `$${formatPrice(parseFloat(pos.entryPrice))}` : '--'}</td>
                             <td className="mono" style={{ color: 'var(--primary)' }}>
-                              {tokenOverview && pos.token?.address === selectedToken?.address
-                                ? `$${formatPrice(markPrice)}`
+                              {pos.token?.address === selectedToken?.address && (livePrice ?? markPrice) > 0
+                                ? `$${formatPrice(livePrice ?? markPrice)}`
                                 : '--'}
                             </td>
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                <span
-                                  className="mono"
-                                  style={{ color: pnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 12 }}
-                                >
-                                  {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
-                                </span>
-                                <span
-                                  className="mono"
-                                  style={{ color: pnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 10, opacity: 0.7 }}
-                                >
-                                  {pnlSol >= 0 ? '+' : ''}{pnlSol.toFixed(4)} SOL
-                                </span>
-                              </div>
+                              {hasPnl ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                  <span
+                                    className="mono"
+                                    style={{ color: pnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 12 }}
+                                  >
+                                    {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
+                                  </span>
+                                  <span
+                                    className="mono"
+                                    style={{ color: pnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 10, opacity: 0.7 }}
+                                  >
+                                    {pnlSol >= 0 ? '+' : ''}{pnlSol.toFixed(4)} SOL
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="mono text-dim" title="Select this token to stream its price">—</span>
+                              )}
                             </td>
                             <td>
                               <span className="mono" style={{ color: timeLeft.color, fontSize: 11 }}>

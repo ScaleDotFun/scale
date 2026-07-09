@@ -38,6 +38,9 @@ interface PriceChartProps {
   tokenAddress?: string;
   positions?: ChartPosition[];
   supply?: number;
+  /** Fires with every live price (stream tick or initial load) so the
+   *  parent can run live PnL — throttled to at most ~2/s */
+  onPrice?: (price: number) => void;
 }
 
 const TIMEFRAMES = ['1S', '5S', '15S', '30S', '1', '3', '5', '15', '30', '60', '240', 'D'] as const;
@@ -69,9 +72,19 @@ const fmtCompact = (v: number): string => {
  * Hardened: sanitized data, per-switch resets, honest empty/error
  * states, truthful stream badge, PRICE/MCAP unit toggle, theme-aware.
  */
-export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, supply }) => {
+export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, supply, onPrice }) => {
   const supplyRef = useRef(supply ?? 0);
   useEffect(() => { supplyRef.current = supply ?? 0; }, [supply]);
+
+  const onPriceRef = useRef(onPrice);
+  useEffect(() => { onPriceRef.current = onPrice; }, [onPrice]);
+  const lastEmitRef = useRef(0);
+  const emitPrice = (price: number) => {
+    const now = Date.now();
+    if (now - lastEmitRef.current < 500) return;
+    lastEmitRef.current = now;
+    onPriceRef.current?.(price);
+  };
 
   const [interval, setInterval_] = useState('1');
   const [source, setSource] = useState<'birdeye-live' | 'birdeye-embed'>(
@@ -235,7 +248,10 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
           title,
         }));
       };
-      mk(pos.entryPrice, primary, LineStyle.Dashed, 'ENTRY');
+      const pnlTag = pos.pnlPercent != null
+        ? ` ${pos.pnlPercent >= 0 ? '+' : ''}${pos.pnlPercent.toFixed(1)}%`
+        : '';
+      mk(pos.entryPrice, primary, LineStyle.Dashed, `ENTRY${pnlTag}`);
       mk(pos.liquidationPrice, '#ff4d4d', LineStyle.Solid, 'LIQ');
       mk(pos.takeProfitPrice ?? 0, '#3dff9e', LineStyle.Dashed, 'TP');
       mk(pos.stopLossPrice ?? 0, '#ffd75e', LineStyle.Dashed, 'SL');
@@ -296,6 +312,7 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
         const lastBar = bars[bars.length - 1];
         currentBarRef.current = { ...lastBar };
         setLastPrice(lastBar.close);
+        emitPrice(lastBar.close);
 
         if (bars.length > 1) {
           setPriceChange(((lastBar.close - bars[0].open) / bars[0].open) * 100);
@@ -325,6 +342,7 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
         if (cancelled || !(price > 0)) return;
 
         setLastPrice(price);
+        emitPrice(price);
 
         const current = currentBarRef.current;
         if (!current) return; // no baseline bars yet — don't invent candles
