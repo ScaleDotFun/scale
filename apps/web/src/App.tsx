@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { Landing } from './pages/Landing';
 import { Trade } from './pages/Trade';
 import { Explore } from './pages/Explore';
+import { Screener } from './pages/Screener';
 import { Portfolio } from './pages/Portfolio';
 import { Account } from './pages/Account';
 import { ListToken } from './pages/ListToken';
@@ -32,6 +33,7 @@ export function App() {
             <Route element={<Layout />}>
               <Route path="/trade" element={<Trade />} />
               <Route path="/explore" element={<Explore />} />
+              <Route path="/screener" element={<Screener />} />
               <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/account" element={<Account />} />
               <Route path="/list" element={<ListToken />} />

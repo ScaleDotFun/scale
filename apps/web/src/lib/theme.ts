@@ -4,6 +4,8 @@
  * canvas components read resolved values via getVar()/palette().
  */
 
+import { blip } from './sfx';
+
 export const THEMES = ['amber', 'green', 'cyan', 'violet'] as const;
 export type ThemeName = (typeof THEMES)[number];
 
@@ -25,9 +27,26 @@ export function getTheme(): ThemeName {
   return 'amber';
 }
 
+let degaussTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** CRT degauss — the screen wobbles and blooms like a real tube. */
+function degauss(): void {
+  const el = document.documentElement;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return;
+  el.classList.remove('degauss');
+  // restart the animation even on rapid re-triggers
+  void el.offsetWidth;
+  el.classList.add('degauss');
+  clearTimeout(degaussTimer);
+  degaussTimer = setTimeout(() => el.classList.remove('degauss'), 520);
+}
+
 export function applyTheme(t: ThemeName): void {
+  const prev = document.documentElement.dataset.theme;
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem(KEY, t); } catch { /* ignore */ }
+  if (prev && prev !== t) { degauss(); blip('degauss'); }
   window.dispatchEvent(new CustomEvent(EVT, { detail: t }));
 }
 

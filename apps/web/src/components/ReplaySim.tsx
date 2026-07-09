@@ -1,6 +1,7 @@
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from '../lib/api';
 import { chartPalette, onThemeChange } from '../lib/theme';
+import { blip } from '../lib/sfx';
 
 /* ═══════════════════════════════════════════════════════════════
    REPLAY SIM — leverage against REAL market history.
@@ -38,7 +39,9 @@ export const ReplaySim: FC = () => {
   const [entryIdx, setEntryIdx] = useState(40);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const wasLiquidatedRef = useRef(false);
   const [themeTick, setThemeTick] = useState(0);
 
   useEffect(() => onThemeChange(() => setThemeTick((v) => v + 1)), []);
@@ -99,6 +102,22 @@ export const ReplaySim: FC = () => {
 
     return { idx, entry, liqPrice, liqPct, position, fee, liquidatedAt, exitIdx, userPnl, hoursHeld, movePct };
   }, [candles, entryIdx, leverage, collateral]);
+
+  // Crossing into liquidation on real history: shake the tube, sound the alarm
+  useEffect(() => {
+    const isRekt = result?.liquidatedAt != null;
+    if (isRekt && !wasLiquidatedRef.current) {
+      blip('alarm');
+      const el = rootRef.current;
+      if (el && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        el.classList.remove('rekt-shake');
+        void el.offsetWidth;
+        el.classList.add('rekt-shake');
+        setTimeout(() => el.classList.remove('rekt-shake'), 450);
+      }
+    }
+    wasLiquidatedRef.current = isRekt;
+  }, [result?.liquidatedAt]);
 
   // ── Draw ────────────────────────────────────────────────────
   useEffect(() => {
@@ -242,7 +261,7 @@ export const ReplaySim: FC = () => {
   const onPointerUp = () => { draggingRef.current = false; };
 
   return (
-    <div className="pg">
+    <div className="pg" ref={rootRef}>
       <div className="pg-head">
         <span className="pg-title">REPLAY SIM — REAL MARKET DATA</span>
         <div className="rs-feeds">
@@ -250,7 +269,7 @@ export const ReplaySim: FC = () => {
             <button
               key={f.address}
               className={`rs-feed ${i === feedIdx ? 'rs-feed-active' : ''}`}
-              onClick={() => setFeedIdx(i)}
+              onClick={() => { blip('click'); setFeedIdx(i); }}
             >
               {f.label}
             </button>

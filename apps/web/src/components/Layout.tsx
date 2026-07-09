@@ -3,6 +3,9 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { WalletButton } from './WalletButton';
 import { CommandPalette } from './CommandPalette';
 import { ThemeSwitcher } from './ThemeSwitcher';
+import { SfxToggle } from './SfxToggle';
+import { HelpOverlay } from './HelpOverlay';
+import { blip } from '../lib/sfx';
 import { fetchTokenOverview } from '../lib/birdeye';
 import { formatPrice } from '../lib/format';
 import * as api from '../lib/api';
@@ -19,12 +22,13 @@ interface TickerItem {
 const NAV_TABS = [
   { to: '/trade', label: 'Trade', key: '1' },
   { to: '/explore', label: 'Explorer', key: '2' },
-  { to: '/list', label: 'List Token', key: '3' },
-  { to: '/portfolio', label: 'Holdings', key: '4' },
-  { to: '/locks', label: 'Locks', key: '5' },
-  { to: '/stats', label: 'Stats', key: '6' },
-  { to: '/docs', label: 'Docs', key: '7' },
-  { to: '/account', label: 'Account', key: '8' },
+  { to: '/screener', label: 'Screener', key: '3' },
+  { to: '/list', label: 'List Token', key: '4' },
+  { to: '/portfolio', label: 'Holdings', key: '5' },
+  { to: '/locks', label: 'Locks', key: '6' },
+  { to: '/stats', label: 'Stats', key: '7' },
+  { to: '/docs', label: 'Docs', key: '8' },
+  { to: '/account', label: 'Account', key: '9' },
 ];
 
 /** Live UTC clock — the terminal heartbeat */
@@ -61,7 +65,7 @@ export const Layout: FC = () => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
       const tab = NAV_TABS.find((t) => t.key === e.key);
-      if (tab) navigate(tab.to);
+      if (tab) { blip('click'); navigate(tab.to); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -132,6 +136,7 @@ export const Layout: FC = () => {
   return (
     <>
       <CommandPalette />
+      <HelpOverlay />
 
       {/* ── Terminal Status Bar ─────────────────── */}
       <nav className="top-nav">
@@ -155,6 +160,7 @@ export const Layout: FC = () => {
 
         <div className="top-nav-right">
           <ThemeSwitcher />
+          <SfxToggle />
           <UtcClock />
           <WalletButton />
         </div>

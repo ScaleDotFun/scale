@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { Scramble } from '../components/fx/Scramble';
 import { ReplaySim } from '../components/ReplaySim';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
+import { SfxToggle } from '../components/SfxToggle';
+import { HelpOverlay } from '../components/HelpOverlay';
 import { chartPalette, onThemeChange } from '../lib/theme';
 import * as api from '../lib/api';
 
@@ -201,7 +203,13 @@ const MarketWall: FC = () => {
 
   return (
     <>
-      <canvas ref={canvasRef} className="lp-canvas" />
+      <canvas
+        ref={canvasRef}
+        className="lp-canvas"
+        style={{ cursor: 'crosshair' }}
+        onClick={() => document.getElementById('sim')?.scrollIntoView({ behavior: 'smooth' })}
+        title="Click to replay this market with leverage"
+      />
       <div className="lp-feed-tag mono">
         {feedInfo ? (
           <>
@@ -307,6 +315,7 @@ export const Landing: FC = () => {
   return (
     <div className="lp">
       {!booted && <BootIntro onDone={onBootDone} />}
+      <HelpOverlay />
 
       {/* Nav */}
       <nav className="lp-nav">
@@ -320,8 +329,9 @@ export const Landing: FC = () => {
           <a href="#tiers">TIERS</a>
           <Link to="/docs">MANUAL</Link>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ThemeSwitcher />
+          <SfxToggle />
           <Link to="/trade" className="lp-cta-sm">ENTER TERMINAL</Link>
         </div>
       </nav>

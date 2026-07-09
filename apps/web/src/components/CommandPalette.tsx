@@ -2,6 +2,7 @@ import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'reac
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as api from '../lib/api';
 import { THEMES, THEME_LABELS, applyTheme } from '../lib/theme';
+import { blip } from '../lib/sfx';
 
 interface Command {
   id: string;
@@ -33,7 +34,7 @@ export const CommandPalette: FC = () => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !onTradePage) {
         e.preventDefault();
-        setOpen((v) => !v);
+        setOpen((v) => { if (!v) blip('open'); return !v; });
       }
       if (e.key === 'Escape') setOpen(false);
     };
@@ -66,6 +67,7 @@ export const CommandPalette: FC = () => {
     const nav: Command[] = [
       { id: 'trade', group: 'GOTO', icon: '▸', label: 'Trade Terminal', hint: '1', action: () => go('/trade') },
       { id: 'explore', group: 'GOTO', icon: '▸', label: 'Token Explorer', hint: '2', action: () => go('/explore') },
+      { id: 'screener', group: 'GOTO', icon: '▸', label: 'Market Screener', hint: '3', action: () => go('/screener') },
       { id: 'list', group: 'GOTO', icon: '▸', label: 'List a Token', hint: '3', action: () => go('/list') },
       { id: 'portfolio', group: 'GOTO', icon: '▸', label: 'Holdings', hint: '4', action: () => go('/portfolio') },
       { id: 'locks', group: 'GOTO', icon: '▸', label: 'Profit Locks', hint: '5', action: () => go('/locks') },
@@ -109,11 +111,14 @@ export const CommandPalette: FC = () => {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      blip('click');
       setSelected((s) => Math.min(s + 1, filtered.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      blip('click');
       setSelected((s) => Math.max(s - 1, 0));
     } else if (e.key === 'Enter' && filtered[selected]) {
+      blip('confirm');
       filtered[selected].action();
     }
   };

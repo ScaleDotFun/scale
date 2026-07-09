@@ -429,3 +429,60 @@ p { color: var(--text-1); }
 .badge-bonded { color: var(--green); background: rgba(61, 255, 158, 0.08); border: 1px solid rgba(61, 255, 158, 0.30); }
 .badge-rising { color: var(--primary); background: var(--primary-subtle); border: 1px solid rgba(var(--primary-rgb), 0.35); }
 .badge-degen  { color: var(--red); background: rgba(255, 77, 77, 0.08); border: 1px solid rgba(255, 77, 77, 0.30); }
+
+/* ── CRT degauss — theme-switch wobble, like slapping the tube ─ */
+@keyframes degaussWobble {
+  0%   { transform: scale(1) skewX(0deg); filter: brightness(1) saturate(1); }
+  12%  { transform: scale(1.012, 0.988) skewX(0.6deg); filter: brightness(1.9) saturate(2.4) hue-rotate(8deg); }
+  28%  { transform: scale(0.994, 1.006) skewX(-0.45deg); filter: brightness(0.82) saturate(0.7) hue-rotate(-6deg); }
+  46%  { transform: scale(1.005, 0.997) skewX(0.2deg); filter: brightness(1.28) saturate(1.5); }
+  68%  { transform: scale(0.998, 1.002) skewX(-0.08deg); filter: brightness(0.95); }
+  100% { transform: scale(1) skewX(0deg); filter: brightness(1) saturate(1); }
+}
+
+html.degauss body {
+  animation: degaussWobble 0.5s ease-out 1;
+  transform-origin: 50% 50%;
+}
+
+/* ── CRT refresh sweep — a slow phosphor band drifting down ──── */
+html::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: -15%;
+  height: 12%;
+  z-index: 9997;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(var(--primary-rgb), 0.015) 40%,
+    rgba(255, 255, 255, 0.02) 55%,
+    transparent 100%
+  );
+  animation: crtSweep 13s linear infinite;
+}
+
+@keyframes crtSweep {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(1100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html::after { display: none; }
+}
+
+/* ── Rekt shake — liquidation feedback ───────────────────────── */
+@keyframes rektShake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-6px, 2px); }
+  30% { transform: translate(5px, -3px); }
+  45% { transform: translate(-4px, -2px); }
+  60% { transform: translate(3px, 2px); }
+  75% { transform: translate(-2px, 1px); }
+  90% { transform: translate(1px, -1px); }
+}
+
+.rekt-shake { animation: rektShake 0.4s ease-out 1; }
