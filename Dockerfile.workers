@@ -9,7 +9,9 @@ FROM node:20-slim AS builder
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# tsconfig.base.json is extended by every package tsconfig — without it
+# tsc silently falls back to ES3 defaults and dies on BigInt literals
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/database/package.json packages/database/
 COPY packages/solana/package.json packages/solana/
