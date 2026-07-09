@@ -14,28 +14,28 @@ import * as api from '../lib/api';
    POST boot · live market wall · risk computer · spec plates
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Market wall — REAL ETH/USD candles on Robinhood Chain ──── */
+/* ── Market wall — real candles from the top Robinhood Chain pool ──── */
 interface WallCandle { o: number; c: number; h: number; l: number }
 
 const MarketWall: FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const candlesRef = useRef<WallCandle[]>([]);
-  const [feedInfo, setFeedInfo] = useState<{ price: number; up: boolean } | null>(null);
+  const [feedInfo, setFeedInfo] = useState<{ price: number; up: boolean; label: string } | null>(null);
   const [themeTick, setThemeTick] = useState(0);
 
   useEffect(() => onThemeChange(() => setThemeTick((v) => v + 1)), []);
 
-  // Real 15-minute ETH/USD candles, last 24h, refreshed every 60s
+  // Real 15-minute candles from the deepest trending pool, refreshed every 60s
   useEffect(() => {
     let dead = false;
     const load = async () => {
       try {
-        const data = await api.getReferenceHistory('15m');
-        if (dead || data.length === 0) return;
-        candlesRef.current = data.map((d) => ({ o: d.open, c: d.close, h: d.high, l: d.low }));
-        const last = data[data.length - 1];
-        const first = data[0];
-        setFeedInfo({ price: last.close, up: last.close >= first.open });
+        const feed = await api.getReferenceHistory('15m');
+        if (dead || feed.candles.length === 0) return;
+        candlesRef.current = feed.candles.map((d) => ({ o: d.open, c: d.close, h: d.high, l: d.low }));
+        const last = feed.candles[feed.candles.length - 1];
+        const first = feed.candles[0];
+        setFeedInfo({ price: last.close, up: last.close >= first.open, label: feed.label });
       } catch { /* keep whatever we have; NO FEED tag stays honest */ }
     };
     load();
@@ -153,9 +153,9 @@ const MarketWall: FC = () => {
       <div className="lp-feed-tag mono">
         {feedInfo ? (
           <>
-            <span className="lp-feed-dot" /> LIVE FEED · ETH/USD ·{' '}
+            <span className="lp-feed-dot" /> LIVE FEED · {feedInfo.label} ·{' '}
             <b style={{ color: feedInfo.up ? 'var(--green)' : 'var(--red)' }}>
-              ${feedInfo.price.toFixed(2)}
+              ${feedInfo.price >= 1 ? feedInfo.price.toFixed(2) : feedInfo.price.toPrecision(4)}
             </b>{' '}
             · 24H×15M
           </>

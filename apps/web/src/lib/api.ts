@@ -591,8 +591,14 @@ export function getMarketPriceHistory(
   return request(`/market/token/${address}/price-history${q}`);
 }
 
-/** WETH/USD OHLCV on Robinhood Chain — the landing hero reference feed. */
-export function getReferenceHistory(type = '15m'): Promise<OHLCVCandle[]> {
+export interface ReferenceFeed {
+  /** What the candles actually are (top trending Robinhood pool), e.g. "CASHCAT/USD" */
+  label: string;
+  candles: OHLCVCandle[];
+}
+
+/** Top-pool OHLCV on Robinhood Chain — the landing hero reference feed. */
+export function getReferenceHistory(type = '15m'): Promise<ReferenceFeed> {
   return request(`/market/reference-history?type=${encodeURIComponent(type)}`);
 }
 

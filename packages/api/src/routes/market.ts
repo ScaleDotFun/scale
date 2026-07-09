@@ -158,8 +158,8 @@ router.get('/token/:address/pool', publicLimiter, async (req, res) => {
 router.get('/reference-history', publicLimiter, async (req, res) => {
   try {
     const type = (req.query.type as string) || '15m';
-    const candles = await cached(`ref:${type}`, 30_000, () => gt.fetchReferenceOHLCV(type));
-    sendSuccess(res, candles);
+    const feed = await cached(`ref:${type}`, 30_000, () => gt.fetchReferenceOHLCV(type));
+    sendSuccess(res, feed);
   } catch (err) {
     sendError(res, err);
   }

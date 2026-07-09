@@ -207,25 +207,40 @@ export async function fetchTrades(address: string, limit = 30): Promise<PoolTrad
     .slice(0, limit);
 }
 
+export interface ReferenceFeed {
+  /** Human label for what the candles actually are, e.g. "CASHCAT/USD" */
+  label: string;
+  candles: OHLCVCandle[];
+}
+
 /**
  * OHLCV for the hero "market wall" — the single most-liquid trending pool
  * on Robinhood Chain (always a real, deep market to draw), newest ascending.
+ * Returns the pool's real name so the UI never mislabels the feed.
  */
-export async function fetchReferenceOHLCV(type: string, limit = 96): Promise<OHLCVCandle[]> {
+export async function fetchReferenceOHLCV(type: string, limit = 96): Promise<ReferenceFeed> {
   const json = await gtFetch(`/networks/${GT_NETWORK}/trending_pools?page=1`);
   const pools = (json.data ?? [])
-    .map((p: any) => ({ addr: p.attributes?.address, liq: num(p.attributes?.reserve_in_usd) }))
+    .map((p: any) => ({
+      addr: p.attributes?.address,
+      name: p.attributes?.name ?? '',
+      liq: num(p.attributes?.reserve_in_usd),
+    }))
     .filter((p: any) => p.addr)
     .sort((a: any, b: any) => b.liq - a.liq);
-  const pool = pools[0]?.addr;
-  if (!pool) return [];
+  const top = pools[0];
+  if (!top) return { label: '', candles: [] };
+  // GT pool name looks like "CASHCAT / WETH 1%" — show it as TOKEN/USD
+  // since GT OHLCV closes are quoted in USD
+  const base = String(top.name).split('/')[0]?.trim() || 'TOP POOL';
   const { tf, agg } = gtTimeframe(type);
-  const j = await gtFetch(`/networks/${GT_NETWORK}/pools/${pool}/ohlcv/${tf}?aggregate=${agg}&limit=${limit}`);
+  const j = await gtFetch(`/networks/${GT_NETWORK}/pools/${top.addr}/ohlcv/${tf}?aggregate=${agg}&limit=${limit}`);
   const list: number[][] = j.data?.attributes?.ohlcv_list ?? [];
-  return list
+  const candles = list
     .map((c) => ({ timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] }))
     .filter((c) => c.timestamp > 0 && c.close > 0)
     .sort((a, b) => a.timestamp - b.timestamp);
+  return { label: `${base}/USD`, candles };
 }
 
 /** Search Robinhood-chain pools by symbol/name (best-effort via pools search). */

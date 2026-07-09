@@ -30,7 +30,7 @@ function fmtPrice(p: number): string {
 }
 
 export const ReplaySim: FC = () => {
-  const [feeds, setFeeds] = useState<Feed[]>([{ label: 'ETH/USD', address: WETH, ref: true }]);
+  const [feeds, setFeeds] = useState<Feed[]>([{ label: 'TOP POOL', address: WETH, ref: true }]);
   const [feedIdx, setFeedIdx] = useState(0);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'offline'>('loading');
@@ -54,7 +54,7 @@ export const ReplaySim: FC = () => {
         const extra = toks
           .filter((t) => t.symbol)
           .map((t) => ({ label: `${t.symbol}/USD`, address: t.address }));
-        setFeeds([{ label: 'ETH/USD', address: WETH, ref: true }, ...extra]);
+        setFeeds((prev) => [prev[0], ...extra]);
       })
       .catch(() => { /* ETH feed alone is fine */ });
   }, []);
@@ -64,13 +64,17 @@ export const ReplaySim: FC = () => {
     let dead = false;
     setState('loading');
     const feed = feeds[feedIdx];
-    const load = feed.ref
+    const load: Promise<{ label?: string; candles: api.OHLCVCandle[] }> = feed.ref
       ? api.getReferenceHistory('1H')
-      : api.getMarketPriceHistory(feed.address, '1H');
+      : api.getMarketPriceHistory(feed.address, '1H').then((candles) => ({ candles }));
     load
       .then((data) => {
         if (dead) return;
-        const cs = data
+        // Reference feed reports what it really is — relabel the tab
+        if (feed.ref && data.label && data.label !== feed.label) {
+          setFeeds((prev) => prev.map((f, i) => (i === 0 ? { ...f, label: data.label! } : f)));
+        }
+        const cs = data.candles
           .filter((d) => d.close > 0)
           .map((d) => ({ t: d.timestamp, o: d.open, h: d.high, l: d.low, c: d.close }));
         if (cs.length < 10) { setState('offline'); return; }
