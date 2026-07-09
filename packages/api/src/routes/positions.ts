@@ -93,11 +93,20 @@ router.post(
         throw new ValidationError('Invalid capital amount — must be a numeric string');
       }
 
-      // Get current pool balance from ledger
-      const poolAgg = await prisma.poolLedger.aggregate({
-        _sum: { amount: true },
-      });
-      const poolBalance = poolAgg._sum.amount ?? 0n;
+      // Pool capacity — the ledger is internal accounting and can drift
+      // from reality; the protocol wallet's REAL balance is what will
+      // actually fund the swap. Validate against the smaller of the two
+      // so we never approve a position the wallet cannot fill.
+      const [poolAgg, onchain] = await Promise.all([
+        prisma.poolLedger.aggregate({ _sum: { amount: true } }),
+        (await import('../lib/onchain')).getOnchainStats(),
+      ]);
+      const ledgerBalance = poolAgg._sum.amount ?? 0n;
+      const poolBalance = onchain
+        ? (BigInt(onchain.poolWalletLamports) < ledgerBalance
+            ? BigInt(onchain.poolWalletLamports)
+            : ledgerBalance)
+        : ledgerBalance;
 
       // Validate position params
       const validation = validatePositionOpen(

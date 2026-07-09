@@ -20,8 +20,7 @@ const SECTIONS: Array<{ title: string; rows: Array<[string, string]> }> = [
       ['long 0.5 sol on TEST at 5x', 'parse a full order in one line'],
       ['close', 'close current position'],
       ['close all', 'flatten everything'],
-      ['turbo | fast | normal', 'priority fee'],
-    ],
+          ],
   },
   {
     title: 'TERMINAL',

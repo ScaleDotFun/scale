@@ -1,4 +1,5 @@
 #!/bin/sh
+# Boot script mirroring the Dockerfile CMD — apply migrations, then start.
 set -e
 
 echo "Running Prisma migrations..."
@@ -7,4 +8,4 @@ npx prisma migrate deploy
 
 echo "Starting API server..."
 cd /app
-exec node packages/api/dist/server.js
+exec tsx packages/api/src/server.ts

@@ -121,9 +121,8 @@ export const VibeCommandBar: FC<VibeCommandBarProps> = ({
     if (lastParsed.leverage) {
       chips.push({ label: 'LEV', value: `${lastParsed.leverage}x`, color: 'var(--yellow)' });
     }
-    if (lastParsed.priority) {
-      chips.push({ label: 'FEE', value: lastParsed.priority.toUpperCase(), color: 'var(--text-1)' });
-    }
+    // priority words are still parsed for tolerance, but execution
+    // always uses HIGH auto priority — no chip, no implied knob
   } else if (lastParsed.action === 'close') {
     chips.push({ label: 'ACTION', value: 'CLOSE', color: 'var(--red)' });
   } else if (lastParsed.action === 'closeall') {

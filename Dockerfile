@@ -27,4 +27,6 @@ RUN cd packages/services && pnpm build
 
 ENV NODE_ENV=production
 
-CMD ["tsx", "packages/api/src/server.ts"]
+# Apply pending DB migrations, then boot — schema changes must never
+# require a manual prisma invocation against production again
+CMD ["sh", "-c", "cd packages/database && npx prisma migrate deploy && cd /app && exec tsx packages/api/src/server.ts"]
