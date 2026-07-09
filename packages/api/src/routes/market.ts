@@ -49,32 +49,155 @@ async function birdeyeFetch(path: string, params?: Record<string, string>) {
 
 /**
  * GET /market/trending
- * 
- * Fetch trending Solana tokens from Birdeye.
+ *
+ * Quality trending — real volume leaders, not wash-traded dust.
+ * Birdeye's raw trending feed surfaces $1-liquidity scams pumping
+ * +30000%; instead we take the top tokens by 24h volume with a hard
+ * liquidity floor, drop stables/wrapped majors, then cross-verify
+ * every candidate against DexScreener's pair data. A token only
+ * makes the list if BOTH sources agree it has real liquidity.
  */
+const STABLE_OR_WRAPPED = new Set([
+  'So11111111111111111111111111111111111111112', // WSOL
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+  'USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA',  // USDS
+  'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So',  // mSOL
+  'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn', // jitoSOL
+  'bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1',  // bSOL
+  '3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh', // wBTC
+  '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs', // wETH
+  '9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E', // BTC (sollet)
+]);
+
+interface TrendingToken {
+  address: string;
+  name: string;
+  symbol: string;
+  price: number;
+  priceChange24h: number;
+  volume24h: number;
+  marketCap: number;
+  liquidity: number;
+  logoURI: string | null;
+}
+
+/** Stables / wrapped / LSTs by symbol — not tradeable "coins" */
+const BORING_SYMBOLS = /^(w?usd[a-z0-9]*|[a-z0-9]*usd[a-z0-9]?|dai|fdusd|pyusd|eurc|[a-z]{0,3}btc|w?eth|wsteth|sol|msol|jitosol|bsol|jupsol|hsol|inf|lst)$/i;
+
+const MIN_LIQUIDITY_USD = 100_000;
+const MIN_MCAP_USD = 250_000;
+/** Real markets turn over their liquidity a few times a day; hundreds of
+ *  times means wash trading — the classic fake-volume signature */
+const MAX_VOL_TO_LIQ = 40;
+const TRENDING_CACHE_MS = 120_000;
+let trendingCache: { data: TrendingToken[]; at: number } | null = null;
+
 router.get('/trending', publicLimiter, async (_req, res) => {
   try {
-    const data = await birdeyeFetch('/defi/token_trending', {
-      sort_by: 'rank',
-      sort_type: 'asc',
+    if (trendingCache && Date.now() - trendingCache.at < TRENDING_CACHE_MS) {
+      return sendSuccess(res, trendingCache.data);
+    }
+
+    // 1. Top Solana tokens by real 24h volume, hard liquidity floor
+    const data = await birdeyeFetch('/defi/tokenlist', {
+      sort_by: 'v24hUSD',
+      sort_type: 'desc',
       offset: '0',
-      limit: '20',
+      limit: '50',
+      min_liquidity: String(MIN_LIQUIDITY_USD),
     });
 
-    const tokens = ((data as any)?.data?.tokens || []).map((t: any) => ({
-      address: t.address,
-      name: t.name || 'Unknown',
-      symbol: t.symbol || '???',
-      price: t.price || 0,
-      priceChange24h: t.price24hChangePercent || 0,
-      volume24h: t.volume24hUSD || 0,
-      marketCap: t.marketcap || t.mc || 0,
-      liquidity: t.liquidity || 0,
-      logoURI: t.logoURI || null,
-    }));
+    const candidates: TrendingToken[] = ((data as any)?.data?.tokens || [])
+      .map((t: any) => ({
+        address: t.address,
+        name: t.name || 'Unknown',
+        symbol: t.symbol || '???',
+        price: t.price || 0,
+        priceChange24h: 0, // tokenlist change fields are unreliable — DexScreener fills this
+        volume24h: t.v24hUSD || 0,
+        marketCap: t.mc || t.marketcap || 0,
+        liquidity: t.liquidity || 0,
+        logoURI: t.logoURI || null,
+      }))
+      .filter((t: TrendingToken) =>
+        !STABLE_OR_WRAPPED.has(t.address) &&
+        !BORING_SYMBOLS.test(t.symbol) &&
+        t.price > 0 &&
+        t.liquidity >= MIN_LIQUIDITY_USD &&
+        t.volume24h / t.liquidity <= MAX_VOL_TO_LIQ &&
+        (t.marketCap === 0 || t.marketCap >= MIN_MCAP_USD),
+      )
+      .slice(0, 30);
 
-    sendSuccess(res, tokens);
+    // 2. Cross-verify with DexScreener (batch, no key needed) — keep
+    //    only tokens whose best pair confirms real liquidity there too
+    let verified = candidates;
+    try {
+      const addrs = candidates.map((t) => t.address).join(',');
+      const dsRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${addrs}`);
+      if (dsRes.ok) {
+        const pairs = (await dsRes.json()) as Array<{
+          baseToken?: { address?: string };
+          liquidity?: { usd?: number };
+          volume?: { h24?: number };
+          priceChange?: { h24?: number; h6?: number };
+          info?: { imageUrl?: string };
+          marketCap?: number;
+          fdv?: number;
+        }>;
+        const best = new Map<string, { liq: number; vol: number; chg: number; img?: string; mc?: number }>();
+        for (const p of pairs || []) {
+          const addr = p.baseToken?.address;
+          if (!addr) continue;
+          const liq = p.liquidity?.usd ?? 0;
+          const prev = best.get(addr);
+          if (!prev || liq > prev.liq) {
+            // Day-old pools report "true" but useless h24 (+400000%
+            // from dust price) — step down to h6, then cap
+            const h24 = p.priceChange?.h24 ?? 0;
+            const h6 = p.priceChange?.h6 ?? 0;
+            const chg = Math.abs(h24) <= 1000 ? h24
+              : Math.abs(h6) <= 1000 ? h6
+              : Math.sign(h24) * 999.9;
+            best.set(addr, {
+              liq,
+              vol: p.volume?.h24 ?? 0,
+              chg,
+              img: p.info?.imageUrl,
+              mc: p.marketCap ?? p.fdv,
+            });
+          }
+        }
+        verified = candidates
+          .filter((t) => {
+            const ds = best.get(t.address);
+            return ds && ds.liq >= MIN_LIQUIDITY_USD * 0.5;
+          })
+          .map((t) => {
+            const ds = best.get(t.address)!;
+            return {
+              ...t,
+              // Birdeye's tokenlist omits 24h price change — DexScreener has it
+              priceChange24h: ds.chg,
+              logoURI: t.logoURI || ds.img || null,
+              marketCap: t.marketCap || ds.mc || 0,
+            };
+          });
+        // If DexScreener disagrees with everything, trust the filtered
+        // Birdeye list rather than serving an empty screener
+        if (verified.length < 5) verified = candidates;
+      }
+    } catch {
+      // DexScreener unreachable — filtered Birdeye list stands
+    }
+
+    const top = verified.slice(0, 20);
+    trendingCache = { data: top, at: Date.now() };
+    sendSuccess(res, top);
   } catch (err) {
+    // Serve the last good list rather than an error if we have one
+    if (trendingCache) return sendSuccess(res, trendingCache.data);
     sendError(res, err);
   }
 });
