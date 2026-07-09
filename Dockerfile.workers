@@ -25,6 +25,7 @@ COPY packages/solana/ packages/solana/
 COPY packages/services/ packages/services/
 
 RUN pnpm -C packages/database exec prisma generate
+RUN pnpm -C packages/database build
 RUN pnpm -C packages/core build
 RUN pnpm -C packages/solana build
 RUN pnpm -C packages/services build
