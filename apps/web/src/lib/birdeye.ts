@@ -157,14 +157,32 @@ export async function fetchOHLCV(
     const json = await res.json();
     const items = json.data?.items || [];
 
-    return items.map((item: any) => ({
-      time: Math.floor(item.unixTime ?? item.unix_time ?? 0),
-      open: item.o,
-      high: item.h,
-      low: item.l,
-      close: item.c,
-      volume: item.v ?? item.volume ?? 0,
-    })).filter((b: OHLCVBar) => b.time > 0);
+    const bars: OHLCVBar[] = items
+      .map((item: any) => ({
+        time: Math.floor(item.unixTime ?? item.unix_time ?? 0),
+        open: Number(item.o),
+        high: Number(item.h),
+        low: Number(item.l),
+        close: Number(item.c),
+        volume: Number(item.v ?? item.volume ?? 0) || 0,
+      }))
+      .filter((b: OHLCVBar) =>
+        b.time > 0 &&
+        Number.isFinite(b.open) && b.open > 0 &&
+        Number.isFinite(b.high) && b.high > 0 &&
+        Number.isFinite(b.low) && b.low > 0 &&
+        Number.isFinite(b.close) && b.close > 0,
+      );
+
+    // lightweight-charts requires strictly ascending, unique times
+    bars.sort((a, b) => a.time - b.time);
+    const deduped: OHLCVBar[] = [];
+    for (const b of bars) {
+      const prev = deduped[deduped.length - 1];
+      if (prev && prev.time === b.time) deduped[deduped.length - 1] = b;
+      else deduped.push(b);
+    }
+    return deduped;
   } catch (err) {
     console.error('[Birdeye] OHLCV fetch error:', err);
     return [];
@@ -329,11 +347,14 @@ export async function fetchPrice(tokenAddress: string): Promise<number | null> {
  * Subscribes with correct chartType matching the selected interval.
  * Implements ping-pong keepalive per Birdeye best practices.
  */
+export type StreamStatus = 'connecting' | 'ws' | 'polling' | 'dead';
+
 export class BirdeyePriceStream {
   private ws: WebSocket | null = null;
   private tokenAddress: string;
   private chartType: string;
   private onUpdate: (price: number, timestamp: number) => void;
+  private onStatus?: (status: StreamStatus) => void;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private alive = true;
@@ -344,13 +365,20 @@ export class BirdeyePriceStream {
     tokenAddress: string,
     chartType: string,
     onUpdate: (price: number, timestamp: number) => void,
+    onStatus?: (status: StreamStatus) => void,
   ) {
     this.tokenAddress = tokenAddress;
     this.chartType = chartType;
     this.onUpdate = onUpdate;
+    this.onStatus = onStatus;
+  }
+
+  private setStatus(s: StreamStatus) {
+    if (this.alive) this.onStatus?.(s);
   }
 
   async connect() {
+    this.setStatus('connecting');
     // Try to get WS URL from backend (keeps API key server-side)
     let wsUrl: string;
     try {
@@ -376,8 +404,8 @@ export class BirdeyePriceStream {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('[Birdeye WS] Connected, subscribing to', this.tokenAddress, 'at', this.chartType);
         this.reconnectAttempts = 0;
+        this.setStatus('ws');
 
         // Subscribe to token price updates with correct chartType
         this.ws?.send(JSON.stringify({
@@ -420,15 +448,15 @@ export class BirdeyePriceStream {
         }
       };
 
-      this.ws.onclose = (event) => {
+      this.ws.onclose = () => {
         this.clearPing();
-        if (this.alive && this.reconnectAttempts < this.maxReconnectAttempts) {
+        if (!this.alive) return;
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 10000);
-          console.log(`[Birdeye WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+          this.setStatus('connecting');
           this.reconnectTimer = setTimeout(() => this.connect(), delay);
-        } else if (this.alive) {
-          console.warn('[Birdeye WS] Max reconnect attempts reached, falling back to polling');
+        } else {
           this.startPolling();
         }
       };
@@ -453,12 +481,21 @@ export class BirdeyePriceStream {
   private pollingId: ReturnType<typeof setInterval> | null = null;
 
   private startPolling() {
-    const intervalMs = this.chartType === '1s' ? 1000 : this.chartType === '5s' ? 2000 : 3000;
+    if (this.pollingId) return; // never double-poll
+    this.setStatus('polling');
+    // Gentler than before: 2s floor, and skip entirely while the tab is hidden
+    const intervalMs = this.chartType === '1s' ? 2000 : 5000;
+    let inFlight = false;
     this.pollingId = setInterval(async () => {
-      if (!this.alive) return;
-      const price = await fetchPrice(this.tokenAddress);
-      if (price !== null) {
-        this.onUpdate(price, Math.floor(Date.now() / 1000));
+      if (!this.alive || inFlight || document.hidden) return;
+      inFlight = true;
+      try {
+        const price = await fetchPrice(this.tokenAddress);
+        if (price !== null && this.alive) {
+          this.onUpdate(price, Math.floor(Date.now() / 1000));
+        }
+      } finally {
+        inFlight = false;
       }
     }, intervalMs);
   }

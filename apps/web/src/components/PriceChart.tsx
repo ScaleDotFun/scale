@@ -13,7 +13,7 @@ import {
   HistogramSeries,
   LineStyle,
 } from 'lightweight-charts';
-import { fetchOHLCV, BirdeyePriceStream, type OHLCVBar } from '../lib/birdeye';
+import { fetchOHLCV, BirdeyePriceStream, type OHLCVBar, type StreamStatus } from '../lib/birdeye';
 import { getVar, onThemeChange } from '../lib/theme';
 
 /** Map our interval keys to Birdeye WS chartType */
@@ -54,20 +54,37 @@ const INTERVAL_SECS: Record<string, number> = {
   '30': 1800, '60': 3600, '240': 14400, 'D': 86400,
 };
 
+const fmtCompact = (v: number): string => {
+  // 4 significant digits so tight ranges still get distinct axis ticks
+  if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toPrecision(4)}B`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toPrecision(4)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toPrecision(4)}K`;
+  if (v >= 1) return v.toFixed(2);
+  if (v >= 0.01) return v.toFixed(4);
+  return v.toPrecision(4);
+};
+
 /**
- * Production-grade TradingView chart powered by lightweight-charts + Birdeye API.
- * Supports 1-second to daily candles with real-time WebSocket streaming.
- * Draws entry, liquidation, TP, and SL price lines for active positions.
+ * Terminal trading chart — lightweight-charts + Birdeye.
+ * Hardened: sanitized data, per-switch resets, honest empty/error
+ * states, truthful stream badge, PRICE/MCAP unit toggle, theme-aware.
  */
 export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, supply }) => {
   const supplyRef = useRef(supply ?? 0);
-  // Keep supply in sync
   useEffect(() => { supplyRef.current = supply ?? 0; }, [supply]);
+
   const [interval, setInterval_] = useState('1');
-  const [source, setSource] = useState<'birdeye-live' | 'birdeye-embed'>('birdeye-live');
+  const [source, setSource] = useState<'birdeye-live' | 'birdeye-embed'>(
+    () => (import.meta.env.VITE_BIRDEYE_API_KEY ? 'birdeye-live' : 'birdeye-embed'),
+  );
   const [loading, setLoading] = useState(false);
+  const [dataState, setDataState] = useState<'ok' | 'empty' | 'error'>('ok');
   const [lastPrice, setLastPrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>('connecting');
+  const [unit, setUnit] = useState<'mcap' | 'price'>('mcap');
+  const [themeTick, setThemeTick] = useState(0);
+  const [retryTick, setRetryTick] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -77,35 +94,51 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
   const currentBarRef = useRef<OHLCVBar | null>(null);
   const barsRef = useRef<OHLCVBar[]>([]);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const unitRef = useRef(unit);
+  useEffect(() => { unitRef.current = unit; }, [unit]);
 
   const hasBirdeyeKey = !!import.meta.env.VITE_BIRDEYE_API_KEY;
 
-  /** Initialize chart */
+  /** Axis multiplier: mcap mode multiplies price by supply (pump.fun style) */
+  const mult = () => (unitRef.current === 'mcap' && supplyRef.current > 0 ? supplyRef.current : 1);
+
+  useEffect(() => onThemeChange(() => setThemeTick((v) => v + 1)), []);
+
+  /** Initialize chart (rebuilt on theme change so every color re-tints) */
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const P = {
+      primary: getVar('--primary') || '#ffb300',
+      primaryRgb: getVar('--primary-rgb') || '255, 179, 0',
+      bg: getVar('--bg-0') || '#060605',
+      text: getVar('--text-2') || '#6b664f',
+      grid: '#0d0d0a',
+      border: '#12110c',
+    };
+
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#060605' },
-        textColor: '#6b664f',
+        background: { type: ColorType.Solid, color: P.bg },
+        textColor: P.text,
         fontSize: 11,
         fontFamily: "'JetBrains Mono', monospace",
       },
       grid: {
-        vertLines: { color: '#0d0d0a' },
-        horzLines: { color: '#0d0d0a' },
+        vertLines: { color: P.grid },
+        horzLines: { color: P.grid },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: `rgba(${getVar('--primary-rgb')}, 0.25)`, width: 1, style: 2, labelBackgroundColor: getVar('--primary') },
-        horzLine: { color: `rgba(${getVar('--primary-rgb')}, 0.25)`, width: 1, style: 2, labelBackgroundColor: getVar('--primary') },
+        vertLine: { color: `rgba(${P.primaryRgb}, 0.25)`, width: 1, style: 2, labelBackgroundColor: P.primary },
+        horzLine: { color: `rgba(${P.primaryRgb}, 0.25)`, width: 1, style: 2, labelBackgroundColor: P.primary },
       },
       rightPriceScale: {
-        borderColor: '#12110c',
+        borderColor: P.border,
         scaleMargins: { top: 0.1, bottom: 0.2 },
       },
       timeScale: {
-        borderColor: '#12110c',
+        borderColor: P.border,
         timeVisible: true,
         secondsVisible: true,
         rightOffset: 5,
@@ -120,22 +153,14 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
       borderDownColor: '#ff4d4d',
       wickUpColor: '#3dff9e80',
       wickDownColor: '#ff4d4d80',
-      priceFormat: {
-        type: 'custom',
-        formatter: (price: number) => {
-          if (price >= 1_000_000_000) return `${(price / 1_000_000_000).toFixed(2)}B`;
-          if (price >= 1_000_000) return `${(price / 1_000_000).toFixed(2)}M`;
-          if (price >= 1_000) return `${(price / 1_000).toFixed(1)}K`;
-          if (price >= 1) return price.toFixed(2);
-          if (price >= 0.01) return price.toFixed(4);
-          return price.toPrecision(4);
-        },
-      },
+      priceFormat: { type: 'custom', formatter: fmtCompact },
     });
 
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
       priceScaleId: '',
+      lastValueVisible: false,
+      priceLineVisible: false,
     });
 
     volumeSeries.priceScale().applyOptions({
@@ -145,16 +170,6 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
-
-    // Re-tint crosshair when the phosphor theme changes
-    const offTheme = onThemeChange(() => {
-      chart.applyOptions({
-        crosshair: {
-          vertLine: { color: `rgba(${getVar('--primary-rgb')}, 0.25)`, labelBackgroundColor: getVar('--primary') },
-          horzLine: { color: `rgba(${getVar('--primary-rgb')}, 0.25)`, labelBackgroundColor: getVar('--primary') },
-        },
-      });
-    });
 
     // Resize handler
     const resizeObserver = new ResizeObserver((entries) => {
@@ -168,11 +183,9 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
     // Fix chart freeze when switching tabs
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && chartRef.current && containerRef.current) {
-        // Force resize to unstick the chart after tab switch
         const { width, height } = containerRef.current.getBoundingClientRect();
         chartRef.current.applyOptions({ width, height });
         chartRef.current.timeScale().fitContent();
-        // Delayed second resize for layout reflow
         requestAnimationFrame(() => {
           if (chartRef.current && containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
@@ -185,7 +198,6 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      offTheme();
       document.removeEventListener('visibilitychange', handleVisibility);
       resizeObserver.disconnect();
       chart.remove();
@@ -194,14 +206,13 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
       volumeSeriesRef.current = null;
       priceLinesRef.current = [];
     };
-  }, []);
+  }, [themeTick]);
 
-  /** Draw position price lines */
+  /** Draw position price lines (re-tinted on theme, re-scaled on unit) */
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
     if (!candleSeries) return;
 
-    // Remove old lines
     for (const line of priceLinesRef.current) {
       try { candleSeries.removePriceLine(line); } catch { /* ignore */ }
     }
@@ -209,63 +220,27 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
 
     if (!positions || positions.length === 0) return;
 
-    const s = supplyRef.current;
-    const multiplier = s > 0 ? s : 1;
+    const m = mult();
+    const primary = getVar('--primary') || '#ffb300';
 
     for (const pos of positions) {
-      // Entry price line — gold dashed
-      if (pos.entryPrice > 0) {
-        const entryLine = candleSeries.createPriceLine({
-          price: pos.entryPrice * multiplier,
-          color: '#ffb300',
+      const mk = (price: number, color: string, style: LineStyle, title: string) => {
+        if (!(price > 0)) return;
+        priceLinesRef.current.push(candleSeries.createPriceLine({
+          price: price * m,
+          color,
           lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
+          lineStyle: style,
           axisLabelVisible: true,
-          title: `ENTRY`,
-        });
-        priceLinesRef.current.push(entryLine);
-      }
-
-      // Liquidation price line — red solid
-      if (pos.liquidationPrice > 0) {
-        const liqLine = candleSeries.createPriceLine({
-          price: pos.liquidationPrice * multiplier,
-          color: '#ff4d4d',
-          lineWidth: 1,
-          lineStyle: LineStyle.Solid,
-          axisLabelVisible: true,
-          title: `LIQ`,
-        });
-        priceLinesRef.current.push(liqLine);
-      }
-
-      // Take profit line — green dashed
-      if (pos.takeProfitPrice && pos.takeProfitPrice > 0) {
-        const tpLine = candleSeries.createPriceLine({
-          price: pos.takeProfitPrice * multiplier,
-          color: '#3dff9e',
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: `TP`,
-        });
-        priceLinesRef.current.push(tpLine);
-      }
-
-      // Stop loss line — orange dashed
-      if (pos.stopLossPrice && pos.stopLossPrice > 0) {
-        const slLine = candleSeries.createPriceLine({
-          price: pos.stopLossPrice * multiplier,
-          color: '#ffd75e',
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: `SL`,
-        });
-        priceLinesRef.current.push(slLine);
-      }
+          title,
+        }));
+      };
+      mk(pos.entryPrice, primary, LineStyle.Dashed, 'ENTRY');
+      mk(pos.liquidationPrice, '#ff4d4d', LineStyle.Solid, 'LIQ');
+      mk(pos.takeProfitPrice ?? 0, '#3dff9e', LineStyle.Dashed, 'TP');
+      mk(pos.stopLossPrice ?? 0, '#ffd75e', LineStyle.Dashed, 'SL');
     }
-  }, [positions]);
+  }, [positions, unit, themeTick, supply]);
 
   /** Load data and start streaming */
   useEffect(() => {
@@ -276,127 +251,127 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
     if (!candleSeries || !volumeSeries) return;
 
     let cancelled = false;
+    const intervalSecs = INTERVAL_SECS[interval] || 60;
 
-    const loadData = async () => {
-      setLoading(true);
+    // Hard reset — never show the previous token/interval while loading
+    candleSeries.setData([]);
+    volumeSeries.setData([]);
+    barsRef.current = [];
+    currentBarRef.current = null;
+    setLastPrice(null);
+    setPriceChange(0);
+    setDataState('ok');
+    setLoading(true);
 
-      const bars = await fetchOHLCV(tokenAddress, interval, 300);
-      if (cancelled || bars.length === 0) {
-        setLoading(false);
-        return;
-      }
-
-      barsRef.current = bars;
-
-      // Multiply by supply to show market cap on Y-axis
-      const s = supplyRef.current;
-      const multiplier = s > 0 ? s : 1;
-
-      // Set candle data (market cap values)
-      const candleData: CandlestickData[] = bars.map((b) => ({
+    const applyBars = (bars: OHLCVBar[]) => {
+      const m = mult();
+      candleSeries.setData(bars.map((b) => ({
         time: b.time as Time,
-        open: b.open * multiplier,
-        high: b.high * multiplier,
-        low: b.low * multiplier,
-        close: b.close * multiplier,
-      }));
-
-      const volumeData: HistogramData[] = bars.map((b) => ({
+        open: b.open * m,
+        high: b.high * m,
+        low: b.low * m,
+        close: b.close * m,
+      })) as CandlestickData[]);
+      volumeSeries.setData(bars.map((b) => ({
         time: b.time as Time,
         value: b.volume,
         color: b.close >= b.open ? '#3dff9e20' : '#ff4d4d20',
-      }));
+      })) as HistogramData[]);
+    };
 
-      candleSeries.setData(candleData);
-      volumeSeries.setData(volumeData);
+    const loadData = async () => {
+      try {
+        const bars = await fetchOHLCV(tokenAddress, interval, 300);
+        if (cancelled) return;
 
-      // Track last bar for real-time updates
-      const lastBar = bars[bars.length - 1];
-      currentBarRef.current = { ...lastBar };
-      setLastPrice(lastBar.close);
+        if (bars.length === 0) {
+          setDataState('empty');
+          setLoading(false);
+          return;
+        }
 
-      // Calculate price change
-      if (bars.length > 1) {
-        const firstBar = bars[0];
-        const change = ((lastBar.close - firstBar.open) / firstBar.open) * 100;
-        setPriceChange(change);
-      }
+        barsRef.current = bars;
+        applyBars(bars);
 
-      // Fit content — immediate + delayed to handle container sizing
-      chartRef.current?.timeScale().fitContent();
-      setTimeout(() => {
+        const lastBar = bars[bars.length - 1];
+        currentBarRef.current = { ...lastBar };
+        setLastPrice(lastBar.close);
+
+        if (bars.length > 1) {
+          setPriceChange(((lastBar.close - bars[0].open) / bars[0].open) * 100);
+        }
+
         chartRef.current?.timeScale().fitContent();
-        chartRef.current?.timeScale().scrollToRealTime();
-      }, 100);
-      setLoading(false);
+        setTimeout(() => {
+          if (cancelled) return;
+          chartRef.current?.timeScale().fitContent();
+          chartRef.current?.timeScale().scrollToRealTime();
+        }, 100);
+        setDataState('ok');
+      } catch {
+        if (!cancelled) setDataState('error');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
 
     loadData();
 
-    // Start real-time stream
-    const intervalSecs = INTERVAL_SECS[interval] || 60;
-
+    // Real-time stream with truthful status
     const stream = new BirdeyePriceStream(
       tokenAddress,
       WS_CHART_TYPE[interval] || '1m',
       (price, timestamp) => {
-      if (cancelled) return;
+        if (cancelled || !(price > 0)) return;
 
-      setLastPrice(price);
+        setLastPrice(price);
 
-      const current = currentBarRef.current;
-      if (!current) return;
+        const current = currentBarRef.current;
+        if (!current) return; // no baseline bars yet — don't invent candles
 
-      // Check if this price belongs to the current bar or a new bar
-      const barStart = Math.floor(timestamp / intervalSecs) * intervalSecs;
-      const currentBarStart = Math.floor(current.time / intervalSecs) * intervalSecs;
+        const barStart = Math.floor(timestamp / intervalSecs) * intervalSecs;
+        const currentBarStart = Math.floor(current.time / intervalSecs) * intervalSecs;
 
-      if (barStart > currentBarStart) {
-        // New bar
-        const newBar: OHLCVBar = {
-          time: barStart,
-          open: price,
-          high: price,
-          low: price,
-          close: price,
-          volume: 0,
-        };
-        currentBarRef.current = newBar;
-        barsRef.current.push(newBar);
-      } else {
-        // Update current bar
-        current.high = Math.max(current.high, price);
-        current.low = Math.min(current.low, price);
-        current.close = price;
-      }
+        // Drop stale/out-of-order ticks — lightweight-charts rejects
+        // updates older than the last bar and corrupts the series
+        if (barStart < currentBarStart) return;
 
-      const bar = currentBarRef.current!;
+        if (barStart > currentBarStart) {
+          const newBar: OHLCVBar = {
+            time: barStart, open: price, high: price, low: price, close: price, volume: 0,
+          };
+          currentBarRef.current = newBar;
+          barsRef.current.push(newBar);
+        } else {
+          current.high = Math.max(current.high, price);
+          current.low = Math.min(current.low, price);
+          current.close = price;
+        }
 
-      // Update chart (market cap values)
-      const s = supplyRef.current;
-      const multiplier = s > 0 ? s : 1;
-      candleSeries.update({
-        time: bar.time as Time,
-        open: bar.open * multiplier,
-        high: bar.high * multiplier,
-        low: bar.low * multiplier,
-        close: bar.close * multiplier,
-      });
+        const bar = currentBarRef.current!;
+        const m = mult();
+        try {
+          candleSeries.update({
+            time: bar.time as Time,
+            open: bar.open * m,
+            high: bar.high * m,
+            low: bar.low * m,
+            close: bar.close * m,
+          });
+          volumeSeries.update({
+            time: bar.time as Time,
+            value: bar.volume,
+            color: bar.close >= bar.open ? '#3dff9e20' : '#ff4d4d20',
+          });
+        } catch { /* series replaced mid-tick — safe to drop */ }
 
-      volumeSeries.update({
-        time: bar.time as Time,
-        value: bar.volume,
-        color: bar.close >= bar.open ? '#3dff9e20' : '#ff4d4d20',
-      });
-
-      // Update price change
-      const bars = barsRef.current;
-      if (bars.length > 0) {
-        const firstBar = bars[0];
-        const change = ((price - firstBar.open) / firstBar.open) * 100;
-        setPriceChange(change);
-      }
-    });
+        const bars = barsRef.current;
+        if (bars.length > 0) {
+          setPriceChange(((price - bars[0].open) / bars[0].open) * 100);
+        }
+      },
+      (status) => { if (!cancelled) setStreamStatus(status); },
+    );
 
     stream.connect();
     streamRef.current = stream;
@@ -406,7 +381,9 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
       stream.disconnect();
       streamRef.current = null;
     };
-  }, [tokenAddress, interval, source, hasBirdeyeKey]);
+    // `supply` dep: candles often load before token overview resolves —
+    // when supply lands, reload once so axis units match the MC readout
+  }, [tokenAddress, interval, source, hasBirdeyeKey, unit, themeTick, retryTick, supply]);
 
   // Embed URL fallback
   const embedUrl = tokenAddress
@@ -414,6 +391,14 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
     : null;
 
   const showLiveChart = source === 'birdeye-live' && hasBirdeyeKey;
+  const hasMcap = (supply ?? 0) > 0;
+  const streamBadge: Record<StreamStatus, { label: string; color: string }> = {
+    connecting: { label: 'SYNC', color: 'var(--yellow)' },
+    ws: { label: 'LIVE', color: 'var(--green)' },
+    polling: { label: 'POLL', color: 'var(--yellow)' },
+    dead: { label: 'STALE', color: 'var(--red)' },
+  };
+  const badge = streamBadge[streamStatus];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
@@ -426,8 +411,8 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
         borderBottom: '1px solid #12110c',
         background: '#070706',
         flexShrink: 0,
+        overflowX: 'auto',
       }}>
-        {/* Timeframes */}
         {TIMEFRAMES.map((tf) => (
           <button
             key={tf}
@@ -437,10 +422,10 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
               fontSize: 10,
               fontWeight: 600,
               fontFamily: "'JetBrains Mono', monospace",
-              color: interval === tf ? '#ffb300' : '#4d4936',
-              background: interval === tf ? '#ffb30010' : 'transparent',
+              color: interval === tf ? 'var(--primary)' : '#4d4936',
+              background: interval === tf ? 'rgba(var(--primary-rgb),0.07)' : 'transparent',
               border: '1px solid',
-              borderColor: interval === tf ? '#ffb30025' : 'transparent',
+              borderColor: interval === tf ? 'rgba(var(--primary-rgb),0.15)' : 'transparent',
               borderRadius: 0,
               cursor: 'pointer',
               transition: 'all 0.15s',
@@ -450,30 +435,45 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
           </button>
         ))}
 
+        {/* Unit toggle — axis in market cap or token price */}
+        {hasMcap && showLiveChart && (
+          <div style={{ display: 'flex', marginLeft: 8, border: '1px solid #262418' }}>
+            {(['mcap', 'price'] as const).map((u) => (
+              <button
+                key={u}
+                onClick={() => setUnit(u)}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: unit === u ? '#0a0a08' : '#6b664f',
+                  background: unit === u ? 'var(--primary)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                {u === 'mcap' ? 'MC' : 'PX'}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div style={{ flex: 1 }} />
 
-        {/* Live price indicator */}
-        {lastPrice && showLiveChart && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            marginRight: 8,
-          }}>
-            <div style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: '#3dff9e',
-              animation: 'pulse-dot 2s ease-in-out infinite',
-            }} />
+        {/* Live readout — same unit as the axis */}
+        {lastPrice != null && showLiveChart && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8, whiteSpace: 'nowrap' }}>
             <span style={{
               fontSize: 12,
               fontWeight: 700,
               color: '#f2eee2',
               fontFamily: "'JetBrains Mono', monospace",
             }}>
-              ${lastPrice.toPrecision(6)}
+              {unit === 'mcap' && hasMcap
+                ? `MC $${fmtCompact(lastPrice * (supply ?? 0))}`
+                : `$${lastPrice.toPrecision(6)}`}
             </span>
             <span style={{
               fontSize: 10,
@@ -486,16 +486,17 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
           </div>
         )}
 
-        {/* Source toggle */}
+        {/* Stream + source */}
         <div style={{ display: 'flex', gap: 1, background: '#0b0b08', borderRadius: 0, padding: 1 }}>
           {hasBirdeyeKey && (
             <button
               onClick={() => setSource('birdeye-live')}
+              title={`Feed: ${badge.label}`}
               style={{
                 padding: '2px 8px',
                 fontSize: 9,
                 fontWeight: 600,
-                color: source === 'birdeye-live' ? '#3dff9e' : '#3f3b26',
+                color: source === 'birdeye-live' ? badge.color : '#3f3b26',
                 background: source === 'birdeye-live' ? '#12110c' : 'transparent',
                 border: 'none',
                 borderRadius: 0,
@@ -507,9 +508,9 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
             >
               <span style={{
                 width: 4, height: 4, borderRadius: '50%',
-                background: source === 'birdeye-live' ? '#3dff9e' : '#3f3b26',
+                background: source === 'birdeye-live' ? badge.color : '#3f3b26',
               }} />
-              Live
+              {source === 'birdeye-live' ? badge.label : 'Live'}
             </button>
           )}
           <button
@@ -518,7 +519,7 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
               padding: '2px 8px',
               fontSize: 9,
               fontWeight: 600,
-              color: source === 'birdeye-embed' ? '#ffb300' : '#3f3b26',
+              color: source === 'birdeye-embed' ? 'var(--primary)' : '#3f3b26',
               background: source === 'birdeye-embed' ? '#12110c' : 'transparent',
               border: 'none',
               borderRadius: 0,
@@ -532,7 +533,6 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
 
       {/* Chart area */}
       <div style={{ flex: 1, position: 'relative', background: '#060605', minHeight: 0 }}>
-        {/* Loading overlay */}
         {loading && (
           <div style={{
             position: 'absolute',
@@ -547,7 +547,7 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
               width: 20,
               height: 20,
               border: '2px solid #262418',
-              borderTopColor: '#ffb300',
+              borderTopColor: 'var(--primary)',
               borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
             }} />
@@ -564,6 +564,46 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
               display: source === 'birdeye-live' ? 'block' : 'none',
             }}
           />
+        )}
+
+        {/* Honest empty / error states */}
+        {showLiveChart && tokenAddress && !loading && dataState !== 'ok' && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            zIndex: 5,
+            background: '#060605',
+          }}>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '0.3em',
+              color: dataState === 'error' ? '#ff4d4d' : '#6b664f',
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              {dataState === 'error' ? '[ FEED ERROR ]' : `[ NO ${TIMEFRAME_LABELS[interval].toUpperCase()} CANDLES ]`}
+            </span>
+            <span style={{ fontSize: 11, color: '#6b664f' }}>
+              {dataState === 'error'
+                ? 'Candle feed unreachable — retry or switch source'
+                : 'This token has no trades at this resolution'}
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {dataState === 'empty' && interval !== '60' && (
+                <button className="btn btn-outline btn-sm" onClick={() => setInterval_('60')}>
+                  SWITCH TO 1H
+                </button>
+              )}
+              <button className="btn btn-outline btn-sm" onClick={() => setRetryTick((v) => v + 1)}>
+                RETRY
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Embed fallback */}
