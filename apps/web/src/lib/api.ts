@@ -248,6 +248,8 @@ export interface PositionInfo {
   flatFee: string;
   tier: string;
   entryPrice: string | null;
+  /** Entry converted to token-USD by the API (null when unavailable) */
+  entryPriceUsd?: number | null;
   exitThreshold: string;
   takeProfitPct?: number | null;
   stopLossPct?: number | null;

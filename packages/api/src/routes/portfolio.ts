@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { prisma } from '@front-protocol/database';
 import { getEthBalance } from '@front-protocol/evm';
+import { positionPriceToUsd } from '../lib/priceUnits';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 
@@ -125,7 +126,7 @@ router.get('/history', verifyWalletSignature, async (req, res) => {
       prisma.position.count({ where: { userWallet: wallet } }),
     ]);
 
-    const data = trades.map((t) => ({
+    const data = await Promise.all(trades.map(async (t) => ({
       id: t.id,
       token: t.token,
       status: t.status,
@@ -134,12 +135,14 @@ router.get('/history', verifyWalletSignature, async (req, res) => {
       userCapital: String(t.userCapital),
       protocolCapital: String(t.protocolCapital),
       entryPrice: t.entryPrice ? String(t.entryPrice) : null,
+      entryPriceUsd: await positionPriceToUsd(t.entryPrice ? Number(t.entryPrice) : null, t.token.address),
       exitPrice: t.exitPrice ? String(t.exitPrice) : null,
+      exitPriceUsd: await positionPriceToUsd(t.exitPrice ? Number(t.exitPrice) : null, t.token.address),
       pnlSol: t.pnlSol ? String(t.pnlSol) : null,
       userProfit: t.userProfit ? String(t.userProfit) : null,
       openedAt: t.openedAt,
       closedAt: t.closedAt,
-    }));
+    })));
 
     sendSuccess(res, { trades: data, total, limit, offset });
   } catch (err) {

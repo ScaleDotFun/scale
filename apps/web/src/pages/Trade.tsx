@@ -126,7 +126,9 @@ export const Trade: FC = () => {
    */
   const livePnLFor = useCallback((pos: api.PositionInfo): number | null => {
     if (pos.token?.address !== selectedToken?.address) return pos.livePnLPercent ?? null;
-    const entry = parseFloat(pos.entryPrice ?? '0');
+    // entryPriceUsd comes converted from the API (positions book prices
+    // in wei-per-raw-unit, the chart streams token-USD)
+    const entry = pos.entryPriceUsd ?? 0;
     const price = livePrice ?? tokenOverview?.price ?? 0;
     if (!(entry > 0) || !(price > 0)) return pos.livePnLPercent ?? null;
     return ((price / entry) - 1) * 100 * pos.leverage;
@@ -154,7 +156,7 @@ export const Trade: FC = () => {
   const chartPositions: ChartPosition[] = activePositions
     .filter((pos) => pos.token?.address === selectedToken?.address)
     .map((pos) => {
-      const entry = parseFloat(pos.entryPrice ?? '0');
+      const entry = pos.entryPriceUsd ?? 0; // token-USD, same axis as the chart
       const exitPct = parseFloat(pos.exitThreshold) || -10;
       return {
         entryPrice: entry,
@@ -338,7 +340,7 @@ export const Trade: FC = () => {
                         const pnlSol = (pnl / 100) * Number(pos.userCapital || 0) / 1e18;
                         const timeLeft = getTimeLeft(pos);
                         const isExpanded = expandedPosition === pos.id;
-                        const entryNum = parseFloat(pos.entryPrice ?? '0');
+                        const entryNum = pos.entryPriceUsd ?? 0;
                         const exitPct = parseFloat(pos.exitThreshold) || -10;
                         const liqPricePos = entryNum > 0 ? entryNum * (1 + exitPct / (100 * pos.leverage)) : 0;
 
@@ -354,7 +356,7 @@ export const Trade: FC = () => {
                             </td>
                             <td className="mono">{formatSol(pos.userCapital)}</td>
                             <td className="mono">{pos.leverage}x</td>
-                            <td className="mono">{pos.entryPrice ? `$${formatPrice(parseFloat(pos.entryPrice))}` : '--'}</td>
+                            <td className="mono">{pos.entryPriceUsd ? `$${formatPrice(pos.entryPriceUsd)}` : '--'}</td>
                             <td className="mono" style={{ color: 'var(--primary)' }}>
                               {pos.token?.address === selectedToken?.address && (livePrice ?? markPrice) > 0
                                 ? `$${formatPrice(livePrice ?? markPrice)}`
@@ -749,7 +751,7 @@ export const Trade: FC = () => {
                   {tokenPositions.map((pos) => {
                     const pnl = pos.livePnLPercent ?? 0;
                     const pnlSol = (pnl / 100) * Number(pos.userCapital || 0) / 1e18;
-                    const entryNum = parseFloat(pos.entryPrice ?? '0');
+                    const entryNum = pos.entryPriceUsd ?? 0;
                     const timeMs = pos.timeRemainingMs ?? 0;
                     const timeStr = timeMs <= 0 ? 'Expired' : formatCountdown(timeMs);
                     const timeColor = timeMs <= 0 ? '#ff4d4d' : timeMs > 12 * 3600000 ? '#00c805' : timeMs > 4 * 3600000 ? 'var(--primary-hover)' : '#ff4d4d';

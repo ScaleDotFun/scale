@@ -16,9 +16,14 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
 
   const pnlSol = trade.pnlSol ? Number(trade.pnlSol) / 1e18 : 0;
   const isProfit = pnlSol >= 0;
-  const entryPrice = trade.entryPrice ? Number(trade.entryPrice) : 0;
-  const exitPrice = trade.exitPrice ? Number(trade.exitPrice) : 0;
-  const roi = entryPrice > 0 ? ((exitPrice - entryPrice) / entryPrice) * 100 * trade.leverage : 0;
+  // ROI from the raw booked prices — both sides share the same unit,
+  // so the ratio is exact regardless of denomination
+  const entryRaw = trade.entryPrice ? Number(trade.entryPrice) : 0;
+  const exitRaw = trade.exitPrice ? Number(trade.exitPrice) : 0;
+  const roi = entryRaw > 0 ? ((exitRaw - entryRaw) / entryRaw) * 100 * trade.leverage : 0;
+  // Display prices in token-USD when the API converted them
+  const entryPrice = (trade as any).entryPriceUsd ?? 0;
+  const exitPrice = (trade as any).exitPriceUsd ?? 0;
   const capitalSol = Number(trade.userCapital || 0) / 1e18;
 
   const generateCard = useCallback(() => {
@@ -123,8 +128,8 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
     ctx.font = '14px "Inter", system-ui, sans-serif';
     ctx.fillStyle = '#a6bcae';
     ctx.fillText(`${capitalSol.toFixed(4)} ETH`, 28, statY + 20);
-    ctx.fillText(`${entryPrice.toFixed(8)}`, 160, statY + 20);
-    ctx.fillText(`${exitPrice.toFixed(8)}`, 292, statY + 20);
+    ctx.fillText(entryPrice > 0 ? `$${entryPrice.toPrecision(6)}` : '—', 160, statY + 20);
+    ctx.fillText(exitPrice > 0 ? `$${exitPrice.toPrecision(6)}` : '—', 292, statY + 20);
     ctx.fillText((trade.tier || 'degen').toUpperCase(), 424, statY + 20);
 
     // Bottom divider

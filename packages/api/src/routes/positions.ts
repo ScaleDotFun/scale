@@ -26,6 +26,7 @@ import {
   transferEth,
 } from '@front-protocol/evm';
 import { fetchToken as gtFetchToken, fetchEthUsd } from '../lib/geckoterminal';
+import { positionPriceToUsd } from '../lib/priceUnits';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { tradingLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -618,11 +619,14 @@ router.get(
       });
 
       // Augment each position with computed live P&L fields
-      const enriched = positions.map((pos) => {
+      const enriched = await Promise.all(positions.map(async (pos) => {
         const entryPrice = pos.entryPrice ? Number(pos.entryPrice) : null;
         const openedAtMs = pos.openedAt.getTime();
         const now = Date.now();
         const timeRemainingMs = Math.max(0, openedAtMs + 24 * 60 * 60 * 1000 - now);
+        // Booked in wei-per-raw-unit; the UI charts token-USD — convert
+        // server-side (null when ETH/USD or decimals are unavailable)
+        const entryPriceUsd = await positionPriceToUsd(entryPrice, pos.token.address);
 
         return {
           id: pos.id,
@@ -635,6 +639,7 @@ router.get(
           flatFee: String(pos.flatFee),
           tier: pos.tier,
           entryPrice: pos.entryPrice ? String(pos.entryPrice) : null,
+          entryPriceUsd,
           exitThreshold: String(pos.exitThreshold),
           takeProfitPct: pos.takeProfitPct != null ? Number(pos.takeProfitPct) : null,
           stopLossPct: pos.stopLossPct != null ? Number(pos.stopLossPct) : null,
@@ -644,7 +649,7 @@ router.get(
           // Live P&L must be calculated with real-time price data from the frontend or services
           livePnLPercent: null as number | null,
         };
-      });
+      }));
 
       sendSuccess(res, enriched);
     } catch (err) {

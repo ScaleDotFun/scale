@@ -53,7 +53,7 @@ export const PositionTable: FC<PositionTableProps> = ({
                 <td><TierBadge tier={pos.tier} /></td>
                 <td className="mono">{pos.leverage}x</td>
                 <td className="mono">{formatSol(pos.userCapital, 2)}</td>
-                <td className="mono">{pos.entryPrice ? formatSolPrice(Number(pos.entryPrice)) : '—'}</td>
+                <td className="mono">{pos.entryPriceUsd ? `$${formatSolPrice(pos.entryPriceUsd)}` : '—'}</td>
                 <td>
                   <LiquidationBar
                     livePnlPercent={pos.livePnLPercent ?? null}
