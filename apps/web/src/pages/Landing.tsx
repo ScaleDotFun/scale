@@ -243,6 +243,18 @@ const Reveal: FC<{ children: ReactNode; delay?: number }> = ({ children, delay =
 
 /* ── Page ───────────────────────────────────────────────────── */
 export const Landing: FC = () => {
+  const [ca, setCa] = useState<string | null>(null);
+  const [caCopied, setCaCopied] = useState(false);
+  useEffect(() => {
+    api.getProtocolStats().then((s) => setCa(s.scaleToken ?? null)).catch(() => setCa(null));
+  }, []);
+  const copyCa = () => {
+    if (!ca) return;
+    navigator.clipboard.writeText(ca).then(() => {
+      setCaCopied(true);
+      setTimeout(() => setCaCopied(false), 1400);
+    });
+  };
   return (
     <div className="lp">
       <HelpOverlay />
@@ -300,6 +312,22 @@ export const Landing: FC = () => {
             </Link>
             <a href="#sim" className="lp-cta-ghost">[ RUN SIMULATOR ]</a>
           </motion.div>
+
+          {ca && (
+            <motion.button
+              type="button"
+              onClick={copyCa}
+              className="lp-ca"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 1.05 }}
+              title="Copy $SCALE contract address"
+            >
+              <span className="lp-ca-label">$SCALE CA</span>
+              <span className="lp-ca-addr">{ca}</span>
+              <span className="lp-ca-copy">{caCopied ? 'COPIED ✓' : 'COPY'}</span>
+            </motion.button>
+          )}
 
           <motion.div
             initial={{ opacity: 0 }}

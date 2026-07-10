@@ -829,3 +829,46 @@
   .rs-chart-wrap { height: 240px; }
   .rs-result { margin: 16px; }
 }
+
+/* ── $SCALE contract-address bar (hero) ─────────────────────── */
+.lp-ca {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 9px 12px 9px 14px;
+  background: rgba(200, 255, 0, 0.05);
+  border: 1px solid rgba(var(--primary-rgb), 0.35);
+  border-radius: 0;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  max-width: 100%;
+  transition: border-color 0.15s, background 0.15s;
+}
+.lp-ca:hover { border-color: var(--primary); background: rgba(200, 255, 0, 0.09); }
+.lp-ca-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+.lp-ca-addr {
+  font-size: 12.5px;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lp-ca-copy {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #060605;
+  background: var(--primary);
+  padding: 3px 9px;
+  flex-shrink: 0;
+}
+@media (max-width: 560px) {
+  .lp-ca-addr { font-size: 10.5px; }
+}
