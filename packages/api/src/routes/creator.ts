@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { prisma } from '@front-protocol/database';
 import { WEI_PER_ETH, getTierConfig, type Tier } from '@front-protocol/core';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
+import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
 import { ValidationError, NotFoundError, ForbiddenError, InsufficientFundsError } from '../lib/errors';
 
@@ -19,11 +20,7 @@ const MIN_CLAIM_LAMPORTS = WEI_PER_ETH / 20n;
  *
  * Return the creator's tokens with earnings, volume, and stats.
  */
-router.get('/dashboard', verifyWalletSignature, async (req, res) => {
-  try {
-    const authReq = req as AuthenticatedRequest;
-    const wallet = authReq.wallet!;
-
+async function buildCreatorDashboard(wallet: string) {
     // Fetch all tokens this creator has listed
     const tokens = await prisma.token.findMany({
       where: { creatorWallet: wallet },
@@ -31,16 +28,15 @@ router.get('/dashboard', verifyWalletSignature, async (req, res) => {
     });
 
     if (tokens.length === 0) {
-      sendSuccess(res, {
+      return {
         tokens: [],
         totals: {
-          totalTradingVolume: 0n,
-          totalEarnings: 0n,
-          unclaimedEarnings: 0n,
+          totalTradingVolume: '0',
+          totalEarnings: '0',
+          unclaimedEarnings: '0',
           tokenCount: 0,
         },
-      });
-      return;
+      };
     }
 
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -142,7 +138,7 @@ router.get('/dashboard', verifyWalletSignature, async (req, res) => {
       (todayVolumeAgg._sum.userCapital ?? 0n) +
       (todayVolumeAgg._sum.protocolCapital ?? 0n);
 
-    sendSuccess(res, {
+    return {
       tokens: dashboardTokens,
       totals: {
         totalTradingVolume: String(tokens.reduce((sum, t) => sum + t.totalTradingVolume, 0n)),
@@ -153,7 +149,32 @@ router.get('/dashboard', verifyWalletSignature, async (req, res) => {
         todayEarnings: String(todayEarningsAgg._sum.amount ?? 0n),
         tokenCount: tokens.length,
       },
-    });
+    };
+}
+
+router.get('/dashboard', verifyWalletSignature, async (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    sendSuccess(res, await buildCreatorDashboard(authReq.wallet!));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /creator/dashboard/:wallet
+ *
+ * Public read-only creator lookup by wallet (Creator page paste-a-wallet
+ * flow). Same data as the authed dashboard — it's all public on-chain /
+ * ledger information.
+ */
+router.get('/dashboard/:wallet', publicLimiter, async (req, res) => {
+  try {
+    const wallet = String(req.params.wallet);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+      throw new ValidationError('Invalid wallet — must be a Robinhood Chain (0x…) address');
+    }
+    sendSuccess(res, await buildCreatorDashboard(wallet));
   } catch (err) {
     sendError(res, err);
   }
@@ -165,10 +186,11 @@ router.get('/dashboard', verifyWalletSignature, async (req, res) => {
  * Return the creator's payout history, paginated.
  * Query params: limit (default 20, max 100), offset (default 0), status (optional)
  */
-router.get('/payouts', verifyWalletSignature, async (req, res) => {
-  try {
-    const authReq = req as AuthenticatedRequest;
-    const wallet = authReq.wallet!;
+async function respondCreatorPayouts(
+  wallet: string,
+  req: import('express').Request,
+  res: import('express').Response,
+): Promise<void> {
     const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 100);
     const offset = parseInt(req.query.offset as string, 10) || 0;
     const statusFilter = req.query.status as string | undefined;
@@ -208,6 +230,29 @@ router.get('/payouts', verifyWalletSignature, async (req, res) => {
     }));
 
     sendPaginated(res, data, total, limit, offset);
+}
+
+router.get('/payouts', verifyWalletSignature, async (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    await respondCreatorPayouts(authReq.wallet!, req, res);
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /creator/payouts/:wallet
+ *
+ * Public read-only payout history by wallet (Creator lookup page).
+ */
+router.get('/payouts/:wallet', publicLimiter, async (req, res) => {
+  try {
+    const wallet = String(req.params.wallet);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+      throw new ValidationError('Invalid wallet — must be a Robinhood Chain (0x…) address');
+    }
+    await respondCreatorPayouts(wallet, req, res);
   } catch (err) {
     sendError(res, err);
   }
