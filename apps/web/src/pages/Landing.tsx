@@ -442,7 +442,7 @@ export const Landing: FC = () => {
         </div>
         <div className="lp-footer-links">
           <a href="https://x.com/ScaleDotFun" target="_blank" rel="noreferrer">TWITTER</a>
-          <a href="https://github.com/FrontDotFun/front" target="_blank" rel="noreferrer">GITHUB</a>
+          <a href="https://github.com/ScaleDotFun/scale" target="_blank" rel="noreferrer">GITHUB</a>
           <Link to="/docs">MANUAL</Link>
         </div>
       </footer>
