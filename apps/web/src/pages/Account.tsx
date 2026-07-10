@@ -294,7 +294,7 @@ export const Account: FC = () => {
             }}>
               {withdrawResult.message}
               {withdrawResult.txSig && (
-                <> · <a href={solscanTxUrl(withdrawResult.txSig)} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>View on Solscan →</a></>
+                <> · <a href={solscanTxUrl(withdrawResult.txSig)} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>View on Blockscout →</a></>
               )}
             </div>
           )}

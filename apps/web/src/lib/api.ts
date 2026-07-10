@@ -592,6 +592,15 @@ export function getMarketPool(address: string): Promise<{ pool: string | null }>
   return request(`/market/token/${address}/pool`);
 }
 
+/** Seconds-level candles decoded live from Uniswap V3 Swap events on-chain. */
+export function getLiveHistory(
+  address: string,
+  type: '1s' | '5s' | '15s' = '1s',
+  limit = 300,
+): Promise<{ candles: OHLCVCandle[]; last: number }> {
+  return request(`/market/token/${address}/live-history?type=${type}&limit=${limit}`);
+}
+
 // ── Portfolio ──
 
 export interface PortfolioData {

@@ -13,6 +13,7 @@ import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError } from '../lib/errors';
 import * as gt from '../lib/geckoterminal';
+import { watchPool, liveCandles } from '../lib/liveTicks';
 
 const router = Router();
 
@@ -144,6 +145,30 @@ router.get('/token/:address/price-history', publicLimiter, async (req, res) => {
     const key = `ohlcv:${address}:${type}:${timeTo ?? 'now'}`;
     const candles = await cached(key, 5_000, () => gt.fetchOHLCV(address, type, timeTo));
     sendSuccess(res, candles);
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * GET /market/token/:address/live-history — seconds-level candles built
+ * from Uniswap V3 Swap events read directly off Robinhood Chain.
+ * Query: type (1s|5s|15s), limit. The watcher self-starts on first
+ * request and expires 90s after the last one.
+ */
+router.get('/token/:address/live-history', publicLimiter, async (req, res) => {
+  try {
+    const address = req.params.address as string;
+    validateTokenAddress(address);
+    const tfSec = { '1s': 1, '5s': 5, '15s': 15 }[String(req.query.type || '1s')];
+    if (!tfSec) throw new ValidationError('type must be 1s, 5s or 15s');
+    const limit = Math.min(Number(req.query.limit) || 300, 900);
+
+    const pool = await cached(`pool:${address}`, 300_000, () => gt.topPoolFor(address));
+    if (!pool) return sendSuccess(res, { candles: [], last: 0 });
+
+    const watcher = await watchPool(pool, address);
+    sendSuccess(res, liveCandles(watcher, tfSec, limit));
   } catch (err) {
     sendError(res, err);
   }

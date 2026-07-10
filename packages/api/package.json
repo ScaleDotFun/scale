@@ -28,7 +28,8 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "pino": "^9.6.0",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

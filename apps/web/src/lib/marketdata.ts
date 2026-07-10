@@ -11,6 +11,7 @@ import {
   getMarketPriceHistory,
   getMarketTrades,
   getMarketPool,
+  getLiveHistory,
   type MarketTrade,
 } from './api';
 
@@ -53,23 +54,22 @@ export interface TokenOverview {
 export type TradeItem = MarketTrade;
 
 // ─── Interval map: our keys → API `type` param ──────────────
-// GeckoTerminal resolution floor is 1 minute — no seconds candles.
+// Minute+ frames come from GeckoTerminal; seconds frames are decoded
+// live from Uniswap V3 Swap events on-chain (see /live-history).
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': '1m', '5': '5m', '15': '15m',
   '60': '1H', '240': '4H', 'D': '1D',
 };
 
+const SECONDS_FRAMES: Record<string, '1s' | '5s' | '15s'> = {
+  '1S': '1s', '5S': '5s', '15S': '15s',
+};
+
 // ─── OHLCV ──────────────────────────────────────────────────
 
-export async function fetchOHLCV(
-  tokenAddress: string,
-  interval: string,
-  _barCount = 300,
-): Promise<OHLCVBar[]> {
-  const type = INTERVAL_MAP[interval] || '1m';
-  const candles = await getMarketPriceHistory(tokenAddress, type);
-  return (candles ?? []).map((c) => ({
+const toBars = (candles: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }[]): OHLCVBar[] =>
+  (candles ?? []).map((c) => ({
     time: c.timestamp,
     open: c.open,
     high: c.high,
@@ -77,6 +77,32 @@ export async function fetchOHLCV(
     close: c.close,
     volume: c.volume,
   }));
+
+export async function fetchOHLCV(
+  tokenAddress: string,
+  interval: string,
+  barCount = 300,
+): Promise<OHLCVBar[]> {
+  const sec = SECONDS_FRAMES[interval];
+  if (sec) {
+    const { candles } = await getLiveHistory(tokenAddress, sec, barCount);
+    return toBars(candles);
+  }
+  const type = INTERVAL_MAP[interval] || '1m';
+  const candles = await getMarketPriceHistory(tokenAddress, type);
+  return toBars(candles);
+}
+
+/** Older candles for scroll-back pagination (minute+ frames only). */
+export async function fetchOlderOHLCV(
+  tokenAddress: string,
+  interval: string,
+  beforeTs: number,
+): Promise<OHLCVBar[]> {
+  if (SECONDS_FRAMES[interval]) return []; // live buffer has no deep history
+  const type = INTERVAL_MAP[interval] || '1m';
+  const candles = await getMarketPriceHistory(tokenAddress, type, undefined, beforeTs);
+  return toBars(candles).filter((b) => b.time < beforeTs);
 }
 
 // ─── Token overview ─────────────────────────────────────────
@@ -136,9 +162,11 @@ export async function fetchTopPool(tokenAddress: string): Promise<string | null>
   }
 }
 
-// ─── Price polling "stream" ─────────────────────────────────
-// GeckoTerminal has no websocket. This polls the latest candles on a
-// short interval and emits ticks; status is honestly 'polling'.
+// ─── Live price stream ──────────────────────────────────────
+// Ticks come from the on-chain live engine (real Uniswap V3 swaps,
+// ~1.2s cadence server-side) — status 'ws' = genuinely live data.
+// If the live engine is unreachable, minute+ frames fall back to
+// GeckoTerminal bar polling with an honest 'polling' badge.
 
 export type StreamStatus = 'connecting' | 'ws' | 'polling' | 'dead';
 
@@ -150,13 +178,15 @@ export interface StreamBar {
   v: number;
 }
 
-const POLL_MS = 10_000;
+const LIVE_POLL_MS = 1_500;
+const GT_POLL_MS = 10_000;
 const MAX_FAILURES = 3;
 
 export class PollingPriceStream {
   private timer: ReturnType<typeof setInterval> | null = null;
   private failures = 0;
   private stopped = false;
+  private gtFallback = false;
 
   constructor(
     private tokenAddress: string,
@@ -168,26 +198,63 @@ export class PollingPriceStream {
   connect(): void {
     this.stopped = false;
     this.onStatus('connecting');
+    const sec = SECONDS_FRAMES[this.interval];
+
+    const liveTick = async () => {
+      if (this.stopped) return;
+      try {
+        const { candles, last } = await getLiveHistory(this.tokenAddress, sec ?? '1s', 2);
+        if (this.stopped) return;
+        this.failures = 0;
+        this.onStatus('ws'); // real on-chain swaps — genuinely live
+        const bar = candles[candles.length - 1];
+        if (sec && bar) {
+          // seconds frames: adopt the authoritative live bar
+          this.onTick(last || bar.close, bar.timestamp, {
+            o: bar.open, h: bar.high, l: bar.low, c: bar.close, v: bar.volume,
+          });
+        } else if (last > 0) {
+          // minute+ frames: per-swap price ticks move the current GT bar
+          this.onTick(last, Math.floor(Date.now() / 1000));
+        }
+      } catch {
+        this.failures += 1;
+        if (this.failures >= MAX_FAILURES) {
+          if (sec) {
+            this.onStatus('dead'); // seconds data only exists on-chain
+          } else {
+            this.switchToGtFallback();
+          }
+        }
+      }
+    };
+
+    this.timer = setInterval(liveTick, LIVE_POLL_MS);
+    liveTick();
+  }
+
+  /** Minute+ frames degrade to GT bar polling when the live engine is down. */
+  private switchToGtFallback(): void {
+    if (this.gtFallback || this.stopped) return;
+    this.gtFallback = true;
+    if (this.timer) clearInterval(this.timer);
     const poll = async () => {
       if (this.stopped) return;
       try {
         const bars = await fetchOHLCV(this.tokenAddress, this.interval, 2);
-        if (this.stopped) return;
-        const last = bars[bars.length - 1];
-        if (last && last.close > 0) {
-          this.failures = 0;
+        const lastBar = bars[bars.length - 1];
+        if (lastBar && lastBar.close > 0) {
           this.onStatus('polling');
-          this.onTick(last.close, last.time, {
-            o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume,
+          this.onTick(lastBar.close, lastBar.time, {
+            o: lastBar.open, h: lastBar.high, l: lastBar.low, c: lastBar.close, v: lastBar.volume,
           });
         }
       } catch {
-        this.failures += 1;
-        if (this.failures >= MAX_FAILURES) this.onStatus('dead');
+        this.onStatus('dead');
       }
     };
     poll();
-    this.timer = setInterval(poll, POLL_MS);
+    this.timer = setInterval(poll, GT_POLL_MS);
   }
 
   disconnect(): void {

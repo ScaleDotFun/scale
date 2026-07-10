@@ -13,7 +13,7 @@ import {
   HistogramSeries,
   LineStyle,
 } from 'lightweight-charts';
-import { fetchOHLCV, fetchTopPool, PollingPriceStream, type OHLCVBar, type StreamStatus } from '../lib/marketdata';
+import { fetchOHLCV, fetchOlderOHLCV, fetchTopPool, PollingPriceStream, type OHLCVBar, type StreamStatus } from '../lib/marketdata';
 import { getVar, onThemeChange } from '../lib/theme';
 
 
@@ -38,15 +38,19 @@ interface PriceChartProps {
   onPrice?: (price: number) => void;
 }
 
-// GeckoTerminal's floor is 1-minute candles — no seconds timeframes.
-const TIMEFRAMES = ['1', '5', '15', '60', '240', 'D'] as const;
+// Seconds frames are decoded LIVE from Uniswap V3 Swap events on-chain
+// (memecoins trade on low frames); minute+ frames come from GeckoTerminal.
+const TIMEFRAMES = ['1S', '5S', '15S', '1', '5', '15', '60', '240', 'D'] as const;
 const TIMEFRAME_LABELS: Record<string, string> = {
+  '1S': '1s', '5S': '5s', '15S': '15s',
   '1': '1m', '5': '5m', '15': '15m',
   '60': '1H', '240': '4H', 'D': 'D',
 };
+const SECONDS_FRAMES = new Set(['1S', '5S', '15S']);
 
 /** Duration in seconds for each interval */
 const INTERVAL_SECS: Record<string, number> = {
+  '1S': 1, '5S': 5, '15S': 15,
   '1': 60, '5': 300, '15': 900,
   '60': 3600, '240': 14400, 'D': 86400,
 };
@@ -101,6 +105,8 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
   const currentBarRef = useRef<OHLCVBar | null>(null);
   const barsRef = useRef<OHLCVBar[]>([]);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const loadingOlderRef = useRef(false);
+  const noMoreOlderRef = useRef(false);
   const unitRef = useRef(unit);
   useEffect(() => { unitRef.current = unit; }, [unit]);
 
@@ -266,6 +272,8 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
     volumeSeries.setData([]);
     barsRef.current = [];
     currentBarRef.current = null;
+    loadingOlderRef.current = false;
+    noMoreOlderRef.current = SECONDS_FRAMES.has(interval); // live buffer has no deep history
     setLastPrice(null);
     setPriceChange(0);
     setDataState('ok');
@@ -326,7 +334,30 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
 
     loadData();
 
-    // Polling stream with truthful status (GT has no websocket)
+    // ── Scroll-back pagination: reaching the left edge lazy-loads older
+    // GT candles (minute+ frames; the live seconds buffer is what it is)
+    const timeScale = chartRef.current?.timeScale();
+    const onRange = (range: { from: number; to: number } | null) => {
+      if (!range || range.from > 12) return;
+      if (loadingOlderRef.current || noMoreOlderRef.current || cancelled) return;
+      const first = barsRef.current[0];
+      if (!first) return;
+      loadingOlderRef.current = true;
+      fetchOlderOHLCV(tokenAddress, interval, first.time)
+        .then((older) => {
+          if (cancelled) return;
+          if (older.length === 0) { noMoreOlderRef.current = true; return; }
+          const merged = [...older, ...barsRef.current.filter((b) => b.time > older[older.length - 1].time)];
+          barsRef.current = merged;
+          applyBars(merged);
+        })
+        .catch(() => { /* transient — user can scroll again */ })
+        .finally(() => { loadingOlderRef.current = false; });
+    };
+    timeScale?.subscribeVisibleLogicalRangeChange(onRange as never);
+
+    // Live tick stream — real on-chain swaps (badge LIVE), with an
+    // honest POLL fallback if the live engine is unreachable
     const stream = new PollingPriceStream(
       tokenAddress,
       interval,
@@ -407,6 +438,7 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
 
     return () => {
       cancelled = true;
+      timeScale?.unsubscribeVisibleLogicalRangeChange(onRange as never);
       stream.disconnect();
       streamRef.current = null;
     };

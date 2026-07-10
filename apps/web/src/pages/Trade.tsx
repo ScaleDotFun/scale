@@ -512,7 +512,7 @@ export const Trade: FC = () => {
                     marginBottom: 4,
                   }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#eaff7a', marginBottom: 4 }}>
-                      This token is not listed on Front.
+                      This token is not listed on SCALE.
                     </div>
                     <div style={{ fontSize: 12, color: '#a3ad8d' }}>
                       Trading is not available for unlisted tokens.
