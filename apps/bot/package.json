@@ -1,5 +1,5 @@
 {
-  "name": "@front-protocol/bot",
+  "name": "@scale/bot",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@front-protocol/core": "workspace:*",
+    "@scale/core": "workspace:*",
     "grammy": "^1.44.0",
     "dotenv": "^16.4.0",
     "node-fetch": "^3.3.2"

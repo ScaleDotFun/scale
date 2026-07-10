@@ -13,14 +13,14 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@front-protocol/database';
-import { determineTier } from '@front-protocol/core';
+import { prisma } from '@scale/database';
+import { determineTier } from '@scale/core';
 import {
   erc20TotalSupply,
   verifyNoxaFeeRedirect,
   hasEvmProtocolKey,
   getProtocolAccount,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[listing-scanner]';

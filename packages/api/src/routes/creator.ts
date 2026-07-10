@@ -3,8 +3,8 @@
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@front-protocol/database';
-import { WEI_PER_ETH, getTierConfig, type Tier } from '@front-protocol/core';
+import { prisma } from '@scale/database';
+import { WEI_PER_ETH, getTierConfig, type Tier } from '@scale/core';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';

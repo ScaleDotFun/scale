@@ -1,5 +1,5 @@
 {
-  "name": "front-protocol",
+  "name": "scale",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,10 +8,10 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "typecheck": "turbo typecheck",
-    "db:generate": "pnpm --filter @front-protocol/database db:generate",
-    "db:migrate": "pnpm --filter @front-protocol/database db:migrate",
-    "db:push": "pnpm --filter @front-protocol/database db:push",
-    "db:seed": "pnpm --filter @front-protocol/database db:seed",
+    "db:generate": "pnpm --filter @scale/database db:generate",
+    "db:migrate": "pnpm --filter @scale/database db:migrate",
+    "db:push": "pnpm --filter @scale/database db:push",
+    "db:seed": "pnpm --filter @scale/database db:seed",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

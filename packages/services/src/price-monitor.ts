@@ -7,12 +7,12 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import {
   shouldAutoClose,
   calculateLivePnLPercent,
   type Tier,
-} from '@front-protocol/core';
+} from '@scale/core';
 import { getTokenPricesEth } from './evm-prices.js';
 import {
   redisConnection,

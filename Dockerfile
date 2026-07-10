@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────
-# FRONT PROTOCOL — Main Dockerfile
+# SCALE — Main Dockerfile
 # ──────────────────────────────────────────────
 
 FROM node:22-slim

@@ -1,6 +1,4 @@
-Contact: https://twitter.com/FrontDotFun
-Contact: https://t.me/FrontProtocol
-Expires: 2027-07-09T00:00:00.000Z
+Contact: https://x.com/ScaleDotFun
+Expires: 2027-01-01T00:00:00.000Z
 Preferred-Languages: en
-Canonical: https://www.front.fun/.well-known/security.txt
-Policy: https://www.front.fun/docs
+Canonical: https://www.scale.fun/.well-known/security.txt

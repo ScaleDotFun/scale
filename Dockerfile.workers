@@ -6,7 +6,7 @@
 # listing scanner.
 #
 # Mirrors Dockerfile.api 1:1 — the workspace packages export their
-# TypeScript sources (@front-protocol/database → src/index.ts), so
+# TypeScript sources (@scale/database → src/index.ts), so
 # production runs under tsx exactly like the api service does.
 # Compiled-dist multi-stage variants break on pnpm symlinks and on
 # the .ts exports; this pattern is the one proven in production.

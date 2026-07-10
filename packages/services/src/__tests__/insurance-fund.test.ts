@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   calculateInsuranceFundTarget,
   calculateInsuranceDeposit,
-} from '@front-protocol/core';
+} from '@scale/core';
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 

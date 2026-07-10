@@ -1,5 +1,5 @@
 {
-  "name": "@front-protocol/api",
+  "name": "@scale/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,10 +14,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@front-protocol/core": "workspace:*",
-    "@front-protocol/database": "workspace:*",
-    "@front-protocol/evm": "workspace:*",
-    "@front-protocol/services": "workspace:*",
+    "@scale/core": "workspace:*",
+    "@scale/database": "workspace:*",
+    "@scale/evm": "workspace:*",
+    "@scale/services": "workspace:*",
     "@sentry/node": "^10.64.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",

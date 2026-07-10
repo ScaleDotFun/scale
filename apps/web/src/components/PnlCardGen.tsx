@@ -158,7 +158,7 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
     if (!previewUrl) return;
     const a = document.createElement('a');
     a.href = previewUrl;
-    a.download = `front-pnl-${trade.token?.symbol ?? 'trade'}-${Date.now()}.png`;
+    a.download = `scale-pnl-${trade.token?.symbol ?? 'trade'}-${Date.now()}.png`;
     a.click();
   }, [previewUrl, trade]);
 

@@ -11,14 +11,14 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import {
   getProtocolAccount,
   hasEvmProtocolKey,
   swapEthForToken,
   erc20Transfer,
   DEAD_ADDRESS,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { getTokenPricesEth } from './evm-prices.js';
 
 const fmtEth = (wei: bigint): string => (Number(wei) / 1e18).toFixed(6);

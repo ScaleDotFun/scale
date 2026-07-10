@@ -15,13 +15,13 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import {
   getProtocolAccount,
   hasEvmProtocolKey,
   erc20Balance,
   CONTRACTS,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { redisConnection, QUEUE_NAMES, feeClaimsQueue } from './queues.js';
 
 const PREFIX = '[fee-claimer]';

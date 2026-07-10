@@ -12,8 +12,8 @@ vi.mock('@pump-fun/pump-sdk', () => ({
   })),
 }));
 
-// ─── Mock @front-protocol/database (Prisma) ────
-vi.mock('@front-protocol/database', () => ({
+// ─── Mock @scale/database (Prisma) ────
+vi.mock('@scale/database', () => ({
   prisma: {
     user: {
       findUnique: vi.fn(),
@@ -57,8 +57,8 @@ vi.mock('@front-protocol/database', () => ({
   },
 }));
 
-// ─── Mock @front-protocol/evm ──────────────
-vi.mock('@front-protocol/evm', () => ({
+// ─── Mock @scale/evm ──────────────
+vi.mock('@scale/evm', () => ({
   robinhoodChain: { id: 4663 },
   CONTRACTS: {
     WETH: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
@@ -97,13 +97,13 @@ vi.mock('@front-protocol/evm', () => ({
   decryptPrivateKey: vi.fn(() => '0x' + '11'.repeat(32)),
 }));
 
-// ─── Mock @front-protocol/services ─────────────
-vi.mock('@front-protocol/services', () => ({
+// ─── Mock @scale/services ─────────────
+vi.mock('@scale/services', () => ({
   default: {},
 }));
 
-// ─── Mock @front-protocol/core ──────────────────
-vi.mock('@front-protocol/core', () => ({
+// ─── Mock @scale/core ──────────────────
+vi.mock('@scale/core', () => ({
   WEI_PER_ETH: 10n ** 18n,
   getTierConfig: vi.fn(() => ({
     name: 'Bronze',

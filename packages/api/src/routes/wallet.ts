@@ -3,12 +3,12 @@
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import {
   getEthBalance,
   loadCustodialWallet,
   transferEth,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, NotFoundError, InsufficientFundsError } from '../lib/errors';

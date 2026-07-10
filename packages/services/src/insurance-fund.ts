@@ -11,12 +11,12 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import {
   formatSol,
   calculateInsuranceFundTarget,
   calculateInsuranceDeposit,
-} from '@front-protocol/core';
+} from '@scale/core';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[insurance-fund]';

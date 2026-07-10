@@ -7,7 +7,7 @@
 // frontend:  usd = weiPerRaw × 10^decimals ÷ 1e18 × ethUsd
 // ──────────────────────────────────────────────
 
-import { erc20Decimals } from '@front-protocol/evm';
+import { erc20Decimals } from '@scale/evm';
 import { fetchEthUsd } from './geckoterminal';
 
 const decimalsCache = new Map<string, number>();

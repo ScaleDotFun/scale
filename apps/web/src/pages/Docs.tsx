@@ -234,7 +234,7 @@ export const Docs: FC = () => {
         <div className="docs-callout">
           <div className="docs-callout-title">Why Creator Rewards?</div>
           <p>
-            By requiring creator rewards to flow into the protocol, Front creates a sustainable capital pool
+            By requiring creator fees to flow into the protocol, SCALE creates a sustainable capital pool
             without relying on external LPs or token emissions. Every listed token actively contributes to the
             pool that enables leveraged trading on all listed tokens. This is the core economic engine of the protocol.
           </p>

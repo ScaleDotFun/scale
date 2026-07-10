@@ -7,7 +7,7 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import {
   calculatePnL,
   calculateFullDistribution,
@@ -16,13 +16,13 @@ import {
   calculateInsuranceFundTarget,
   type Tier,
   type PositionStatus,
-} from '@front-protocol/core';
+} from '@scale/core';
 import {
   swapTokenForEth,
   getProtocolAccount,
   hasEvmProtocolKey,
   transferEth,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { getTokenPricesEth } from './evm-prices.js';
 import {
   redisConnection,

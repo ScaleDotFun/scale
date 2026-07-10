@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { prisma } from '@front-protocol/database';
-import { getTierConfig, determineTier, type Tier } from '@front-protocol/core';
+import { prisma } from '@scale/database';
+import { getTierConfig, determineTier, type Tier } from '@scale/core';
 import {
   erc20TotalSupply,
   verifyNoxaFeeRedirect,
   hasEvmProtocolKey,
   getProtocolAccount,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { fetchToken as gtFetchToken } from '../lib/geckoterminal';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';

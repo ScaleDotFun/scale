@@ -4,8 +4,8 @@
 
 import { vi } from 'vitest';
 
-// ─── Mock @front-protocol/database (Prisma) ────
-vi.mock('@front-protocol/database', () => ({
+// ─── Mock @scale/database (Prisma) ────
+vi.mock('@scale/database', () => ({
   prisma: {
     position: {
       findUnique: vi.fn(),
@@ -58,8 +58,8 @@ vi.mock('@front-protocol/database', () => ({
   },
 }));
 
-// ─── Mock @front-protocol/evm ──────────────
-vi.mock('@front-protocol/evm', () => ({
+// ─── Mock @scale/evm ──────────────
+vi.mock('@scale/evm', () => ({
   CONTRACTS: {
     WETH: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
     UNIV3_FACTORY: '0x1f7D7550B1B028f7571e69A784071F0205fd2EfA',

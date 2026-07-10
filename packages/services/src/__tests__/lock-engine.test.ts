@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PROFIT_LOCK_DURATION_MS } from '@front-protocol/core';
+import { PROFIT_LOCK_DURATION_MS } from '@scale/core';
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 

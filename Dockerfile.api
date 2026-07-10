@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────
-# FRONT PROTOCOL — API Dockerfile (Railway)
+# SCALE — API Dockerfile (Railway)
 # ──────────────────────────────────────────────
 # Uses tsx to run TypeScript source directly,
 # avoiding ESM/CJS moduleResolution issues.

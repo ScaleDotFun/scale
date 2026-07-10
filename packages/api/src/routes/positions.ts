@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import {
   validatePositionOpen,
   validatePositionSafety,
@@ -13,7 +13,7 @@ import {
   calculateFlatFee,
   getExitThresholdPercent,
   type Tier,
-} from '@front-protocol/core';
+} from '@scale/core';
 import {
   swapEthForToken,
   swapTokenForEth,
@@ -23,7 +23,7 @@ import {
   getEthBalance,
   erc20Decimals,
   transferEth,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { fetchToken as gtFetchToken, fetchEthUsd } from '../lib/geckoterminal';
 import { positionPriceToUsd } from '../lib/priceUnits';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';

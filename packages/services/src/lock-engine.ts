@@ -10,15 +10,15 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@front-protocol/database';
-import { PROFIT_LOCK_DURATION_MS } from '@front-protocol/core';
+import { prisma } from '@scale/database';
+import { PROFIT_LOCK_DURATION_MS } from '@scale/core';
 import {
   getProtocolAccount,
   hasEvmProtocolKey,
   swapEthForToken,
   erc20Balance,
   erc20Transfer,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 import { getTokenPricesEth } from './evm-prices.js';
 
 const fmtEth = (wei: bigint): string => (Number(wei) / 1e18).toFixed(6);

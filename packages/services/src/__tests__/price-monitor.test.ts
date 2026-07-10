@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { shouldAutoClose, calculateLivePnLPercent } from '@front-protocol/core';
+import { shouldAutoClose, calculateLivePnLPercent } from '@scale/core';
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 

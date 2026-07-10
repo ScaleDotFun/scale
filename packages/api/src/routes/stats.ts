@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError } from '../lib/response';
 import { getOnchainStats } from '../lib/onchain';
@@ -224,7 +224,7 @@ router.post('/admin/fund-wallet', async (req, res) => {
       return res.status(400).json({ success: false, error: 'destinationAddress and amountLamports required' });
     }
 
-    const { getProtocolAccount, transferEth } = await import('@front-protocol/evm');
+    const { getProtocolAccount, transferEth } = await import('@scale/evm');
     if (!/^0x[a-fA-F0-9]{40}$/.test(String(destinationAddress))) {
       return res.status(400).json({ success: false, error: 'destinationAddress must be a 0x… EVM address' });
     }
@@ -338,7 +338,7 @@ router.post('/admin/reset-tokens', async (req, res) => {
           liquidity = gt.liquidity;
         } catch { /* use defaults */ }
 
-        const { determineTier } = await import('@front-protocol/core');
+        const { determineTier } = await import('@scale/core');
         const tierConfig = determineTier(marketCap, liquidity || marketCap * 0.1, liquidity > 0);
         const tier = tierConfig ? tierConfig.tier : 'degen';
 

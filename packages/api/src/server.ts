@@ -5,7 +5,7 @@
 import './lib/sentry'; // must init before anything else
 import 'dotenv/config';
 import { validateEnv } from './lib/env';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import { createApp } from './app';
 
 // Validate environment before starting

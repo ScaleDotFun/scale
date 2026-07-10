@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @front-protocol/core build && pnpm --filter @front-protocol/web build",
+  "buildCommand": "pnpm --filter @scale/core build && pnpm --filter @scale/web build",
   "outputDirectory": "apps/web/dist",
   "installCommand": "pnpm install",
   "framework": null,

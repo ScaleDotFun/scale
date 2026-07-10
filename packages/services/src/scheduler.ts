@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 //
 // Boots all BullMQ workers and schedules recurring jobs.
-// Run with: pnpm --filter @front-protocol/services dev
+// Run with: pnpm --filter @scale/services dev
 //
 
 import './sentry.js'; // must init before anything else

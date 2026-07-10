@@ -3,8 +3,8 @@
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { prisma } from '@front-protocol/database';
-import { swapTokenForEth, transferEth } from '@front-protocol/evm';
+import { prisma } from '@scale/database';
+import { swapTokenForEth, transferEth } from '@scale/evm';
 import { positionCloseQueue, burnQueue, lockQueue, creatorPayoutsQueue, insuranceFundQueue } from '../queues.js';
 
 // Import the module under test — the worker factory is mocked,

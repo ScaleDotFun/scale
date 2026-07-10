@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
 

@@ -1,5 +1,5 @@
 {
-  "name": "@front-protocol/services",
+  "name": "@scale/services",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,9 +22,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@front-protocol/core": "workspace:*",
-    "@front-protocol/database": "workspace:*",
-    "@front-protocol/evm": "workspace:*",
+    "@scale/core": "workspace:*",
+    "@scale/database": "workspace:*",
+    "@scale/evm": "workspace:*",
     "@sentry/node": "^10.64.0",
     "bullmq": "^5.34.0",
     "dotenv": "^16.4.0",

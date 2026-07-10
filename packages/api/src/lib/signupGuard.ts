@@ -11,7 +11,7 @@
 // ──────────────────────────────────────────────
 
 import type { Request } from 'express';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import { ValidationError } from './errors';
 
 const MAX_PER_DEVICE = Number(process.env.SIGNUP_MAX_PER_DEVICE ?? 1);

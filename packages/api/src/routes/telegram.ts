@@ -4,14 +4,14 @@
 
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import { verifyTelegramAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, NotFoundError, InsufficientFundsError } from '../lib/errors';
 
 const router = Router();
 
-import { generateCustodialWallet } from '@front-protocol/evm';
+import { generateCustodialWallet } from '@scale/evm';
 
 function generateTelegramBotWallet(): { address: string; encryptedKey: string } {
   const wallet = generateCustodialWallet();

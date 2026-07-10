@@ -5,8 +5,8 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { prisma } from '@front-protocol/database';
-import { generateCustodialWallet, loadCustodialWallet, getEthBalance, transferEth } from '@front-protocol/evm';
+import { prisma } from '@scale/database';
+import { generateCustodialWallet, loadCustodialWallet, getEthBalance, transferEth } from '@scale/evm';
 import { issueToken, verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, AuthError } from '../lib/errors';

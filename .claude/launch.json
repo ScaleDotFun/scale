@@ -4,7 +4,7 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@front-protocol/web", "dev"],
+      "runtimeArgs": ["--filter", "@scale/web", "dev"],
       "port": 3000,
       "autoPort": true
     }

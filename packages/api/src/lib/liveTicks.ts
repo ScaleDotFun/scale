@@ -13,7 +13,7 @@
 // ──────────────────────────────────────────────
 
 import { parseAbiItem, type Address } from 'viem';
-import { getPublicClient, CONTRACTS, erc20Decimals } from '@front-protocol/evm';
+import { getPublicClient, CONTRACTS, erc20Decimals } from '@scale/evm';
 import { fetchEthUsd } from './geckoterminal';
 
 const SWAP_EVENT = parseAbiItem(

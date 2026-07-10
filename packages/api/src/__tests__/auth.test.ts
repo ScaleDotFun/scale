@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestApp } from './setup';
-import { prisma } from '@front-protocol/database';
+import { prisma } from '@scale/database';
 import { issueToken } from '../middleware/auth';
 
 describe('Auth Routes', () => {

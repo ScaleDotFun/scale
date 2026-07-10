@@ -2,7 +2,7 @@
 // FRONT PROTOCOL — Telegram Message Formatting
 // ──────────────────────────────────────────────
 
-import { WEI_PER_ETH } from '@front-protocol/core';
+import { WEI_PER_ETH } from '@scale/core';
 
 /**
  * Characters that must be escaped for Telegram MarkdownV2.

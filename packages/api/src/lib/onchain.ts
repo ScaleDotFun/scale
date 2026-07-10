@@ -14,7 +14,7 @@ import {
   erc20Decimals,
   getProtocolAccount,
   hasEvmProtocolKey,
-} from '@front-protocol/evm';
+} from '@scale/evm';
 
 // The protocol token (ERC-20 on Robinhood Chain), configured per-launch.
 // Until it's set, locked-supply stats are honestly null.

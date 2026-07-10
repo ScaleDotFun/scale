@@ -340,7 +340,7 @@ export interface ProtocolStatsResponse {
   poolLedgerLamports?: string;
   poolWalletAddress?: string | null;
   poolSourceOnchain?: boolean;
-  /** $FRONT locked supply, read on-chain */
+  /** $SCALE locked supply, read on-chain */
   frontLockedTokens?: number | null;
   frontTotalSupply?: number | null;
   frontLockedPct?: number | null;

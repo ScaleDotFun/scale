@@ -86,7 +86,7 @@ export const Trade: FC = () => {
       });
   }, [tokenAddrFromUrl, selectToken, searchParams]);
 
-  // ── Check if token is listed on Front ──
+  // ── Check if token is listed on SCALE ──
   useEffect(() => {
     if (!selectedToken?.address) {
       setIsTokenListed(null);

@@ -17,7 +17,7 @@ importers:
 
   apps/bot:
     dependencies:
-      '@front-protocol/core':
+      '@scale/core':
         specifier: workspace:*
         version: link:../../packages/core
       dotenv:
@@ -91,16 +91,16 @@ importers:
 
   packages/api:
     dependencies:
-      '@front-protocol/core':
+      '@scale/core':
         specifier: workspace:*
         version: link:../core
-      '@front-protocol/database':
+      '@scale/database':
         specifier: workspace:*
         version: link:../database
-      '@front-protocol/evm':
+      '@scale/evm':
         specifier: workspace:*
         version: link:../evm
-      '@front-protocol/services':
+      '@scale/services':
         specifier: workspace:*
         version: link:../services
       '@sentry/node':
@@ -217,13 +217,13 @@ importers:
 
   packages/services:
     dependencies:
-      '@front-protocol/core':
+      '@scale/core':
         specifier: workspace:*
         version: link:../core
-      '@front-protocol/database':
+      '@scale/database':
         specifier: workspace:*
         version: link:../database
-      '@front-protocol/evm':
+      '@scale/evm':
         specifier: workspace:*
         version: link:../evm
       '@sentry/node':

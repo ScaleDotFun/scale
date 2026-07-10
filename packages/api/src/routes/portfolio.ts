@@ -3,8 +3,8 @@
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@front-protocol/database';
-import { getEthBalance } from '@front-protocol/evm';
+import { prisma } from '@scale/database';
+import { getEthBalance } from '@scale/evm';
 import { positionPriceToUsd } from '../lib/priceUnits';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';

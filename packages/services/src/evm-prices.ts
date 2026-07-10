@@ -8,7 +8,7 @@
 // Decimals are read once from Robinhood Chain and cached forever.
 // ──────────────────────────────────────────────
 
-import { erc20Decimals, CONTRACTS } from '@front-protocol/evm';
+import { erc20Decimals, CONTRACTS } from '@scale/evm';
 
 // Paid CoinGecko key → Pro API base (same GT endpoints, ~500 req/min)
 function gtBase(): string {

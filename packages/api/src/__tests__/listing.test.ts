@@ -9,8 +9,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestApp } from './setup';
-import { prisma } from '@front-protocol/database';
-import { verifyNoxaFeeRedirect, erc20TotalSupply } from '@front-protocol/evm';
+import { prisma } from '@scale/database';
+import { verifyNoxaFeeRedirect, erc20TotalSupply } from '@scale/evm';
 
 const TOKEN = '0x020bfc650a365f8bb26819deaabf3e21291018b4';
 const POOL = '0x2222222222222222222222222222222222222222';
