@@ -215,19 +215,6 @@ export function withdrawWallet(destinationAddress: string, amountLamports: strin
   });
 }
 
-export interface CandleData {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-}
-
-export function getTokenCandles(address: string, interval?: string): Promise<CandleData[]> {
-  const q = interval ? `?interval=${interval}` : '';
-  return request(`/tokens/${address}/candles${q}`);
-}
-
 // ── Positions ──
 
 export interface PositionTokenInfo {
@@ -290,17 +277,6 @@ export interface ScenarioResponse {
   profitLamports: string;
   degenCashoutLamports: string;
   degenLockLamports: string;
-}
-
-export function previewPosition(
-  tokenAddress: string,
-  capitalLamports: string,
-  leverage: number,
-): Promise<PositionPreviewResponse> {
-  return request('/positions/preview', {
-    method: 'POST',
-    body: JSON.stringify({ tokenAddress, capitalLamports, leverage }),
-  });
 }
 
 export function openPosition(
