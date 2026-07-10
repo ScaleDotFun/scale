@@ -50,7 +50,7 @@ async function warmHotFeeds(): Promise<void> {
 setTimeout(warmHotFeeds, 1_500);
 setInterval(() => {
   setTimeout(warmHotFeeds, Math.random() * 10_000);
-}, 45_000).unref();
+}, 30_000).unref();
 
 /** Tiny keyed TTL cache — GeckoTerminal free tier is ~30 calls/min,
  *  so every fan-out endpoint (candles, trades, token) caches briefly
@@ -111,7 +111,7 @@ router.get('/token/:address', publicLimiter, async (req, res) => {
   try {
     const address = req.params.address as string;
     validateTokenAddress(address);
-    const t = await cached(`token:${address}`, 15_000, () => gt.fetchToken(address));
+    const t = await cached(`token:${address}`, 10_000, () => gt.fetchToken(address));
     sendSuccess(res, {
       address: t.address,
       name: t.name,
@@ -142,7 +142,7 @@ router.get('/token/:address/price-history', publicLimiter, async (req, res) => {
     const type = (req.query.type as string) || '1H';
     const timeTo = req.query.time_to ? Number(req.query.time_to) : undefined;
     const key = `ohlcv:${address}:${type}:${timeTo ?? 'now'}`;
-    const candles = await cached(key, 10_000, () => gt.fetchOHLCV(address, type, timeTo));
+    const candles = await cached(key, 5_000, () => gt.fetchOHLCV(address, type, timeTo));
     sendSuccess(res, candles);
   } catch (err) {
     sendError(res, err);
@@ -157,7 +157,7 @@ router.get('/token/:address/trades', publicLimiter, async (req, res) => {
     const address = req.params.address as string;
     validateTokenAddress(address);
     const limit = Math.min(Number(req.query.limit) || 30, 100);
-    sendSuccess(res, await cached(`trades:${address}:${limit}`, 10_000, () => gt.fetchTrades(address, limit)));
+    sendSuccess(res, await cached(`trades:${address}:${limit}`, 5_000, () => gt.fetchTrades(address, limit)));
   } catch (err) {
     sendError(res, err);
   }

@@ -17,7 +17,7 @@ function truncateWallet(w: string): string {
 
 /**
  * Trades feed for a token — real Uniswap V3 swaps from GeckoTerminal
- * via our API. Auto-refreshes every 10s (GT rate limits below that).
+ * via our API. Auto-refreshes every 6s (server-side 5s cache).
  */
 export const TradesFeed: FC<TradesFeedProps> = ({ tokenAddress }) => {
   const [trades, setTrades] = useState<TradeItem[]>([]);
@@ -36,8 +36,8 @@ export const TradesFeed: FC<TradesFeedProps> = ({ tokenAddress }) => {
 
     load();
 
-    // Auto-refresh every 10 seconds
-    intervalRef.current = setInterval(load, 10000);
+    // Auto-refresh every 6 seconds (server caches 5s; CoinGecko Pro has headroom)
+    intervalRef.current = setInterval(load, 6000);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

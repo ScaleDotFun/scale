@@ -150,7 +150,7 @@ export interface StreamBar {
   v: number;
 }
 
-const POLL_MS = 15_000;
+const POLL_MS = 10_000;
 const MAX_FAILURES = 3;
 
 export class PollingPriceStream {
