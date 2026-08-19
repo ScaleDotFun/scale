@@ -159,9 +159,14 @@ export const ListToken: FC = () => {
           </button>
         </div>
         <img
-          src="/guide/pumpfun-create.png"
-          alt="pump.fun Create new coin form — enable Share creator rewards and add the SCALE pool wallet at 100%"
+          src="/guide/pumpfun-share-rewards.png"
+          alt="The Share creator rewards toggle on pump.fun — flip it on and add the SCALE pool wallet as the shareholder at 100%"
           style={guideImgStyle}
+        />
+        <img
+          src="/guide/pumpfun-create.png"
+          alt="pump.fun Create new coin form — coin name, ticker, description, and image"
+          style={{ ...guideImgStyle, marginTop: 12 }}
         />
       </div>
 
