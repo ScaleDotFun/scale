@@ -3,7 +3,7 @@ import { prisma } from '@scale/database';
 import { getTierConfig, determineTier, type Tier } from '@scale/core';
 import {
   splTotalSupply,
-  verifyPumpToken,
+  verifyPumpRewardShare,
   getJupToken,
   protocolPublicKey,
   isValidSolanaAddress,
@@ -27,6 +27,12 @@ const VERIFIED_TOKENS = new Set(
   (process.env.SCALE_VERIFIED_TOKENS ?? '')
     .split(',').map((s) => s.trim()).filter(Boolean),
 );
+
+/** Required creator-reward share to the pool wallet (percent, default 100). */
+export function minFeeSharePct(): number {
+  const raw = Number(process.env.SCALE_MIN_FEE_SHARE_PCT);
+  return Number.isFinite(raw) ? Math.min(100, Math.max(1, raw)) : 100;
+}
 
 const router = Router();
 
@@ -329,10 +335,14 @@ router.post('/list', async (req, res) => {
       );
     }
 
-    // ── pump.fun launch verification — REAL, via Jupiter's registry ──
-    // Nothing self-reported: launchpad attribution comes from Jupiter's
-    // indexed launch data, so a faked claim simply fails the lookup.
+    // ── The listing deal — REAL, verified on-chain ──
+    // The coin must be a genuine pump.fun launch AND its creator must
+    // share creator rewards with the SCALE pool wallet (pump.fun's
+    // "Share creator rewards" — read straight from the fee-sharing
+    // program's on-chain config, nothing self-reported).
     const SCALE_MINT = (process.env.SCALE_TOKEN_MINT || '').trim();
+    const pool = poolWalletAddress();
+    const minPct = minFeeSharePct();
     let feeVerified =
       (tokenAddress === SCALE_MINT && SCALE_MINT.length > 0) ||
       VERIFIED_TOKENS.has(tokenAddress);
@@ -341,15 +351,22 @@ router.post('/list', async (req, res) => {
     let isBonded = false;
 
     if (!feeVerified) {
+      if (!pool) {
+        throw new ValidationError('Listings are temporarily unavailable — pool wallet not configured.');
+      }
       let check;
       try {
-        check = await verifyPumpToken(tokenAddress);
+        check = await verifyPumpRewardShare(tokenAddress, pool, minPct);
       } catch (err) {
-        console.error('[tokens] pump.fun verification lookup failed:', err);
+        console.error('[tokens] reward-share verification failed:', err);
         throw new ValidationError(
-          'Could not reach Solana market data to verify this token — try again in a minute.',
+          'Could not verify this coin on-chain right now — try again in a minute.',
         );
       }
+
+      const fixIt =
+        ` Enable "Share creator rewards" on your pump.fun coin and add the SCALE pool wallet ` +
+        `${pool} at ${minPct}%, then list again. Guide: scale.fun/list`;
 
       switch (check.status) {
         case 'verified':
@@ -358,7 +375,7 @@ router.post('/list', async (req, res) => {
           tokenInfo = check.token ?? null;
           isBonded = check.graduated ?? false;
           console.log(
-            `[tokens] ✅ pump.fun launch verified for ${tokenAddress} (creator: ${creatorWallet ?? 'unknown'})`,
+            `[tokens] ✅ reward share verified for ${tokenAddress} (${check.walletPct}% → pool, creator: ${creatorWallet ?? 'unknown'})`,
           );
           break;
         case 'not_found':
@@ -368,9 +385,15 @@ router.post('/list', async (req, res) => {
           );
         case 'not_pump_token':
           throw new ValidationError(
-            'Only pump.fun launches can be listed on SCALE' +
-            (check.launchpad ? ` — this token launched via ${check.launchpad}.` : '.') +
-            ' Launch on pump.fun and list again.',
+            'Only pump.fun launches can be listed on SCALE. Launch on pump.fun and list again.',
+          );
+        case 'not_configured':
+          throw new ValidationError('Creator-reward sharing is not enabled for this coin.' + fixIt);
+        case 'not_redirected':
+          throw new ValidationError('The SCALE pool wallet is not a shareholder of this coin.' + fixIt);
+        case 'partial':
+          throw new ValidationError(
+            `The pool wallet only receives ${check.walletPct}% of creator rewards — ${minPct}% is required.` + fixIt,
           );
       }
     } else {

@@ -194,8 +194,10 @@ export const Docs: FC = () => {
       <section id="token-listing" className="docs-section">
         <h2>Token Listing</h2>
         <p>
-          Token listing on Scale Protocol is fully automatic and requires no account creation, no application form,
-          and no manual approval. The process is entirely on-chain and verifiable:
+          Listing is a two-way deal, enforced entirely on-chain — no account creation, no application
+          form, no manual approval. The coin's creator shares their pump.fun creator rewards with the
+          SCALE pool; in exchange the coin gets leverage trading and the creator earns 30% of every
+          flat fee traded on it.
         </p>
 
         <div className="docs-steps">
@@ -204,7 +206,7 @@ export const Docs: FC = () => {
             <div>
               <h4>Launch on pump.fun</h4>
               <p>
-                A genuine pump.fun launch is the listing gate — bonding curve or graduated.
+                A genuine pump.fun launch is the foundation — bonding curve or graduated.
                 The wallet that launched the coin is the creator's on-chain dev wallet.
               </p>
             </div>
@@ -212,31 +214,34 @@ export const Docs: FC = () => {
           <div className="docs-step">
             <div className="docs-step-num">2</div>
             <div>
-              <h4>Paste the Mint Address</h4>
+              <h4>Share Creator Rewards 100%</h4>
               <p>
-                Submit the coin's mint address on the List page. SCALE verifies the pump.fun
-                launch on-chain — coins not launched on pump.fun are rejected with the exact reason.
+                Enable “Share creator rewards” on the coin (at creation, or later from the
+                creator settings) and add the SCALE pool wallet as the shareholder at 100%.
+                This is pump.fun's own on-chain fee-sharing program — not a promise, a config.
               </p>
             </div>
           </div>
           <div className="docs-step">
             <div className="docs-step-num">3</div>
             <div>
-              <h4>Automatic Listing</h4>
+              <h4>Paste the Mint — Verified &amp; Listed</h4>
               <p>
-                Once verified, the coin is listed within minutes with no further action required.
-                Creator earnings accrue to the on-chain dev wallet as claimable payouts.
+                Submit the mint on the List page. SCALE reads the sharing config straight from
+                the chain; if the pool holds 100%, the coin lists instantly. The scanner
+                re-verifies every listing continuously — re-routing rewards away delists the coin.
               </p>
             </div>
           </div>
         </div>
 
         <div className="docs-callout">
-          <div className="docs-callout-title">Why pump.fun Launches Only?</div>
+          <div className="docs-callout-title">Why This Deal?</div>
           <p>
-            By gating listings to genuine pump.fun launches, SCALE guarantees every listed coin has a
-            verifiable on-chain creator and standard launch mechanics. The dev wallet is read straight
-            from the chain, so the creator revenue share accrues without any setup — no registration, no forms. Claim from the Creator dashboard.
+            Creator rewards flowing into the pool deepen the capital that fronts every leveraged
+            position — the shared rewards literally fund the leverage on your own coin. In return
+            creators keep earning: 30% of every flat fee on their coin, claimable from the Creator
+            dashboard, typically worth far more than the rewards shared in.
           </p>
         </div>
       </section>

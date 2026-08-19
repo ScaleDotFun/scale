@@ -2,30 +2,37 @@
 // SCALE PROTOCOL — Listing Scanner Worker (Solana)
 // ──────────────────────────────────────────────
 //
-// Verifies pump.fun launches via Jupiter's token registry (same gate
-// the API /tokens/list uses):
-//   • checkAndListToken(mint): lists a token when Jupiter attributes it
-//     to the pump.fun launchpad (or when it's on the
-//     SCALE_VERIFIED_TOKENS admin allowlist). Creator = on-chain dev.
-//   • Periodic scan: re-checks every ACTIVE token's market data and
-//     deactivates any whose liquidity collapsed below the safe floor —
-//     dead rugs don't keep leverage listings.
+// Enforces the listing deal ON-CHAIN via pump.fun's fee-sharing
+// program (same gate the API /tokens/list uses):
+//   • checkAndListToken(mint): lists a coin when its creator shares
+//     ≥ SCALE_MIN_FEE_SHARE_PCT (default 100%) of creator rewards
+//     with the SCALE pool wallet (or the coin is on the
+//     SCALE_VERIFIED_TOKENS admin allowlist).
+//   • Periodic scan: RE-VERIFIES every active listing and deactivates
+//     any whose creator later re-routed rewards away from the pool —
+//     nobody keeps a leverage listing without paying for it. Dead
+//     rugs (liquidity collapsed) are delisted too.
 //
 
 import { Worker, type Job } from 'bullmq';
 import { prisma } from '@scale/database';
 import { determineTier } from '@scale/core';
 import {
-  verifyPumpToken,
+  verifyPumpRewardShare,
   getJupToken,
+  protocolPublicKey,
   isValidSolanaAddress,
 } from '@scale/solana';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[listing-scanner]';
-const PROTOCOL_WALLET = (process.env.PROTOCOL_WALLET || '').trim();
 
-/** Admin allowlist of extra mints that may list without pump.fun attribution. */
+function minFeeSharePct(): number {
+  const raw = Number(process.env.SCALE_MIN_FEE_SHARE_PCT);
+  return Number.isFinite(raw) ? Math.min(100, Math.max(1, raw)) : 100;
+}
+
+/** Admin allowlist of extra mints that may list without the share gate. */
 function verifiedTokens(): string[] {
   return (process.env.SCALE_VERIFIED_TOKENS ?? '')
     .split(',')
@@ -39,9 +46,9 @@ interface ListingScanJobData {
 }
 
 /**
- * List (or reactivate) a token after verifying it is a genuine pump.fun
- * launch — same gate as POST /tokens/list. Metadata comes from the same
- * Jupiter lookup, so one call covers verification and market data.
+ * List (or reactivate) a coin after verifying the creator-reward share
+ * ON-CHAIN — same gate as POST /tokens/list. Metadata rides along from
+ * the same verification lookup.
  */
 async function checkAndListToken(mint: string): Promise<boolean> {
   if (!isValidSolanaAddress(mint)) {
@@ -49,7 +56,9 @@ async function checkAndListToken(mint: string): Promise<boolean> {
     return false;
   }
 
+  const pool = protocolPublicKey();
   const allowlisted = verifiedTokens().includes(mint);
+  if (!pool && !allowlisted) return false;
 
   let creator: string | null = null;
   let name: string | null = null;
@@ -60,9 +69,9 @@ async function checkAndListToken(mint: string): Promise<boolean> {
   let graduated = false;
 
   try {
-    const check = await verifyPumpToken(mint);
+    const check = await verifyPumpRewardShare(mint, pool ?? '', minFeeSharePct());
     if (check.status !== 'verified' && !allowlisted) {
-      console.log(`${PREFIX} ${mint} is ${check.status}${check.launchpad ? ` (launchpad: ${check.launchpad})` : ''} — skipping`);
+      // quiet skip — discovery sweeps hundreds of unonboarded coins
       return false;
     }
     if (check.token) {
@@ -84,7 +93,7 @@ async function checkAndListToken(mint: string): Promise<boolean> {
     if (!existing.isActive) {
       // verification above already passed — safe to reactivate
       await prisma.token.update({ where: { id: existing.id }, data: { isActive: true } });
-      console.log(`${PREFIX} Reactivated ${existing.symbol ?? mint} (pump.fun launch re-verified)`);
+      console.log(`${PREFIX} Reactivated ${existing.symbol ?? mint} (reward share re-verified)`);
       return true;
     }
     return false; // already listed and active
@@ -102,7 +111,7 @@ async function checkAndListToken(mint: string): Promise<boolean> {
       name,
       symbol,
       imageUri,
-      creatorWallet: creator ?? PROTOCOL_WALLET ?? mint, // real pump.fun dev when verified
+      creatorWallet: creator ?? pool ?? mint, // real pump.fun dev when verified
       tier: tierConfig.tier,
       isActive: true,
       isAutoListed: true,
@@ -110,7 +119,7 @@ async function checkAndListToken(mint: string): Promise<boolean> {
   });
 
   console.log(
-    `${PREFIX} ✅ Listed ${symbol ?? mint} (tier: ${tierConfig.tier}, liq: $${liquidityUsd.toFixed(0)})`,
+    `${PREFIX} ✅ Listed ${symbol ?? mint} (tier: ${tierConfig.tier}, liq: $${liquidityUsd.toFixed(0)}, share verified)`,
   );
   return true;
 }
@@ -118,9 +127,10 @@ async function checkAndListToken(mint: string): Promise<boolean> {
 /**
  * Periodic scan:
  *   1. Sweep the admin allowlist for anything not yet listed.
- *   2. Re-check every active listing's live market data and deactivate
- *      tokens whose liquidity collapsed below the safe floor. Read
- *      failures keep the listing — only positive signal deactivates.
+ *   2. RE-VERIFY every active listing's reward share on-chain and
+ *      deactivate coins whose creator re-routed rewards away. Dead
+ *      liquidity delists too. Read failures keep the listing — only
+ *      positive signal deactivates.
  */
 async function processScan(job: Job<ListingScanJobData>): Promise<void> {
   if (job.data.mint) {
@@ -139,29 +149,42 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
   }
   if (listed > 0) console.log(`${PREFIX} Scan complete — ${listed} new listing(s)`);
 
-  // 2. re-check active listings' health
+  // 2. re-verify active listings
+  const pool = protocolPublicKey();
+  if (!pool) return;
   const allow = new Set(verifiedTokens());
   const SCALE_MINT = (process.env.SCALE_TOKEN_MINT || '').trim();
+  const minPct = minFeeSharePct();
   const active = await prisma.token.findMany({ where: { isActive: true } });
 
   for (const token of active) {
     if (token.address === SCALE_MINT || allow.has(token.address)) continue; // exempt
     try {
-      const info = await getJupToken(token.address);
-      if (!info) continue; // registry gap — keep the listing, retry next sweep
-      const mcap = info.mcap ?? info.fdv ?? 0;
-      const liq = info.liquidity ?? 0;
-      const graduated = !!info.graduatedPool || !!info.graduatedAt;
-      if (determineTier(mcap, liq, graduated) === null) {
+      const check = await verifyPumpRewardShare(token.address, pool, minPct);
+      if (check.status !== 'verified') {
         await prisma.token.update({ where: { id: token.id }, data: { isActive: false } });
         console.warn(
-          `${PREFIX} ⛔ Deactivated ${token.symbol ?? token.address} — liquidity collapsed ` +
-          `($${liq.toFixed(0)} liq, $${mcap.toFixed(0)} mcap)`,
+          `${PREFIX} ⛔ Deactivated ${token.symbol ?? token.address} — reward share now ${check.status} ` +
+          `(${check.walletPct}% to pool)`,
         );
+        continue;
+      }
+      // still paying — also delist if liquidity has fully collapsed
+      const info = check.token ?? (await getJupToken(token.address).catch(() => null));
+      if (info) {
+        const mcap = info.mcap ?? info.fdv ?? 0;
+        const liq = info.liquidity ?? 0;
+        const graduated = !!info.graduatedPool || !!info.graduatedAt;
+        if (determineTier(mcap, liq, graduated) === null) {
+          await prisma.token.update({ where: { id: token.id }, data: { isActive: false } });
+          console.warn(
+            `${PREFIX} ⛔ Deactivated ${token.symbol ?? token.address} — liquidity collapsed ($${liq.toFixed(0)})`,
+          );
+        }
       }
     } catch (err) {
-      // API hiccup — keep the listing, retry next sweep
-      console.warn(`${PREFIX} re-check failed for ${token.address}:`, err instanceof Error ? err.message : err);
+      // chain read hiccup — keep the listing, retry next sweep
+      console.warn(`${PREFIX} re-verify failed for ${token.address}:`, err instanceof Error ? err.message : err);
     }
   }
 }

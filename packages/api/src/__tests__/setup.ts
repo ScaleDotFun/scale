@@ -95,6 +95,7 @@ vi.mock('@scale/solana', () => ({
   getJupToken: vi.fn(() => Promise.resolve(null)),
   getRecentPumpTokens: vi.fn(() => Promise.resolve([])),
   getTrendingTokens: vi.fn(() => Promise.resolve([])),
+  verifyPumpRewardShare: vi.fn(() => Promise.resolve({ status: 'not_found', walletPct: 0, shareholders: [] })),
   verifyPumpToken: vi.fn(() => Promise.resolve({ status: 'not_found' })),
   getUsdPrices: vi.fn(() => Promise.resolve(new Map())),
   getSolUsd: vi.fn(() => Promise.resolve(200)),

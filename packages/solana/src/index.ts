@@ -524,6 +524,83 @@ export async function verifyPumpToken(mint: string): Promise<PumpVerifyResult> {
   };
 }
 
+// ── pump.fun creator-reward sharing (the listing deal) ───────
+// pump.fun lets a coin's creator share their creator rewards with
+// other wallets on-chain ("Share creator rewards"). SCALE's listing
+// gate: the coin must share ≥ SCALE_MIN_FEE_SHARE_PCT (default 100%)
+// with the protocol pool wallet — same deal the Noxa FeeRouter gate
+// enforced on EVM, but on pump.fun's own fee-sharing program.
+
+export type RewardShareStatus =
+  | 'verified'        // pool wallet holds ≥ the required share
+  | 'partial'         // pool wallet is a shareholder but below the bar
+  | 'not_redirected'  // sharing enabled, pool wallet absent
+  | 'not_configured'  // sharing never enabled (or inactive)
+  | 'not_pump_token'  // not a pump.fun launch at all
+  | 'not_found';      // unknown mint
+
+export interface RewardShareResult {
+  status: RewardShareStatus;
+  /** Percent of creator rewards routed to the given wallet (0-100). */
+  walletPct: number;
+  shareholders: Array<{ address: string; pct: number }>;
+  /** pump.fun dev wallet when known. */
+  creator?: string;
+  graduated?: boolean;
+  token?: JupTokenInfo;
+}
+
+/**
+ * Verify a coin's on-chain creator-reward sharing config routes at
+ * least `minPct` percent to `wallet`. Composes the pump.fun launch
+ * check so one call gates a listing end-to-end.
+ */
+export async function verifyPumpRewardShare(
+  mint: string,
+  wallet: string,
+  minPct = 100,
+): Promise<RewardShareResult> {
+  const base = await verifyPumpToken(mint);
+  if (base.status !== 'verified') {
+    return {
+      status: base.status === 'not_found' ? 'not_found' : 'not_pump_token',
+      walletPct: 0,
+      shareholders: [],
+      creator: base.creator,
+      token: base.token,
+    };
+  }
+
+  const { PumpSdk, feeSharingConfigPda } = await import('@pump-fun/pump-sdk');
+  const pda = feeSharingConfigPda(new PublicKey(mint));
+  const info = await getConnection().getAccountInfo(pda);
+  const common = { creator: base.creator, graduated: base.graduated, token: base.token };
+  if (!info) {
+    return { status: 'not_configured', walletPct: 0, shareholders: [], ...common };
+  }
+
+  const cfg = new PumpSdk().decodeSharingConfig(info) as {
+    status?: Record<string, unknown>;
+    shareholders?: Array<{ address: { toBase58(): string }; shareBps: number }>;
+  };
+  if (!cfg.status || !('active' in cfg.status)) {
+    return { status: 'not_configured', walletPct: 0, shareholders: [], ...common };
+  }
+
+  const shareholders = (cfg.shareholders ?? []).map((s) => ({
+    address: s.address.toBase58(),
+    pct: s.shareBps / 100,
+  }));
+  const walletPct = shareholders
+    .filter((s) => s.address === wallet)
+    .reduce((sum, s) => sum + s.pct, 0);
+
+  const clampedMin = Math.min(100, Math.max(1, minPct));
+  const status: RewardShareStatus =
+    walletPct >= clampedMin ? 'verified' : walletPct > 0 ? 'partial' : 'not_redirected';
+  return { status, walletPct, shareholders, ...common };
+}
+
 // ── Prices (Jupiter Price v3) ────────────────────────────────
 export interface TokenPrice {
   usdPrice: number;

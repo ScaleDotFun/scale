@@ -1,5 +1,6 @@
 import { type FC, useState } from 'react';
 import * as api from '../lib/api';
+import { useStats } from '../hooks/useStats';
 
 const stepStyle = {
   background: 'var(--bg-2)',
@@ -47,6 +48,17 @@ export const ListToken: FC = () => {
   const [tokenAddress, setTokenAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const { stats } = useStats();
+  const poolWallet = stats?.poolWalletAddress ?? null;
+
+  const copyPool = () => {
+    if (!poolWallet) return;
+    navigator.clipboard.writeText(poolWallet).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,10 +102,10 @@ export const ListToken: FC = () => {
       <div>
         <h2 style={{ marginBottom: 4 }}>List Your Coin</h2>
         <p className="text-muted" style={{ fontSize: '0.93rem', margin: 0 }}>
-          Launch on pump.fun, paste your coin's mint address — SCALE verifies the
-          pump.fun launch <b>automatically on-chain</b>. No forms, no fee-wallet setup.
-          Tier, name, and logo are auto-detected, and your creator revenue share is
-          paid straight to your launch wallet.
+          The deal is simple: share your coin's pump.fun <b>creator rewards 100%</b> with
+          the SCALE pool, and your coin gets leverage trading. SCALE verifies the share
+          <b> on-chain, automatically</b> — no forms, no DMs. In return you earn{' '}
+          <b>30% of every flat fee</b> traded on your coin, forever.
         </p>
       </div>
 
@@ -115,20 +127,40 @@ export const ListToken: FC = () => {
         />
       </div>
 
-      {/* Step 2 — Fill in the coin and launch */}
+      {/* Step 2 — Fill in the coin + share creator rewards */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <span className="text-muted" style={stepHead}>
-          Step 2 — Name your coin and launch it
+          Step 2 — Name your coin, then enable “Share creator rewards”
         </span>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
-          Pick a name, ticker, and image — these can't be changed later. Launch
-          with the wallet you want paid: <b>the launch wallet is your creator
-          wallet</b>, and that's where SCALE sends your revenue share. No fee
-          redirects, nothing else to configure.
+          Pick a name, ticker, and image. Then flip the <b>“Share creator rewards”</b>{' '}
+          toggle on the create form and add the SCALE pool wallet below as a
+          shareholder at <b>100%</b>. Already launched? The sharing config can
+          still be set from your coin's creator settings on pump.fun.
         </p>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+          background: 'var(--bg-1)', border: '1px solid var(--primary)', padding: '10px 14px',
+        }}>
+          <span className="text-muted" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.5px', flexShrink: 0 }}>
+            Pool wallet
+          </span>
+          <code style={{ fontSize: '0.78rem', color: 'var(--primary)', wordBreak: 'break-all', flex: 1 }}>
+            {poolWallet ?? 'loading…'}
+          </code>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={copyPool}
+            disabled={!poolWallet}
+            style={{ flexShrink: 0 }}
+          >
+            {copied ? 'Copied ✓' : 'Copy'}
+          </button>
+        </div>
         <img
           src="/guide/pumpfun-create.png"
-          alt="pump.fun Create new coin form — coin name, ticker, description, and image"
+          alt="pump.fun Create new coin form — enable Share creator rewards and add the SCALE pool wallet at 100%"
           style={guideImgStyle}
         />
       </div>
@@ -156,10 +188,11 @@ export const ListToken: FC = () => {
           Step 4 — Paste the mint address below
         </span>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 0' }}>
-          SCALE verifies the pump.fun launch automatically on-chain — name, logo,
-          and risk tier are auto-detected, and the 30% revenue share is paid to
-          your launch wallet. Coins that were not launched on pump.fun are
-          rejected with the exact reason.
+          SCALE reads your coin's fee-sharing config straight from the chain. If
+          the pool wallet holds 100% of creator rewards, you're listed instantly —
+          name, logo, and risk tier auto-detected. If not, you get the exact
+          reason and what to fix. Re-routing rewards away later delists the coin
+          automatically, so the deal stays honest both ways.
         </p>
       </div>
 
@@ -219,10 +252,10 @@ export const ListToken: FC = () => {
       {/* Steps */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
-          { title: 'Launch on pump.fun', desc: 'Hit Create on pump.fun, pick a name and image, and launch. The wallet you launch with is your creator wallet — no extra setup, no fee redirects.' },
-          { title: 'Copy the Mint Address', desc: 'On your coin\'s pump.fun page, click the address chip (ends in "pump") to copy the CA.' },
-          { title: 'Auto-Verified Listing', desc: 'Paste the mint above. SCALE verifies the genuine pump.fun launch on-chain and auto-detects name, symbol, logo, and risk tier.' },
-          { title: 'Earn 30% of Flat Fees', desc: 'Your coin appears on the Explorer. Traders take leveraged positions with real Jupiter swaps, and 30% of every flat fee accrues to your launch wallet — claim it from the Creator dashboard.' },
+          { title: 'Launch on pump.fun', desc: 'Hit Create on pump.fun, pick a name and image, and launch.' },
+          { title: 'Share Creator Rewards 100%', desc: 'Enable "Share creator rewards" and add the SCALE pool wallet as the shareholder at 100% — that\'s the listing deal, verified on-chain.' },
+          { title: 'Paste the Mint Address', desc: 'Copy the CA from your coin\'s pump.fun page (ends in "pump"), paste it above, and SCALE lists it instantly with tier, name, and logo auto-detected.' },
+          { title: 'Earn 30% of Flat Fees', desc: 'Traders take leveraged positions on your coin with real Jupiter swaps, and 30% of every flat fee accrues to your launch wallet — usually worth far more than the shared rewards.' },
         ].map((step, i) => (
           <div key={i} style={stepStyle}>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
