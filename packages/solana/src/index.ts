@@ -550,6 +550,48 @@ export interface RewardShareResult {
   token?: JupTokenInfo;
 }
 
+/** pump.fun fee-sharing program (verified on-chain; owns every sharing config). */
+export const PUMP_FEE_PROGRAM_ID = 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ';
+
+function sharingConfigPda(mint: string): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('sharing-config'), new PublicKey(mint).toBuffer()],
+    new PublicKey(PUMP_FEE_PROGRAM_ID),
+  )[0];
+}
+
+/**
+ * Decode a SharingConfig account. Layout (verified against live accounts
+ * and the program IDL — anchor account, 8-byte discriminator first):
+ *   bump u8 · version u8 · status enum u8 (0=Paused, 1=Active) ·
+ *   mint pubkey · admin pubkey · admin_revoked bool ·
+ *   shareholders Vec<{ address pubkey, share_bps u16 }>
+ * Hand-rolled on purpose: the pump SDK drags in @coral-xyz/anchor,
+ * whose CJS/ESM interop breaks under Node 22.
+ */
+function decodeSharingConfig(data: Buffer): {
+  active: boolean;
+  shareholders: Array<{ address: string; pct: number }>;
+} {
+  let o = 8;
+  o += 2; // bump, version
+  const active = data[o] === 1;
+  o += 1;
+  o += 64; // mint, admin
+  o += 1; // admin_revoked
+  const len = data.readUInt32LE(o);
+  o += 4;
+  const shareholders: Array<{ address: string; pct: number }> = [];
+  for (let i = 0; i < len && o + 34 <= data.length; i++) {
+    const address = new PublicKey(data.subarray(o, o + 32)).toBase58();
+    o += 32;
+    const pct = data.readUInt16LE(o) / 100;
+    o += 2;
+    shareholders.push({ address, pct });
+  }
+  return { active, shareholders };
+}
+
 /**
  * Verify a coin's on-chain creator-reward sharing config routes at
  * least `minPct` percent to `wallet`. Composes the pump.fun launch
@@ -571,34 +613,25 @@ export async function verifyPumpRewardShare(
     };
   }
 
-  const { PumpSdk, feeSharingConfigPda } = await import('@pump-fun/pump-sdk');
-  const pda = feeSharingConfigPda(new PublicKey(mint));
-  const info = await getConnection().getAccountInfo(pda);
+  const info = await getConnection().getAccountInfo(sharingConfigPda(mint));
   const common = { creator: base.creator, graduated: base.graduated, token: base.token };
-  if (!info) {
+  if (!info || !info.owner.toBase58 || info.owner.toBase58() !== PUMP_FEE_PROGRAM_ID) {
     return { status: 'not_configured', walletPct: 0, shareholders: [], ...common };
   }
 
-  const cfg = new PumpSdk().decodeSharingConfig(info) as {
-    status?: Record<string, unknown>;
-    shareholders?: Array<{ address: { toBase58(): string }; shareBps: number }>;
-  };
-  if (!cfg.status || !('active' in cfg.status)) {
+  const cfg = decodeSharingConfig(info.data);
+  if (!cfg.active) {
     return { status: 'not_configured', walletPct: 0, shareholders: [], ...common };
   }
 
-  const shareholders = (cfg.shareholders ?? []).map((s) => ({
-    address: s.address.toBase58(),
-    pct: s.shareBps / 100,
-  }));
-  const walletPct = shareholders
+  const walletPct = cfg.shareholders
     .filter((s) => s.address === wallet)
     .reduce((sum, s) => sum + s.pct, 0);
 
   const clampedMin = Math.min(100, Math.max(1, minPct));
   const status: RewardShareStatus =
     walletPct >= clampedMin ? 'verified' : walletPct > 0 ? 'partial' : 'not_redirected';
-  return { status, walletPct, shareholders, ...common };
+  return { status, walletPct, shareholders: cfg.shareholders, ...common };
 }
 
 // ── Prices (Jupiter Price v3) ────────────────────────────────
