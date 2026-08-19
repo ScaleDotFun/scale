@@ -1,4 +1,5 @@
 import { type FC, type ReactNode, createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getReferral } from '../lib/referral';
 
 const TOKEN_KEY = 'scale_token';
 const BASE_URL = import.meta.env.VITE_API_URL
@@ -119,7 +120,12 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const register = useCallback(async (email: string, password: string) => {
-    const data = await authRequest<{ token: string; user: User }>('/auth/register', { email, password });
+    const ref = getReferral();
+    const data = await authRequest<{ token: string; user: User }>('/auth/register', {
+      email,
+      password,
+      ...(ref ? { referralCode: ref } : {}),
+    });
     localStorage.setItem(TOKEN_KEY, data.token);
     setTokenState(data.token);
     setUser(data.user);

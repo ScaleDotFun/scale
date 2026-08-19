@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './providers/AuthProvider';
+import { captureReferral } from './lib/referral';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Landing } from './pages/Landing';
@@ -13,11 +15,13 @@ import { Burns } from './pages/Burns';
 import { Creator } from './pages/Creator';
 import { Stats } from './pages/Stats';
 import { Docs } from './pages/Docs';
+import { Rewards } from './pages/Rewards';
 import { Auth } from './pages/Auth';
 import AuthCallback from './pages/AuthCallback';
 
 
 export function App() {
+  useEffect(() => { captureReferral(); }, []);
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -41,6 +45,7 @@ export function App() {
               <Route path="/burns" element={<Burns />} />
               <Route path="/creator" element={<Creator />} />
               <Route path="/stats" element={<Stats />} />
+              <Route path="/rewards" element={<Rewards />} />
               <Route path="/docs" element={<Docs />} />
             </Route>
 

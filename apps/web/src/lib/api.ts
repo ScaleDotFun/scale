@@ -134,11 +134,37 @@ export function login(email: string, password: string): Promise<AuthLoginRespons
   });
 }
 
-export function register(email: string, password: string): Promise<AuthLoginResponse> {
+export function register(email: string, password: string, referralCode?: string): Promise<AuthLoginResponse> {
   return request('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(referralCode ? { referralCode } : {}) }),
   });
+}
+
+// ── Points & referrals ──────────────────────────────────────
+export interface PointsMe {
+  totalPoints: string;
+  rank: number | null;
+  breakdown: Record<string, string>;
+  referralCode: string;
+  referralCount: number;
+  pointsPerSol: string;
+  referralBonusPct: number;
+}
+
+export interface LeaderboardRow {
+  rank: number;
+  wallet: string;
+  display: string;
+  points: string;
+}
+
+export function getPointsMe(): Promise<PointsMe> {
+  return request('/points/me');
+}
+
+export function getLeaderboard(limit = 25): Promise<{ totalWallets: number; leaderboard: LeaderboardRow[] }> {
+  return request(`/points/leaderboard?limit=${limit}`);
 }
 
 export function getMe(): Promise<AuthMeResponse> {

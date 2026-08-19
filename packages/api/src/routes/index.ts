@@ -14,6 +14,7 @@ import telegramRouter from './telegram';
 import marketRouter from './market';
 import portfolioRouter from './portfolio';
 import walletRouter from './wallet';
+import pointsRouter from './points';
 
 /**
  * Create the root API router and mount all sub-routers.
@@ -42,6 +43,7 @@ export function createApiRouter(): Router {
   router.use('/market', marketRouter);
   router.use('/portfolio', portfolioRouter);
   router.use('/wallet', walletRouter);
+  router.use('/points', pointsRouter);
 
   // Stats router handles both GET /stats and GET /pool
   // Mount at root so the paths resolve to /api/stats and /api/pool

@@ -20,11 +20,36 @@ model User {
   legacyEncryptedKey  String? @map("legacy_encrypted_key") @db.Text
   registrationIp String?  @map("registration_ip") @db.VarChar(64)  // sybil resistance
   deviceId       String?  @map("device_id") @db.VarChar(64)         // sybil resistance
+  referralCode   String?  @unique @map("referral_code") @db.VarChar(12)
+  referredById   Int?     @map("referred_by_id")
+  referredBy     User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals      User[]   @relation("Referrals")
   createdAt      DateTime @default(now()) @map("created_at")
 
   @@index([registrationIp])
   @@index([deviceId])
+  @@index([referredById])
   @@map("users")
+}
+
+// ──────────────────────────────────────────────
+// Points — pre-token flywheel. Earned from REAL position volume only
+// (100 pts / 1 SOL notional) plus a 20% referral override. Never from
+// posting or social actions.
+// ──────────────────────────────────────────────
+model PointsLedger {
+  id            Int      @id @default(autoincrement())
+  userWallet    String   @map("user_wallet") @db.VarChar(44)
+  type          String   @db.VarChar(20) // 'trade_volume' | 'referral_bonus'
+  points        BigInt
+  positionId    Int?     @map("position_id")
+  refereeWallet String?  @map("referee_wallet") @db.VarChar(44) // set on referral_bonus rows
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([userWallet])
+  @@index([type])
+  @@index([createdAt])
+  @@map("points_ledger")
 }
 
 // ──────────────────────────────────────────────

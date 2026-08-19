@@ -26,6 +26,7 @@ import {
 } from '@scale/solana';
 import { fetchToken as gtFetchToken, fetchSolUsd } from '../lib/geckoterminal';
 import { positionPriceToUsd } from '../lib/priceUnits';
+import { awardPositionPoints } from '../lib/points';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { tradingLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -338,6 +339,9 @@ router.post(
 
         return pos;
       });
+
+      // Award points on the notional size (non-fatal; never blocks the trade)
+      await awardPositionPoints(wallet, position.id, positionSize);
 
       sendSuccess(res, {
         position: {

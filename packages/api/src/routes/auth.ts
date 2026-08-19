@@ -31,9 +31,18 @@ function isValidEmail(email: string): boolean {
  * Body: { email: string, password: string }
  * Returns: { token, user: { id, email, walletAddress } }
  */
+/** Resolve a referral code to the referrer's user id (null when absent/invalid/self). */
+async function resolveReferrer(code: unknown): Promise<number | null> {
+  if (typeof code !== 'string') return null;
+  const trimmed = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,12}$/.test(trimmed)) return null;
+  const referrer = await prisma.user.findUnique({ where: { referralCode: trimmed } });
+  return referrer?.id ?? null;
+}
+
 router.post('/register', authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, referralCode } = req.body;
 
     // Validate inputs
     const errors: string[] = [];
@@ -67,6 +76,8 @@ router.post('/register', authLimiter, async (req, res) => {
     // Generate a custodial Solana wallet
     const { address: walletAddress, encryptedPrivateKey: encryptedKey } = generateCustodialWallet();
 
+    const referredById = await resolveReferrer(referralCode ?? req.cookies?.scale_ref);
+
     // Create user
     const user = await prisma.user.create({
       data: {
@@ -74,6 +85,7 @@ router.post('/register', authLimiter, async (req, res) => {
         passwordHash,
         walletAddress,
         encryptedKey,
+        referredById,
         registrationIp: identity.ip,
         deviceId: identity.deviceId,
       },
@@ -467,6 +479,7 @@ router.get('/google/callback', async (req, res) => {
           passwordHash: randomPass,
           walletAddress,
           encryptedKey,
+          referredById: await resolveReferrer(req.cookies?.scale_ref),
           registrationIp: identity.ip,
           deviceId: identity.deviceId,
         },

@@ -24,10 +24,11 @@ const NAV_TABS = [
   { to: '/explore', label: 'Explorer', key: '2' },
   { to: '/screener', label: 'Screener', key: '3' },
   { to: '/list', label: 'List Token', key: '4' },
-  { to: '/locks', label: 'Locks', key: '5' },
-  { to: '/stats', label: 'Stats', key: '6' },
-  { to: '/docs', label: 'Docs', key: '7' },
-  { to: '/account', label: 'Account', key: '8' },
+  { to: '/rewards', label: 'Rewards', key: '5' },
+  { to: '/locks', label: 'Locks', key: '6' },
+  { to: '/stats', label: 'Stats', key: '7' },
+  { to: '/docs', label: 'Docs', key: '8' },
+  { to: '/account', label: 'Account', key: '9' },
 ];
 
 /** Live UTC clock — the terminal heartbeat */
