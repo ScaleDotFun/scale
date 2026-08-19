@@ -122,10 +122,12 @@ export const Explore: FC = () => {
           padding: '48px 16px', gap: 8,
         }}>
           <div style={{ fontSize: 14, fontWeight: 500, color: '#a3ad8d' }}>
-            {search ? 'No tokens found' : 'No tokens listed yet'}
+            {search ? 'No tokens found' : 'No coins listed yet — be the first'}
           </div>
           <div style={{ fontSize: 12, color: '#67704f' }}>
-            {search ? 'Try a different search term or paste a token address' : 'Token creators can list tokens at /list'}
+            {search
+              ? 'Try a different search term or paste a token address'
+              : 'Creators: share your pump.fun creator rewards with the pool and get listed in minutes — guide at /list. Browse trending coins on the Screener meanwhile.'}
           </div>
         </div>
       ) : (

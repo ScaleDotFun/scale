@@ -65,13 +65,27 @@ export const Trade: FC = () => {
   const tokenAddrFromUrl = searchParams.get('token');
   const lastLoadedAddr = useRef<string | null>(null);
 
-  // ── Auto-select token: URL ?token= param, else the featured $SCALE token ──
+  // ── Auto-select token: URL ?token= param, else the featured $SCALE
+  // token, else the hottest listed coin, else the top trending pump.fun
+  // coin (spot view) — the terminal never opens dead.
   const [featuredToken, setFeaturedToken] = useState<string | null>(null);
   useEffect(() => {
     if (tokenAddrFromUrl) return; // explicit token wins
-    api.getProtocolStats()
-      .then((s) => setFeaturedToken(s.scaleToken ?? null))
-      .catch(() => setFeaturedToken(null));
+    (async () => {
+      try {
+        const s = await api.getProtocolStats();
+        if (s.scaleToken) return setFeaturedToken(s.scaleToken);
+      } catch { /* fall through */ }
+      try {
+        const listed = await api.getListedTokens(1);
+        if (listed.length > 0) return setFeaturedToken(listed[0].address);
+      } catch { /* fall through */ }
+      try {
+        const trending = await api.getMarketTrending();
+        if (trending.length > 0) return setFeaturedToken(trending[0].address);
+      } catch { /* nothing to feature — empty state stands */ }
+      setFeaturedToken(null);
+    })();
   }, [tokenAddrFromUrl]);
 
   useEffect(() => {
