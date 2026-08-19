@@ -1,0 +1,57 @@
+# ──────────────────────────────────────────────
+# SCALE PROTOCOL — Workers Dockerfile
+# ──────────────────────────────────────────────
+# Runs background services: price monitor (liquidations + TP/SL),
+# position closer, burn engine, lock engine, creator payouts,
+# listing scanner.
+#
+# Mirrors Dockerfile.api 1:1 — the workspace packages export their
+# TypeScript sources (@scale/database → src/index.ts), so
+# production runs under tsx exactly like the api service does.
+# Compiled-dist multi-stage variants break on pnpm symlinks and on
+# the .ts exports; this pattern is the one proven in production.
+
+FROM node:22-slim
+
+# openssl is required by Prisma on slim images
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g pnpm@9 tsx
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/database/package.json packages/database/
+COPY packages/solana/package.json packages/solana/
+COPY packages/services/package.json packages/services/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/core/ packages/core/
+COPY packages/database/ packages/database/
+COPY packages/solana/ packages/solana/
+COPY packages/services/ packages/services/
+
+RUN cd packages/database && npx prisma generate
+
+# core/services export dist entrypoints (database + solana export src) — build them
+# exactly like Dockerfile.api does so imports resolve under tsx
+RUN cd packages/core && pnpm build
+RUN cd packages/services && pnpm build
+
+# The Railway service's start command is `node packages/services/dist/scheduler.js`
+# (a dashboard setting that overrides this Dockerfile's CMD). Overwrite the
+# compiled entrypoint with an ESM shim that boots tsx on the real source —
+# compiled services would crash importing database's .ts entrypoint under
+# plain node. Must run AFTER the services build.
+RUN mkdir -p packages/services/dist && printf '%s\n' \
+  "import { spawn } from 'node:child_process';" \
+  "const p = spawn('tsx', ['packages/services/src/scheduler.ts'], { stdio: 'inherit', cwd: '/app' });" \
+  "p.on('exit', (code) => process.exit(code ?? 1));" \
+  "p.on('error', (err) => { console.error(err); process.exit(1); });" \
+  > packages/services/dist/scheduler.js
+
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--enable-source-maps"
+
+CMD ["tsx", "packages/services/src/scheduler.ts"]

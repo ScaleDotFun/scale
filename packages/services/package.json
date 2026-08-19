@@ -1,0 +1,39 @@
+{
+  "name": "@scale/services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/scheduler.ts",
+    "start": "node dist/scheduler.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@scale/core": "workspace:*",
+    "@scale/database": "workspace:*",
+    "@scale/solana": "workspace:*",
+    "@sentry/node": "^10.64.0",
+    "bullmq": "^5.34.0",
+    "dotenv": "^16.4.0",
+    "ioredis": "5.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.9"
+  }
+}

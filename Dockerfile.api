@@ -1,0 +1,49 @@
+# ──────────────────────────────────────────────
+# SCALE — API Dockerfile (Railway)
+# ──────────────────────────────────────────────
+# Uses tsx to run TypeScript source directly,
+# avoiding ESM/CJS moduleResolution issues.
+
+FROM node:22-slim
+
+# OpenSSL for Prisma
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# pnpm + tsx globally
+RUN npm install -g pnpm@9 tsx
+
+WORKDIR /app
+
+# Copy package manifests
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/database/package.json ./packages/database/
+COPY packages/solana/package.json ./packages/solana/
+COPY packages/services/package.json ./packages/services/
+COPY packages/api/package.json ./packages/api/
+
+# Install all deps
+RUN pnpm install --frozen-lockfile
+
+# Copy all source
+COPY packages/core/ ./packages/core/
+COPY packages/database/ ./packages/database/
+COPY packages/solana/ ./packages/solana/
+COPY packages/services/ ./packages/services/
+COPY packages/api/ ./packages/api/
+
+# Generate Prisma client
+RUN cd packages/database && npx prisma generate
+
+# Build library packages that export from dist/
+RUN cd packages/core && pnpm build
+RUN cd packages/services && pnpm build
+
+ENV NODE_ENV=production
+
+# Railway sets PORT env var dynamically.
+# The app reads: process.env.PORT || process.env.API_PORT || 4001
+
+# Apply pending DB migrations, then boot — schema changes must never
+# require a manual prisma invocation against production again
+CMD ["sh", "-c", "cd packages/database && npx prisma migrate deploy && cd /app && exec tsx packages/api/src/server.ts"]

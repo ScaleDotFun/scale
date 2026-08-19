@@ -1,0 +1,25 @@
+{
+  "name": "scale",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "db:generate": "pnpm --filter @scale/database db:generate",
+    "db:migrate": "pnpm --filter @scale/database db:migrate",
+    "db:push": "pnpm --filter @scale/database db:push",
+    "db:seed": "pnpm --filter @scale/database db:seed",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "latest",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

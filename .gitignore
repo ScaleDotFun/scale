@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+.turbo/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database (keep migrations — needed for deploy)
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Misc
+*.tgz
+.cache/
+.vercel
+.github/workflows/
+.railway-config-pull-*
+.fuse_hidden*
+.env*
