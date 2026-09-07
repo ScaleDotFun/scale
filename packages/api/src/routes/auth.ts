@@ -19,8 +19,19 @@ const router = Router();
 /**
  * Validate email format (basic check).
  */
+/** Max email length — matches the users.email column (VarChar 255). Without
+ *  this bound an over-long address passes the regex and fails at the insert,
+ *  surfacing as a 500 instead of a validation error. */
+const MAX_EMAIL_LENGTH = 255;
+/** Bcrypt silently truncates past 72 bytes, so reject rather than mislead. */
+const MAX_PASSWORD_LENGTH = 200;
+
 function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return (
+    typeof email === 'string' &&
+    email.length <= MAX_EMAIL_LENGTH &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  );
 }
 
 /**
@@ -59,6 +70,9 @@ router.post('/register', authLimiter, async (req, res) => {
 
     if (typeof password !== 'string' || password.length < 6) {
       throw new ValidationError('Password must be at least 6 characters');
+    }
+    if (password.length > MAX_PASSWORD_LENGTH) {
+      throw new ValidationError(`Password must be at most ${MAX_PASSWORD_LENGTH} characters`);
     }
 
     // Check if email already exists
