@@ -193,27 +193,41 @@ const Typewriter: FC<{ text: string; delay?: number; className?: string }> = ({ 
 const LiveStats: FC = () => {
   const [stats, setStats] = useState<api.ProtocolStatsResponse | null>(null);
 
+  const [liveCoins, setLiveCoins] = useState<number | null>(null);
+
   useEffect(() => {
     api.getProtocolStats().then(setStats).catch(() => {});
+    // The screener feed is live from day one, so the strip has something
+    // real to show before the protocol itself has any volume.
+    api.getMarketTrending()
+      .then((t) => setLiveCoins(Array.isArray(t) ? t.length : null))
+      .catch(() => {});
   }, []);
 
+  const pool = stats ? weiToEth(stats.poolSizeWei) : 0;
+  const burned = stats ? weiToEth(stats.totalBurnedWei) : 0;
+  const trades = stats?.totalTradesExecuted ?? 0;
+
+  // Metrics that are still zero read as a dead product, so each slot falls
+  // back to a protocol fact that is true on day one and swaps itself out
+  // for the live number the moment there is one.
   const items = [
     { k: 'MAX LEVERAGE', v: '10.0X' },
     {
-      k: 'LENDING POOL',
-      v: stats ? `${weiToEth(stats.poolSizeWei).toFixed(2)}Ξ` : '—',
+      k: pool > 0 ? 'LENDING POOL' : 'EXECUTION',
+      v: pool > 0 ? `${pool.toFixed(2)} ETH` : 'ON-CHAIN',
     },
     {
-      k: 'ETH BURNED',
-      v: stats ? `${weiToEth(stats.totalBurnedWei).toFixed(2)}Ξ` : '—',
+      k: liveCoins ? 'PONS COINS LIVE' : 'LAUNCHPAD',
+      v: liveCoins ? String(liveCoins) : 'PONS',
     },
     {
-      k: 'TRADES EXECUTED',
-      v: stats ? String(stats.totalTradesExecuted).padStart(4, '0') : '—',
+      k: trades > 0 ? 'TRADES EXECUTED' : 'CREATOR SHARE',
+      v: trades > 0 ? String(trades) : '30%',
     },
     {
-      k: 'LISTED TOKENS',
-      v: stats ? String(stats.activeListedTokens).padStart(3, '0') : '—',
+      k: burned > 0 ? 'ETH BURNED' : 'CHAIN',
+      v: burned > 0 ? `${burned.toFixed(2)} ETH` : 'RH·4663',
     },
   ];
 
@@ -453,7 +467,7 @@ export const Landing: FC = () => {
       <section className="lp-final">
         <Reveal>
           <h2 className="lp-final-h">
-            <Scramble text="READY TO LOADED?" hover speed={30} />
+            <Scramble text="READY TO GET LOADED?" hover speed={30} />
             <span className="lp-caret blink">▮</span>
           </h2>
           <Link to="/trade" className="lp-cta-main lp-cta-big">
