@@ -23,6 +23,7 @@ export {
 export { feeClaimerWorker, scheduleFeeClaimer } from './fee-claimer.js';
 export { priceMonitorWorker, schedulePriceMonitor } from './price-monitor.js';
 export { positionCloserWorker } from './position-closer.js';
+export { dispatchPostCloseJobs, type PostCloseDispatch } from './post-close.js';
 export { burnEngineWorker, getPendingBurnWei, resetPendingBurns } from './burn-engine.js';
 export { lockEngineWorker, scheduleLockUnlockChecker } from './lock-engine.js';
 export { creatorPayoutWorker } from './creator-payout.js';

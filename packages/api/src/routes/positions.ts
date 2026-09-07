@@ -27,6 +27,7 @@ import {
   erc20TotalSupply,
   erc20Decimals,
 } from '@loaded/evm';
+import { dispatchPostCloseJobs } from '@loaded/services';
 import { fetchToken as gtFetchToken, fetchEthUsd } from '../lib/geckoterminal';
 import { positionPriceToUsd } from '../lib/priceUnits';
 import { awardPositionPoints } from '../lib/points';
@@ -698,6 +699,21 @@ router.post(
         data: {
           totalTradingVolume: position.token.totalTradingVolume + positionSize,
         },
+      });
+
+      // 7. Downstream work — identical to the auto-closer. Without this a
+      // manual SELL recorded the user's $LOADED lock without ever buying it,
+      // never paid the coin's creator, and never burned.
+      await dispatchPostCloseJobs({
+        positionId,
+        burnAmountWei,
+        userLockWei,
+        isProfitable,
+        userWallet: position.userWallet,
+        tokenId: position.token.id,
+        creatorWallet: position.token.creatorWallet,
+        creatorPayoutWei,
+        flatFeeWei,
       });
 
       const pnlEth = Number(totalProfitWei) / 1e18; // ETH

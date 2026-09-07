@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { Worker, type Job } from 'bullmq';
 import { prisma } from '@loaded/database';
+import { dispatchPostCloseJobs } from './post-close.js';
 import {
   calculatePnL,
   splitRevenue,
@@ -327,91 +328,19 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
       }),
     ]);
 
-    // Dispatch downstream jobs
-
-    // Burn job — buy back & burn $LOADED with 20% of flat fee revenue
-    if (burnAmountWei > 0n) {
-      await burnQueue.add(
-        'burn-from-position',
-        {
-          positionId,
-          ethAmountWei: burnAmountWei.toString(),
-        },
-        {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 10_000 },
-          jobId: `burn-${positionId}`, // dedupe on finalize/retry re-runs
-        },
-      );
-    }
-
-    // Lock job — 30% of profit -> buy $LOADED & lock 7 days for user
-    if (isProfitable && userLockWei > 0n) {
-      await lockQueue.add(
-        'lock-from-position',
-        {
-          userWallet: position.userWallet,
-          ethAmountWei: userLockWei.toString(),
-          positionId,
-        },
-        {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 10_000 },
-          jobId: `lock-${positionId}`,
-        },
-      );
-    }
-
-    // Creator payout job — 30% of flat fee revenue to token creator
-    if (creatorPayoutWei > 0n) {
-      await creatorPayoutsQueue.add(
-        'payout-from-position',
-        {
-          tokenId: position.token.id,
-          creatorWallet: position.token.creatorWallet,
-          amountWei: creatorPayoutWei.toString(),
-          positionId,
-        },
-        {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5_000 },
-          jobId: `creator-payout-${positionId}`,
-        },
-      );
-    }
-
-    // Insurance fund deposit — calculated based on flat fee and fund target
-    // Fetch real balances so we deposit correctly (not over-deposit)
-    const [insuranceFundAgg, poolAgg] = await Promise.all([
-      prisma.insuranceFund.aggregate({ _sum: { amount: true } }),
-      prisma.poolLedger.aggregate({ _sum: { amount: true } }),
-    ]);
-    const currentInsuranceBalance = insuranceFundAgg._sum.amount ?? 0n;
-    const currentPoolBalance = poolAgg._sum.amount ?? 0n;
-    // Target = 2% of pool (from INSURANCE_FUND_TARGET_BPS)
-    const insuranceTarget = calculateInsuranceFundTarget(currentPoolBalance);
-
-    const insuranceDeposit = calculateInsuranceDeposit(
+    // Dispatch downstream jobs — shared with the API close path so a manual
+    // SELL owes exactly the same burn / lock / creator-payout / insurance work.
+    await dispatchPostCloseJobs({
+      positionId,
+      burnAmountWei,
+      userLockWei,
+      isProfitable,
+      userWallet: position.userWallet,
+      tokenId: position.token.id,
+      creatorWallet: position.token.creatorWallet,
+      creatorPayoutWei,
       flatFeeWei,
-      currentInsuranceBalance,
-      insuranceTarget,
-    );
-    if (insuranceDeposit > 0n) {
-      await insuranceFundQueue.add(
-        'deposit-from-position',
-        {
-          type: 'deposit' as const,
-          amountWei: insuranceDeposit.toString(),
-          reason: 'position_close_fee',
-          positionId,
-        },
-        {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5_000 },
-          jobId: `insurance-${positionId}`,
-        },
-      );
-    }
+    });
 
     const elapsed = Date.now() - startTime;
     console.log(
