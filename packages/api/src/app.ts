@@ -15,9 +15,12 @@ import { sendError } from './lib/response';
 export function createApp(): express.Express {
   const app = express();
 
-  // Behind Vercel→Railway proxies — trust X-Forwarded-For so rate
-  // limiting and sybil checks see the real client IP, not the proxy.
-  app.set('trust proxy', true);
+  // Behind Vercel→Railway proxies. Trust a COUNT of hops, never `true`:
+  // proxies APPEND to X-Forwarded-For, so with full trust the left-most entry
+  // is whatever the caller sent and every IP-keyed limit is bypassed by
+  // spoofing one header. A hop count makes Express read the entry that many
+  // positions from the right, which only a real proxy can set.
+  app.set('trust proxy', Number(process.env.TRUSTED_PROXY_HOPS ?? 1));
 
   // ──────────────────────────────────────────────
   // Global Middleware

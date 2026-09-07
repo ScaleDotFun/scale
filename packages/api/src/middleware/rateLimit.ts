@@ -6,11 +6,16 @@ import rateLimit from 'express-rate-limit';
 import type { Request } from 'express';
 import type { AuthenticatedRequest } from './auth';
 
-/** Real client IP behind Vercel→Railway — left-most X-Forwarded-For. */
+/**
+ * Real client IP.
+ *
+ * Uses req.ip, which Express derives from the trusted hop count set in app.ts.
+ * Reading X-Forwarded-For directly is NOT safe here: proxies append, so the
+ * left-most entry is attacker-supplied and keying a limit on it lets anyone
+ * mint unlimited buckets with a spoofed header.
+ */
 function clientIp(req: Request): string {
-  const xff = req.headers['x-forwarded-for'];
-  const chain = Array.isArray(xff) ? xff.join(',') : (xff ?? '');
-  return (chain.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || 'unknown');
+  return (req.ip || req.socket.remoteAddress || 'unknown').slice(0, 64);
 }
 
 // trust proxy is set intentionally (app.ts) — silence the permissive check

@@ -17,6 +17,9 @@ export const Auth: FC = () => {
       no_code: 'Google sign-in was cancelled or failed — please try again.',
       token_exchange_failed: 'Could not complete Google sign-in — please try again.',
       no_email: 'Your Google account did not share an email address.',
+      email_unverified: 'Google has not verified that email address. Verify it with Google, then try again.',
+      use_password_login: 'An account already uses this email. Sign in with your email and password instead.',
+      account_exists: 'That email is already linked to a different Google account.',
       oauth_failed: 'Google sign-in failed — please try again.',
     };
     return code ? (messages[code] ?? 'Sign-in failed — please try again.') : '';

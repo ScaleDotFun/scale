@@ -449,8 +449,33 @@ router.get('/google/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/auth?error=no_email`);
     }
 
-    // Find or create user
-    let user = await prisma.user.findUnique({ where: { email: googleUser.email } });
+    // Google must vouch for the address itself; an unverified Google email is
+    // no more proof of ownership than a self-declared one.
+    if (googleUser.verified_email === false) {
+      return res.redirect(`${FRONTEND_URL}/auth?error=email_unverified`);
+    }
+
+    // Resolve by the provider link first. An email match alone is NOT identity:
+    // /auth/register mints an account for any address with no ownership proof,
+    // so adopting an email-matched row would hand an attacker's pre-registered
+    // account — and its custodial wallet — to the real owner of that address,
+    // who would then deposit into a wallet the attacker can drain.
+    let user = googleUser.id
+      ? await prisma.user.findUnique({ where: { googleId: String(googleUser.id) } })
+      : null;
+
+    if (!user) {
+      const byEmail = await prisma.user.findUnique({ where: { email: googleUser.email } });
+      if (byEmail) {
+        if (byEmail.googleId) {
+          // Same address, a different Google account — never adopt.
+          return res.redirect(`${FRONTEND_URL}/auth?error=account_exists`);
+        }
+        // A password account owns this address. Linking it here would trust an
+        // unproven claim, so require the password holder to sign in instead.
+        return res.redirect(`${FRONTEND_URL}/auth?error=use_password_login`);
+      }
+    }
 
     // Robinhood Chain migration — same as password login: previous-chain-era
     // (e.g. EVM 0x…) accounts get a fresh Robinhood Chain wallet; the old wallet
@@ -496,6 +521,8 @@ router.get('/google/callback', async (req, res) => {
           passwordHash: randomPass,
           walletAddress,
           encryptedKey,
+          googleId: googleUser.id ? String(googleUser.id) : null,
+          emailVerified: true, // Google vouched for it above
           referredById: await resolveReferrer(req.cookies?.loaded_ref),
           registrationIp: identity.ip,
           deviceId: identity.deviceId,

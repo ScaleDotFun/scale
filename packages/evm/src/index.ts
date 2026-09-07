@@ -192,21 +192,23 @@ export async function transferNative(
   to: string,
   amountWei: bigint,
 ): Promise<string> {
-  const wallet = getWalletClient(from);
-  const hash = await wallet.sendTransaction({
-    account: from,
-    chain: robinhoodChain,
-    to: getAddress(to),
-    value: amountWei,
+  return withWalletLock(from.address, async () => {
+    const wallet = getWalletClient(from);
+    const hash = await wallet.sendTransaction({
+      account: from,
+      chain: robinhoodChain,
+      to: getAddress(to),
+      value: amountWei,
+    });
+    const receipt = await getPublicClient().waitForTransactionReceipt({ hash, confirmations: 1 });
+    if (receipt.status !== 'success') {
+      throw new Error(`${LOG_PREFIX} native transfer reverted: ${hash}`);
+    }
+    console.log(
+      `${LOG_PREFIX} transferNative ${Number(amountWei) / 1e18} ETH → ${to.slice(0, 10)}… ${hash.slice(0, 16)}…`,
+    );
+    return hash;
   });
-  const receipt = await getPublicClient().waitForTransactionReceipt({ hash, confirmations: 1 });
-  if (receipt.status !== 'success') {
-    throw new Error(`${LOG_PREFIX} native transfer reverted: ${hash}`);
-  }
-  console.log(
-    `${LOG_PREFIX} transferNative ${Number(amountWei) / 1e18} ETH → ${to.slice(0, 10)}… ${hash.slice(0, 16)}…`,
-  );
-  return hash;
 }
 
 // ── ERC-20 ───────────────────────────────────────────────────
@@ -256,7 +258,8 @@ export async function erc20Balance(token: string, owner: string): Promise<bigint
   });
 }
 
-export async function erc20Transfer(
+/** Transfer body without the wallet lock — callers must already hold it. */
+async function erc20TransferInner(
   from: PrivateKeyAccount,
   token: string,
   to: string,
@@ -276,6 +279,15 @@ export async function erc20Transfer(
   return hash;
 }
 
+export async function erc20Transfer(
+  from: PrivateKeyAccount,
+  token: string,
+  to: string,
+  amount: bigint,
+): Promise<string> {
+  return withWalletLock(from.address, () => erc20TransferInner(from, token, to, amount));
+}
+
 /**
  * Burn tokens. Prefers a real burn() when the token exposes one; otherwise
  * transfers to the dead address (most memecoins have no burn function).
@@ -285,22 +297,26 @@ export async function erc20Burn(
   token: string,
   amount: bigint,
 ): Promise<string> {
-  const wallet = getWalletClient(from);
-  try {
-    const hash = await wallet.writeContract({
-      account: from,
-      chain: robinhoodChain,
-      address: getAddress(token),
-      abi: ERC20_ABI,
-      functionName: 'burn',
-      args: [amount],
-    });
-    const receipt = await getPublicClient().waitForTransactionReceipt({ hash, confirmations: 1 });
-    if (receipt.status === 'success') return hash;
-  } catch {
-    // no burn() on this token — fall through to the dead-address transfer
-  }
-  return erc20Transfer(from, token, DEAD_ADDRESS, amount);
+  // One lock for the whole operation — the dead-address fallback uses the
+  // unlocked transfer body so it cannot deadlock against this same lock.
+  return withWalletLock(from.address, async () => {
+    const wallet = getWalletClient(from);
+    try {
+      const hash = await wallet.writeContract({
+        account: from,
+        chain: robinhoodChain,
+        address: getAddress(token),
+        abi: ERC20_ABI,
+        functionName: 'burn',
+        args: [amount],
+      });
+      const receipt = await getPublicClient().waitForTransactionReceipt({ hash, confirmations: 1 });
+      if (receipt.status === 'success') return hash;
+    } catch {
+      // no burn() on this token — fall through to the dead-address transfer
+    }
+    return erc20TransferInner(from, token, DEAD_ADDRESS, amount);
+  });
 }
 
 async function ensureAllowance(
@@ -481,6 +497,29 @@ export async function confirmedNativeDelta(
   }
 }
 
+/**
+ * Per-wallet serialization.
+ *
+ * Every position is opened and closed from the SAME protocol pool wallet, and
+ * several workers act on it at once. Two concurrent sends race the nonce, and —
+ * worse — any concurrent pool movement corrupts a balance-difference reading,
+ * which is how native swap proceeds are measured. Serializing per wallet makes
+ * both problems impossible; the pool is a single account, so this is the
+ * natural throughput limit anyway.
+ */
+const _walletLocks = new Map<string, Promise<unknown>>();
+
+export function withWalletLock<T>(address: string, fn: () => Promise<T>): Promise<T> {
+  const key = address.toLowerCase();
+  const prev = _walletLocks.get(key) ?? Promise.resolve();
+  // Chain onto the previous holder, ignoring its outcome so one failure
+  // does not poison the queue.
+  const run = prev.then(fn, fn);
+  // Keep the chain alive but never let it surface as an unhandled rejection.
+  _walletLocks.set(key, run.then(() => undefined, () => undefined));
+  return run;
+}
+
 async function executeQuote(
   account: PrivateKeyAccount,
   quote: AggQuote,
@@ -501,6 +540,33 @@ async function executeQuote(
   return receipt;
 }
 
+/**
+ * Native ETH credited to `owner` by a specific transaction.
+ *
+ * Measured across the mined block boundary rather than "latest", so the answer
+ * is a property of that transaction instead of whatever the wallet happens to
+ * hold when the query runs.
+ */
+async function nativeCreditedByTx(
+  receipt: TransactionReceipt,
+  owner: Address,
+): Promise<bigint | null> {
+  try {
+    const client = getPublicClient();
+    const [after, before] = await Promise.all([
+      client.getBalance({ address: owner, blockNumber: receipt.blockNumber }),
+      client.getBalance({ address: owner, blockNumber: receipt.blockNumber - 1n }),
+    ]);
+    const gas = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
+    const paidGas = receipt.from.toLowerCase() === owner.toLowerCase() ? gas : 0n;
+    const delta = after - before + paidGas;
+    return delta > 0n ? delta : null;
+  } catch {
+    // Historical balance lookups are not guaranteed on every provider.
+    return null;
+  }
+}
+
 /** Buy `token` with native ETH. amountIn is wei. */
 export async function swapNativeForToken(
   account: PrivateKeyAccount,
@@ -515,18 +581,21 @@ export async function swapNativeForToken(
     account.address,
     slippageBps,
   );
-  const receipt = await executeQuote(account, quote);
-  let amountOut = tokenCreditedInReceipt(receipt, token, account.address);
-  if (amountOut === 0n) {
-    // Router credited via a path the logs did not attribute to us; fall back to
-    // the quoted minimum rather than recording a blind zero.
-    amountOut = quote.toAmountMin;
-    console.warn(`${LOG_PREFIX} no Transfer credit found in receipt; using toAmountMin`);
-  }
-  console.log(
-    `${LOG_PREFIX} buy ${Number(amountInWei) / 1e18} ETH → ${amountOut} ${token.slice(0, 10)}… via ${quote.tool} ${receipt.transactionHash.slice(0, 16)}…`,
-  );
-  return { txHash: receipt.transactionHash, amountIn: amountInWei, amountOut, tool: quote.tool };
+  // Serialized for nonce safety — several workers trade from this one wallet.
+  return withWalletLock(account.address, async () => {
+    const receipt = await executeQuote(account, quote);
+    let amountOut = tokenCreditedInReceipt(receipt, token, account.address);
+    if (amountOut === 0n) {
+      // Router credited via a path the logs did not attribute to us; fall back to
+      // the quoted minimum rather than recording a blind zero.
+      amountOut = quote.toAmountMin;
+      console.warn(`${LOG_PREFIX} no Transfer credit found in receipt; using toAmountMin`);
+    }
+    console.log(
+      `${LOG_PREFIX} buy ${Number(amountInWei) / 1e18} ETH → ${amountOut} ${token.slice(0, 10)}… via ${quote.tool} ${receipt.transactionHash.slice(0, 16)}…`,
+    );
+    return { txHash: receipt.transactionHash, amountIn: amountInWei, amountOut, tool: quote.tool };
+  });
 }
 
 /** Sell `token` for native ETH. amountIn is raw token units. */
@@ -544,22 +613,29 @@ export async function swapTokenForNative(
     slippageBps,
   );
   const spender = quote.approvalAddress ?? quote.to;
-  await ensureAllowance(account, token, spender, amountIn);
 
-  const before = await getNativeBalance(account.address);
-  const receipt = await executeQuote(account, quote);
-  const after = await getNativeBalance(account.address);
+  // Serialized: the proceeds below are derived from this wallet's balance, so
+  // no other pool transaction may be in flight while this one settles.
+  return withWalletLock(account.address, async () => {
+    await ensureAllowance(account, token, spender, amountIn);
+    const receipt = await executeQuote(account, quote);
 
-  // Native output has no Transfer log. Balance delta + gas is the only signal,
-  // so floor it at the quoted minimum to avoid under-recording a real sale.
-  const gasSpent = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
-  const delta = after - before + gasSpent;
-  const amountOut = delta > 0n ? delta : quote.toAmountMin;
+    // Native output emits no Transfer log, so measure the credit across this
+    // transaction's own block boundary. Falling back to the quoted minimum
+    // under-records rather than inventing proceeds the pool never received.
+    const credited = await nativeCreditedByTx(receipt, account.address);
+    const amountOut = credited ?? quote.toAmountMin;
+    if (credited === null) {
+      console.warn(
+        `${LOG_PREFIX} could not measure ETH credited by ${receipt.transactionHash}; using toAmountMin`,
+      );
+    }
 
-  console.log(
-    `${LOG_PREFIX} sell ${amountIn} ${token.slice(0, 10)}… → ${Number(amountOut) / 1e18} ETH via ${quote.tool} ${receipt.transactionHash.slice(0, 16)}…`,
-  );
-  return { txHash: receipt.transactionHash, amountIn, amountOut, tool: quote.tool };
+    console.log(
+      `${LOG_PREFIX} sell ${amountIn} ${token.slice(0, 10)}… → ${Number(amountOut) / 1e18} ETH via ${quote.tool} ${receipt.transactionHash.slice(0, 16)}…`,
+    );
+    return { txHash: receipt.transactionHash, amountIn, amountOut, tool: quote.tool };
+  });
 }
 
 // ── Token metadata & market data (GeckoTerminal) ─────────────

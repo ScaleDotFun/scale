@@ -20,6 +20,12 @@ model User {
   legacyEncryptedKey  String? @map("legacy_encrypted_key") @db.Text
   registrationIp String?  @map("registration_ip") @db.VarChar(64)  // sybil resistance
   deviceId       String?  @map("device_id") @db.VarChar(64)         // sybil resistance
+  // OAuth identity link. Google sign-in resolves by googleId FIRST — matching
+  // on email alone would let anyone pre-register a victim's address (signup
+  // requires no ownership proof) and then be handed the victim's account, and
+  // its custodial wallet, on their first Google sign-in.
+  googleId       String?  @unique @map("google_id") @db.VarChar(64)
+  emailVerified  Boolean  @default(false) @map("email_verified")
   referralCode   String?  @unique @map("referral_code") @db.VarChar(12)
   referredById   Int?     @map("referred_by_id")
   referredBy     User?    @relation("Referrals", fields: [referredById], references: [id])
@@ -98,8 +104,8 @@ model Position {
   leverage         Decimal   @db.Decimal(4, 2)
   flatFee          BigInt    @map("flat_fee")          // wei
   tier             String    @db.VarChar(10)
-  entryPrice       Decimal?  @map("entry_price") @db.Decimal(20, 10)
-  exitPrice        Decimal?  @map("exit_price") @db.Decimal(20, 10)
+  entryPrice       Decimal?  @map("entry_price") @db.Decimal(50, 30)
+  exitPrice        Decimal?  @map("exit_price") @db.Decimal(50, 30)
   tokensBought     BigInt?   @map("tokens_bought")
   exitThreshold    Decimal   @map("exit_threshold") @db.Decimal(5, 2)
   takeProfitPct    Decimal?  @map("take_profit_pct") @db.Decimal(7, 2) // price move % to auto-take-profit

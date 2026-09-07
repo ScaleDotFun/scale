@@ -21,14 +21,14 @@ const MAX_PER_IP = Number(process.env.SIGNUP_MAX_PER_IP ?? 5);
 const IP_WINDOW_MS = Number(process.env.SIGNUP_IP_WINDOW_MS ?? 24 * 60 * 60 * 1000);
 
 /**
- * Best-effort real client IP. Behind Vercel→Railway the socket IP is a
- * proxy, so read the left-most X-Forwarded-For entry (the origin client).
+ * Real client IP, from Express's trusted-hop resolution (see app.ts).
+ *
+ * Must NOT read the left-most X-Forwarded-For entry: proxies append to that
+ * header, so the first entry is whatever the caller sent — spoofing it would
+ * hand out a fresh signup quota per request.
  */
 export function getClientIp(req: Request): string {
-  const xff = req.headers['x-forwarded-for'];
-  const chain = Array.isArray(xff) ? xff.join(',') : (xff ?? '');
-  const first = chain.split(',')[0]?.trim();
-  return (first || req.ip || req.socket?.remoteAddress || 'unknown').slice(0, 64);
+  return (req.ip || req.socket?.remoteAddress || 'unknown').slice(0, 64);
 }
 
 /**

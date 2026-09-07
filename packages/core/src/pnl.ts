@@ -39,13 +39,26 @@ export function calculatePnL(
 ): PnLResult {
   const totalCapitalWei = userCapitalWei + protocolCapitalWei;
 
-  // Calculate what the tokens are worth now relative to entry.
-  // Use fixed-point BigInt math with 1e18 scaling to avoid Number(bigint) precision loss.
+  // What the tokens are worth now, relative to entry.
+  //
+  // Prices here are ETH per whole token, which for a memecoin is routinely
+  // 1e-8 or smaller. Scaling each price to fixed point independently underflows
+  // those to zero — and a zero entry price then divides. Take the RATIO first:
+  // it is order-1 regardless of how small the two prices are, so a single
+  // fixed-point scaling of the ratio keeps full precision.
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+    throw new Error(
+      `calculatePnL: entryPrice must be a positive finite number (got ${entryPrice})`,
+    );
+  }
+  if (!Number.isFinite(exitPrice) || exitPrice < 0) {
+    throw new Error(
+      `calculatePnL: exitPrice must be a non-negative finite number (got ${exitPrice})`,
+    );
+  }
   const PRECISION = 1_000_000_000_000_000_000n; // 1e18 fixed-point scale
-  const scaledExitPrice = BigInt(Math.round(exitPrice * 1e18));
-  const scaledEntryPrice = BigInt(Math.round(entryPrice * 1e18));
-  const totalValueWei =
-    (totalCapitalWei * scaledExitPrice) / scaledEntryPrice;
+  const scaledRatio = BigInt(Math.round((exitPrice / entryPrice) * 1e18));
+  const totalValueWei = (totalCapitalWei * scaledRatio) / PRECISION;
 
   // Total profit (can be negative)
   const totalProfitWei = totalValueWei - totalCapitalWei;
