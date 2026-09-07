@@ -24,6 +24,7 @@ import {
   getNativeBalance,
   getTokenInfo,
   transferNative,
+  erc20Balance,
   erc20TotalSupply,
   erc20Decimals,
 } from '@loaded/evm';
@@ -344,6 +345,10 @@ router.post(
       let tokensBought: bigint | undefined;
       let entryPrice: number | undefined;
 
+      // Snapshot before the swap so a timeout can be distinguished from a
+      // genuine failure by asking whether the tokens actually arrived.
+      const poolTokensBeforeSwap = await erc20Balance(tokenAddress, protocolAccount.address).catch(() => null);
+
       try {
         // The minimum-out is quoted inside swapNativeForToken via LI.FI's
         // quote API — real route state, not a mid-price estimate.
@@ -364,8 +369,24 @@ router.post(
           `[positions] LI.FI swap executed: ${openTx} | tokens=${tokensBought} | entryPrice=${entryPrice}`,
         );
       } catch (swapErr) {
-        // Swap conclusively did not land (verified via status polling in the
-        // EVM layer) — refund the collateral and mark the intent 'failed'.
+        // A throw here does NOT prove the swap failed: waitForTransactionReceipt
+        // also throws on timeout, and that transaction can still land. Refunding
+        // on that assumption would leave the pool holding the tokens AND having
+        // paid the user back. Ask the chain before deciding.
+        const poolTokensAfter = await erc20Balance(tokenAddress, protocolAccount.address).catch(() => null);
+        if (poolTokensAfter !== null && poolTokensBeforeSwap !== null && poolTokensAfter > poolTokensBeforeSwap) {
+          console.error(
+            `[positions] CRITICAL: swap for #${positionRowId} reported failure but the pool received ` +
+            `${poolTokensAfter - poolTokensBeforeSwap} raw tokens — NOT refunding; left in 'opening' for reconciliation`,
+          );
+          await persistMarker({ statusChangedAt: new Date() }, 'swap-landed marker');
+          throw new ValidationError(
+            'Your position is being confirmed on-chain — the network did not respond in time. ' +
+            'Do not retry; it will appear in your positions shortly.',
+          );
+        }
+
+        // Nothing arrived — the swap really did not land. Refund and fail.
         console.error(`[positions] LI.FI swap failed, refunding user:`, swapErr);
         let refundSuccess = false;
         let refundSig: string | undefined;
