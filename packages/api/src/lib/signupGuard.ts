@@ -3,11 +3,12 @@
 //
 // Stops one person from farming the protocol with many custodial
 // accounts (self-dealing to farm creator fees, botting a coin, etc.).
-// Layered: strict per-device cap + a per-IP cap. IP is deliberately
-// NOT strict-1 by default — carrier-grade NAT puts thousands of real
-// mobile users behind a single IP, so strict-1-per-IP would lock out
-// entire networks. Device is the strong signal; IP is the backstop.
-// Both are tunable via env.
+// Layered: a lifetime per-device cap (the strong signal) plus a per-IP
+// cap that is WINDOWED rather than lifetime. Carrier-grade NAT puts
+// thousands of real mobile users behind a single address, so counting
+// every signup ever from an IP would permanently lock out entire
+// carriers; a rolling window still stops burst farming.
+// All three are tunable via env.
 // ──────────────────────────────────────────────
 
 import type { Request } from 'express';
@@ -15,7 +16,9 @@ import { prisma } from '@loaded/database';
 import { ValidationError } from './errors';
 
 const MAX_PER_DEVICE = Number(process.env.SIGNUP_MAX_PER_DEVICE ?? 1);
-const MAX_PER_IP = Number(process.env.SIGNUP_MAX_PER_IP ?? 3);
+const MAX_PER_IP = Number(process.env.SIGNUP_MAX_PER_IP ?? 5);
+/** Rolling window for the per-IP cap (default 24h). */
+const IP_WINDOW_MS = Number(process.env.SIGNUP_IP_WINDOW_MS ?? 24 * 60 * 60 * 1000);
 
 /**
  * Best-effort real client IP. Behind Vercel→Railway the socket IP is a
@@ -61,10 +64,18 @@ export async function assertSignupAllowed(id: SignupIdentity): Promise<void> {
   }
 
   if (id.ip && id.ip !== 'unknown' && MAX_PER_IP > 0) {
-    const count = await prisma.user.count({ where: { registrationIp: id.ip } });
+    // Windowed, NOT lifetime. Carrier-grade NAT puts thousands of mobile users
+    // behind one address, so counting every signup ever from an IP would
+    // permanently lock out an entire carrier once a handful of people joined.
+    // The window still stops burst farming; the per-device cap carries the
+    // durable sybil signal.
+    const since = new Date(Date.now() - IP_WINDOW_MS);
+    const count = await prisma.user.count({
+      where: { registrationIp: id.ip, createdAt: { gte: since } },
+    });
     if (count >= MAX_PER_IP) {
       throw new ValidationError(
-        'Too many accounts have been created from this network. If this is a shared or public connection, contact support.',
+        'Too many accounts have been created from this network recently. Please try again later.',
       );
     }
   }
