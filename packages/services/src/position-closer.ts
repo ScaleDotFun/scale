@@ -6,6 +6,7 @@
 // updates the position record, and dispatches downstream jobs (burn, lock, payout).
 //
 
+import { randomUUID } from 'node:crypto';
 import { Worker, type Job } from 'bullmq';
 import { prisma } from '@loaded/database';
 import {
@@ -246,24 +247,44 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
     // Determine final status
     const finalStatus = determineStatus(isProfitable, reason);
 
-    // ── Payout (idempotent) ──────────────────────────
-    // userReturnTx marker means the user was already paid on a prior attempt
-    // — paying again would be a double-payout from pool funds.
+    // ── Payout (exactly-once) ────────────────────────
+    // Reading userReturnTx and then acting on it is not enough: the recovery
+    // sweep can enqueue a 'finalize' while the original close is merely slow,
+    // and both would read null and both pay from pool funds. Reserve the payout
+    // slot with a conditional update instead — only the worker whose update
+    // affects a row is allowed to move money.
     if (userReturnWei > 0n && !position.userReturnTx) {
-      try {
-        const protocolAccount = getProtocolAccount();
-        const returnSig = await transferNative(protocolAccount, position.userWallet, userReturnWei);
-        await persistWithRetry(
-          () => prisma.position.update({ where: { id: positionId }, data: { userReturnTx: returnSig } }),
-          `userReturnTx marker for #${positionId}`,
-        );
-        console.log(`${PREFIX} Returned ${Number(userReturnWei) / 1e18} ETH to user ${position.userWallet}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`${PREFIX} CRITICAL: Failed to return ETH to user: ${msg}`);
-        // Do NOT release the claim — the sell already landed (closeTx marker
-        // is set), so the retry must resume forward, never re-sell.
-        throw err;
+      const reservation = `pending:${randomUUID()}`;
+      const reserved = await prisma.position.updateMany({
+        where: { id: positionId, userReturnTx: null },
+        data: { userReturnTx: reservation },
+      });
+      if (reserved.count === 0) {
+        console.warn(`${PREFIX} #${positionId}: payout already reserved by another worker, skipping transfer`);
+      } else {
+        try {
+          const protocolAccount = getProtocolAccount();
+          const returnSig = await transferNative(protocolAccount, position.userWallet, userReturnWei);
+          await persistWithRetry(
+            () => prisma.position.update({ where: { id: positionId }, data: { userReturnTx: returnSig } }),
+            `userReturnTx marker for #${positionId}`,
+          );
+          console.log(`${PREFIX} Returned ${Number(userReturnWei) / 1e18} ETH to user ${position.userWallet}`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // Deliberately do NOT release the reservation. transferNative throws
+          // on a confirmation timeout as well as on a real failure, and in the
+          // timeout case the transfer can still land — releasing would let a
+          // retry pay a second time. A payout stuck pending is recoverable by
+          // hand; a double payout out of the pool is not.
+          console.error(
+            `${PREFIX} CRITICAL: payout for #${positionId} left reserved (${reservation}) after failure — ` +
+            `verify on-chain whether ${userReturnWei} wei reached ${position.userWallet} before clearing: ${msg}`,
+          );
+          // Do NOT release the close claim — the sell already landed (closeTx
+          // marker is set), so the retry must resume forward, never re-sell.
+          throw err;
+        }
       }
     }
 

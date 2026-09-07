@@ -300,12 +300,38 @@ router.post(
 
       // 4. Transfer user's ETH collateral to protocol wallet
       let transferSig: string;
+      // Snapshot first: transferNative also throws when confirmation times out,
+      // and in that case the transfer can still land. Deciding "nothing was
+      // charged" from the exception alone would tell the user their ETH is safe
+      // while the pool has actually absorbed it.
+      const balanceBeforeTransfer = await getNativeBalance(userAccount.address).catch(() => null);
       try {
         transferSig = await transferNative(userAccount, protocolAccount.address, userCapital);
       } catch (xferErr) {
+        const reason = xferErr instanceof Error ? xferErr.message : 'network error';
+        const balanceAfter = await getNativeBalance(userAccount.address).catch(() => null);
+        const moved =
+          balanceBeforeTransfer !== null &&
+          balanceAfter !== null &&
+          balanceBeforeTransfer - balanceAfter >= userCapital;
+
+        if (moved) {
+          // The collateral really left the user. Keep the row in 'opening' with
+          // a marker so the recovery sweep owns it — 'failed' is never revisited
+          // and the funds would be stranded in the pool.
+          await persistMarker({ statusChangedAt: new Date() }, 'collateral-landed marker');
+          console.error(
+            `[positions] CRITICAL: collateral for #${positionRowId} left the user wallet but confirmation failed (${reason}) — left in 'opening' for recovery`,
+          );
+          throw new ValidationError(
+            'Your collateral was sent but the network did not confirm in time. ' +
+            'The position is being reconciled automatically — do not retry; check your history shortly.',
+          );
+        }
+
         await persistMarker({ status: 'failed', statusChangedAt: new Date() }, 'failed status');
         throw new ValidationError(
-          `Could not transfer your collateral: ${xferErr instanceof Error ? xferErr.message : 'network error'}. Nothing was charged.`,
+          `Could not transfer your collateral: ${reason}. Nothing was charged.`,
         );
       }
       await persistMarker({ collateralTx: transferSig }, 'collateralTx');
