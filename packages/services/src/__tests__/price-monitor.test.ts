@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Price Monitor Worker Tests
+// LOADED PROTOCOL — Price Monitor Worker Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { shouldAutoClose, calculateLivePnLPercent } from '@scale/core';
+import { shouldAutoClose, calculateLivePnLPercent } from '@loaded/core';
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const WEI_PER_ETH = 1_000_000_000_000_000_000n;
 
 describe('price-monitor logic', () => {
   beforeEach(() => {

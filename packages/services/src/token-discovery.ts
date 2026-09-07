@@ -1,21 +1,20 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Token Discovery Worker (Solana)
+// LOADED PROTOCOL — Token Discovery Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// Auto-lists tradeable pump.fun memecoins so the terminal is never
-// empty. Every 10 minutes it pulls two live feeds from Jupiter:
-//   • trending (24h) — the coins people are actually trading
-//   • recent pump.fun launches — fresh bonding-curve coins
+// Auto-lists tradeable launchpad memecoins so the terminal is never empty.
+// Every 10 minutes it pulls the live trending feed for Robinhood Chain and
+// keeps the coins that clear a 24h volume floor.
 // Each candidate goes through the exact same gate as a manual listing
-// (checkAndListToken → pump.fun attribution + tier/liquidity floor),
+// (checkAndListToken → PONS attribution + tier/liquidity floor),
 // so discovery can't list anything a human couldn't.
 //
 // Other listing paths: POST /tokens/list (API, user-initiated) and the
-// listing-scanner's SCALE_VERIFIED_TOKENS allowlist sweep.
+// listing-scanner's LOADED_VERIFIED_TOKENS allowlist sweep.
 //
 
 import { Worker, type Job } from 'bullmq';
-import { getTrendingTokens, getRecentPumpTokens, isPumpFunToken } from '@scale/solana';
+import { getTrendingTokens, isLaunchpadToken } from '@loaded/evm';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 import { checkAndListToken } from './listing-scanner.js';
 
@@ -35,23 +34,13 @@ async function processDiscovery(_job: Job<DiscoveryJobData>): Promise<void> {
   const candidates = new Map<string, string>(); // mint → source label
 
   try {
-    const trending = await getTrendingTokens('24h');
+    const trending = await getTrendingTokens(50);
     for (const t of trending) {
-      if (!isPumpFunToken(t.id, t.launchpad)) continue; // pump.fun coins only
-      const vol = (t.stats24h?.buyVolume ?? 0) + (t.stats24h?.sellVolume ?? 0);
-      if (vol >= MIN_TRENDING_VOLUME_USD) candidates.set(t.id, 'trending');
+      if (!isLaunchpadToken(t.address, t.launchpad)) continue; // launchpad coins only
+      if ((t.volume24h ?? 0) >= MIN_TRENDING_VOLUME_USD) candidates.set(t.address, 'trending');
     }
   } catch (err) {
     console.warn(`${PREFIX} trending feed failed:`, err instanceof Error ? err.message : err);
-  }
-
-  try {
-    const recent = await getRecentPumpTokens();
-    for (const t of recent) {
-      if (!candidates.has(t.id)) candidates.set(t.id, 'new-launch');
-    }
-  } catch (err) {
-    console.warn(`${PREFIX} recent-launches feed failed:`, err instanceof Error ? err.message : err);
   }
 
   if (candidates.size === 0) return;

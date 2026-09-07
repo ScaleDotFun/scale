@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /positions Command
+// LOADED PROTOCOL — /positions Command
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -8,7 +8,7 @@ import * as api from '../lib/api.js';
 import {
   bold,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatPercent,
   formatCountdown,
   tierBadge,
@@ -50,7 +50,7 @@ export async function handlePositions(ctx: CommandContext<Context>): Promise<voi
       const tier = escapeMarkdown(tierBadge(pos.tier));
       const lev = escapeMarkdown(`${pos.leverage}x`);
       const entry = escapeMarkdown(pos.entryPriceSol.toFixed(8));
-      const posSize = escapeMarkdown(formatSol(BigInt(pos.positionSizeLamports)));
+      const posSize = escapeMarkdown(formatEth(BigInt(pos.positionSizeWei)));
       const pnl = escapeMarkdown(formatPercent(pos.pnlPercent));
       const expiresAt = new Date(pos.expiresAt);
       const remaining = expiresAt.getTime() - Date.now();
@@ -59,7 +59,7 @@ export async function handlePositions(ctx: CommandContext<Context>): Promise<voi
       lines.push(`━━━━━━━━━━━━━━━━━━━━━━`);
       lines.push(`${bold(`#${escapeMarkdown((i + 1).toString())} ${sym}`)} \\(${tier}\\)`);
       lines.push(`${bold('Leverage:')} ${lev}`);
-      lines.push(`${bold('Entry:')} ${entry} SOL`);
+      lines.push(`${bold('Entry:')} ${entry} ETH`);
       lines.push(`${bold('Size:')} ${posSize}`);
       lines.push(`${bold('P\\&L:')} ${pnl}`);
       lines.push(`${bold('⏱ Expires:')} ${countdown}`);

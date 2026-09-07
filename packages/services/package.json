@@ -1,5 +1,5 @@
 {
-  "name": "@scale/services",
+  "name": "@loaded/services",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,9 +22,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@scale/core": "workspace:*",
-    "@scale/database": "workspace:*",
-    "@scale/solana": "workspace:*",
+    "@loaded/core": "workspace:*",
+    "@loaded/database": "workspace:*",
+    "@loaded/evm": "workspace:*",
     "@sentry/node": "^10.64.0",
     "bullmq": "^5.34.0",
     "dotenv": "^16.4.0",

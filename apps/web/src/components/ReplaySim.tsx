@@ -10,11 +10,9 @@ import { blip } from '../lib/sfx';
    if the feed is down, the sim says so.
    ═══════════════════════════════════════════════════════════════ */
 
-// Wrapped SOL — the sim's default reference feed.
-const WSOL = 'So11111111111111111111111111111111111111112';
-
 interface Feed {
   label: string;
+  /** Unused on the reference feed — the API picks the top pool itself. */
   address: string;
   ref?: boolean;
 }
@@ -30,7 +28,7 @@ function fmtPrice(p: number): string {
 }
 
 export const ReplaySim: FC = () => {
-  const [feeds, setFeeds] = useState<Feed[]>([{ label: 'TOP POOL', address: WSOL, ref: true }]);
+  const [feeds, setFeeds] = useState<Feed[]>([{ label: 'TOP POOL', address: '', ref: true }]);
   const [feedIdx, setFeedIdx] = useState(0);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'offline'>('loading');
@@ -56,7 +54,7 @@ export const ReplaySim: FC = () => {
           .map((t) => ({ label: `${t.symbol}/USD`, address: t.address }));
         setFeeds((prev) => [prev[0], ...extra]);
       })
-      .catch(() => { /* SOL feed alone is fine */ });
+      .catch(() => { /* ETH feed alone is fine */ });
   }, []);
 
   // Load real price history for the selected feed
@@ -310,7 +308,7 @@ export const ReplaySim: FC = () => {
               <div className="pg-field">
                 <div className="pg-row">
                   <span>COLLATERAL</span>
-                  <span className="pg-val mono">{collateral.toFixed(1)} SOL</span>
+                  <span className="pg-val mono">{collateral.toFixed(1)} ETH</span>
                 </div>
                 <input type="range" min="0.1" max="10" step="0.1" value={collateral}
                   onChange={(e) => setCollateral(parseFloat(e.target.value))} className="pg-slider" />
@@ -331,7 +329,7 @@ export const ReplaySim: FC = () => {
                   </div>
                   <div className="pg-stat">
                     <span>POSITION</span>
-                    <b className="mono">{result.position.toFixed(2)} SOL</b>
+                    <b className="mono">{result.position.toFixed(2)} ETH</b>
                   </div>
                   <div className="pg-stat">
                     <span>LIQ AT</span>
@@ -346,7 +344,7 @@ export const ReplaySim: FC = () => {
                 {result.liquidatedAt != null ? (
                   <>
                     <span className="pg-result-label">■ LIQUIDATED AFTER {result.hoursHeld}H ■</span>
-                    <span className="pg-result-num mono">-{collateral.toFixed(2)} SOL</span>
+                    <span className="pg-result-num mono">-{collateral.toFixed(2)} ETH</span>
                     <span className="pg-result-sub">
                       price hit {fmtPrice(result.liqPrice)} on real history · pool stays whole
                     </span>
@@ -356,10 +354,10 @@ export const ReplaySim: FC = () => {
                     <span className="pg-result-label">
                       {result.userPnl >= 0 ? `SURVIVED ${result.hoursHeld}H — PROFIT (70%)` : `HELD ${result.hoursHeld}H — DRAWDOWN`}
                     </span>
-                    <span className="pg-result-num mono">{result.userPnl >= 0 ? '+' : ''}{result.userPnl.toFixed(2)} SOL</span>
+                    <span className="pg-result-num mono">{result.userPnl >= 0 ? '+' : ''}{result.userPnl.toFixed(2)} ETH</span>
                     <span className="pg-result-sub">
                       real move {result.movePct >= 0 ? '+' : ''}{result.movePct.toFixed(1)}% ·
-                      {result.userPnl >= 0 ? ' 30% auto-buys $SCALE · locked 7 days' : ' above liquidation — you lived'}
+                      {result.userPnl >= 0 ? ' 30% auto-buys $LOADED · locked 7 days' : ' above liquidation — you lived'}
                     </span>
                   </>
                 )}

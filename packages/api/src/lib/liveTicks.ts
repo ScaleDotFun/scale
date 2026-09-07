@@ -1,25 +1,26 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — live tick engine (Solana)
+// LOADED PROTOCOL — live tick engine (Robinhood Chain)
 //
-// Memecoin traders live on seconds-charts, and no aggregator serves
-// sub-minute candles for Solana — so we build them ourselves from two
-// real sources:
+// Memecoin traders live on seconds-charts, and nobody serves sub-minute
+// candles for Robinhood Chain — so we build them here from two real
+// GeckoTerminal feeds:
 //
-//   1. PumpPortal's public trade stream (wss://pumpportal.fun/api/data)
-//      broadcasts every pump.fun trade — bonding curve and graduated
-//      AMM alike — the moment it lands. Each trade carries SOL in/out,
-//      so candles get REAL prices and REAL USD volume per second.
-//   2. Jupiter's price feed, polled in one batched call every ~1.2s,
-//      fills the gaps: it keeps the tape ticking when a coin goes
-//      quiet and seeds new watchers. Jupiter refreshes every few
-//      seconds, so trades always win when both arrive.
+//   1. Pool trades. Every confirmed PONS swap carries a block timestamp,
+//      a USD price and a USD size, so the seconds where trading actually
+//      happened get REAL open/high/low/close and REAL volume. GT indexes
+//      them ~10-20s behind the chain, so they land in buckets that
+//      usually already exist and are merged in place.
+//   2. Batched token price. One call prices every watched token at once
+//      and keeps the tape ticking while a coin is quiet.
 //
-// Watchers spin up on demand per mint and self-expire after 90s
-// without a reader; the socket resubscribes automatically after drops.
+// Watchers spin up on demand per token and self-expire after 90s without
+// a reader. Cadences are deliberately slow: getUsdPrices has no Pro path,
+// so the price poll shares GeckoTerminal's ~30 req/min free-tier budget
+// with everything else this process does.
 // ──────────────────────────────────────────────
 
-import { getUsdPrices, getSolUsd } from '@scale/solana';
-import { fetchTrades } from './geckoterminal.js';
+import { getUsdPrices, GT_NETWORK } from '@loaded/evm';
+import { fetchTrades, type PoolTrade } from './geckoterminal.js';
 
 export interface LiveCandle {
   timestamp: number; // unix seconds (bucket start)
@@ -27,37 +28,38 @@ export interface LiveCandle {
   high: number;
   low: number;
   close: number;
-  volume: number; // USD (real trade volume via PumpPortal; poll fills add 0)
+  volume: number; // USD (real swap volume; price-poll ticks add 0)
 }
 
 export interface Watcher {
-  mint: string;
+  address: string;
   /** 1-second buckets, ascending */
   candles: LiveCandle[];
   lastPriceUsd: number;
   lastAccess: number;
-  /** ms timestamp of the last streamed trade (0 = none yet) */
-  lastTradeAt: number;
-  /** tx hashes already folded (dedupe across trade polls) */
+  /** swap fingerprints already folded (dedupe across trade polls) */
   seenTrades: Set<string>;
-  /** ms timestamp of the last GT trades poll */
+  /** ms timestamp of the last trades poll */
   lastTradesPoll: number;
 }
 
+/** Keyed by lowercased address — callers pass mixed-case hex. */
 const watchers = new Map<string, Watcher>();
 
-const POLL_MS = 1_200;
+const key = (addr: string): string => addr.trim().toLowerCase();
+
+const POLL_MS = 3_000;
 const IDLE_EXPIRE_MS = 90_000;
-const MAX_BUCKETS = 3_600; // 1h of 1s candles per mint
-/** A polled price only fills when no trade streamed within this window. */
-const TRADE_FRESH_MS = 5_000;
-/** GT trades poll cadence per watcher (real volume, ~10-20s latency). */
-const TRADES_POLL_MS = 8_000;
+const MAX_BUCKETS = 3_600; // ≈1h of 1s candles per token
+/** Trades poll cadence per watcher (real volume, ~10-20s behind chain). */
+const TRADES_POLL_MS = 10_000;
+/** Swaps pulled per poll, and on the opening backfill. */
+const TRADES_PER_POLL = 30;
+const SEED_TRADES = 60;
 const MAX_SEEN_TRADES = 3_000;
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let polling = false;
-let solUsdCache = 0;
 
 /** Fold a price observation into the watcher's 1s candle buffer. */
 function fold(w: Watcher, ts: number, priceUsd: number, volumeUsd: number): void {
@@ -85,109 +87,13 @@ function fold(w: Watcher, ts: number, priceUsd: number, volumeUsd: number): void
   // out-of-order timestamps (older than the last bucket) are dropped
 }
 
-// ── PumpPortal trade stream ──────────────────────────────────
-const PUMPPORTAL_WS = process.env.PUMPPORTAL_WS_URL || 'wss://pumpportal.fun/api/data';
-
-let ws: WebSocket | null = null;
-let wsConnecting = false;
-let wsBackoffMs = 2_000;
-const subscribed = new Set<string>();
-
-function wsSend(payload: object): void {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      ws.send(JSON.stringify(payload));
-    } catch {
-      /* socket died mid-send — reconnect handles it */
-    }
-  }
-}
-
-function subscribeMint(mint: string): void {
-  if (subscribed.has(mint)) return;
-  subscribed.add(mint);
-  wsSend({ method: 'subscribeTokenTrade', keys: [mint] });
-}
-
-function unsubscribeMint(mint: string): void {
-  if (!subscribed.delete(mint)) return;
-  wsSend({ method: 'unsubscribeTokenTrade', keys: [mint] });
-}
-
-interface PumpTrade {
-  mint?: string;
-  txType?: string;
-  solAmount?: number;
-  tokenAmount?: number;
-  [key: string]: unknown;
-}
-
-function handleTrade(msg: PumpTrade): void {
-  const mint = msg.mint;
-  if (!mint || (msg.txType !== 'buy' && msg.txType !== 'sell')) return;
-  const w = watchers.get(mint);
-  if (!w) return;
-  const sol = Number(msg.solAmount);
-  const tokens = Number(msg.tokenAmount);
-  if (!(sol > 0) || !(tokens > 0) || solUsdCache <= 0) return;
-  const priceUsd = (sol / tokens) * solUsdCache;
-  const volumeUsd = sol * solUsdCache;
-  w.lastTradeAt = Date.now();
-  fold(w, Math.floor(Date.now() / 1000), priceUsd, volumeUsd);
-}
-
-function ensureStream(): void {
-  if (ws || wsConnecting || typeof WebSocket === 'undefined') return;
-  wsConnecting = true;
-  try {
-    const socket = new WebSocket(PUMPPORTAL_WS);
-    socket.onopen = () => {
-      wsConnecting = false;
-      ws = socket;
-      wsBackoffMs = 2_000;
-      // (re)subscribe every active watcher after connect/reconnect
-      const mints = [...watchers.keys()];
-      subscribed.clear();
-      for (const m of mints) subscribeMint(m);
-      console.log(`[liveTicks] trade stream connected (${mints.length} mints)`);
-    };
-    socket.onmessage = (ev) => {
-      try {
-        handleTrade(JSON.parse(String(ev.data)) as PumpTrade);
-      } catch {
-        /* non-JSON keepalive — ignore */
-      }
-    };
-    const reconnect = () => {
-      if (ws === socket) ws = null;
-      wsConnecting = false;
-      subscribed.clear();
-      if (watchers.size > 0) {
-        setTimeout(ensureStream, wsBackoffMs).unref?.();
-        wsBackoffMs = Math.min(wsBackoffMs * 2, 30_000);
-      }
-    };
-    socket.onclose = reconnect;
-    socket.onerror = () => {
-      try {
-        socket.close();
-      } catch {
-        /* already closing */
-      }
-    };
-  } catch (err) {
-    wsConnecting = false;
-    console.warn('[liveTicks] trade stream unavailable:', err instanceof Error ? err.message.slice(0, 120) : err);
-  }
-}
-
-// ── GeckoTerminal trades merge (real volume, slight latency) ─
+// ── GeckoTerminal trades (real price + volume, slight latency) ─
 
 /**
- * Merge a confirmed swap into the buffer at ITS OWN second — GT trades
- * arrive 10-20s behind the chain, so they usually land in buckets that
- * already exist. Volume adds up; high/low widen; close only moves for
- * the newest bucket so the live price stays authoritative.
+ * Merge a confirmed swap into the buffer at ITS OWN second — trades
+ * arrive behind the chain, so they usually land in buckets that already
+ * exist. Volume adds up; high/low widen; close only moves for the newest
+ * bucket so the live price stays authoritative.
  */
 function mergeTrade(w: Watcher, ts: number, priceUsd: number, volumeUsd: number): void {
   if (!Number.isFinite(priceUsd) || priceUsd <= 0) return;
@@ -197,8 +103,9 @@ function mergeTrade(w: Watcher, ts: number, priceUsd: number, volumeUsd: number)
     fold(w, ts, priceUsd, volumeUsd);
     return;
   }
-  // walk from the tail — trades are always recent
-  for (let i = cs.length - 1; i >= 0 && cs[i].timestamp >= ts - 1; i--) {
+  if (ts < cs[0].timestamp) return; // older than the whole buffer — too stale to chart
+  // walk from the tail — trades are always recent, so this exits in a few steps
+  for (let i = cs.length - 1; i >= 0; i--) {
     if (cs[i].timestamp === ts) {
       cs[i].high = Math.max(cs[i].high, priceUsd);
       cs[i].low = Math.min(cs[i].low, priceUsd);
@@ -220,17 +127,26 @@ function mergeTrade(w: Watcher, ts: number, priceUsd: number, volumeUsd: number)
       return;
     }
   }
-  // older than the whole buffer — too stale to chart, drop
 }
 
-/** Poll GT for a watcher's recent trades and fold the unseen ones. */
-async function pollTrades(w: Watcher): Promise<void> {
+/**
+ * Fingerprint a swap. One transaction can carry several swaps of the same
+ * token, so the hash alone would silently drop volume — size and second
+ * separate them, and a re-poll of the same swap reproduces the key exactly.
+ */
+function tradeKey(t: PoolTrade): string {
+  return `${t.txHash}:${t.blockUnixTime}:${t.tokenAmount}:${t.volumeUsd}`;
+}
+
+/** Poll recent trades for a watcher and fold the unseen ones. */
+async function pollTrades(w: Watcher, limit = TRADES_PER_POLL): Promise<void> {
   try {
     // oldest-first so backfill builds the buffer in natural order
-    const trades = (await fetchTrades(w.mint, 30)).sort((a, b) => a.blockUnixTime - b.blockUnixTime);
+    const trades = (await fetchTrades(w.address, limit)).sort((a, b) => a.blockUnixTime - b.blockUnixTime);
     for (const t of trades) {
-      if (!t.txHash || w.seenTrades.has(t.txHash)) continue;
-      w.seenTrades.add(t.txHash);
+      const k = tradeKey(t);
+      if (w.seenTrades.has(k)) continue;
+      w.seenTrades.add(k);
       if (w.seenTrades.size > MAX_SEEN_TRADES) {
         const oldest = w.seenTrades.values().next().value;
         if (oldest) w.seenTrades.delete(oldest);
@@ -238,23 +154,32 @@ async function pollTrades(w: Watcher): Promise<void> {
       mergeTrade(w, t.blockUnixTime, t.priceUsd, t.volumeUsd);
     }
   } catch {
-    // GT hiccup — price polling still carries the tape
+    // GT hiccup — the price poll still carries the tape
   }
 }
 
-// ── Jupiter poll (gap filler + seed + SOL/USD refresh) ───────
+// ── Batched price poll (gap filler + seed) ───────────────────
 
-/** One tick: expire idle watchers, then price every active mint in ONE call. */
+/**
+ * Batched USD prices, re-keyed lowercase: GeckoTerminal answers with
+ * EIP-55 checksummed addresses, which never match a raw route param.
+ */
+async function usdPrices(addresses: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (const [addr, p] of await getUsdPrices(addresses)) {
+    if (p.priceUsd > 0) out.set(key(addr), p.priceUsd);
+  }
+  return out;
+}
+
+/** One tick: expire idle watchers, then price every active token in ONE call. */
 async function pollAll(): Promise<void> {
   if (polling) return; // never overlap slow polls
   polling = true;
   try {
     const now = Date.now();
-    for (const [mint, w] of watchers) {
-      if (now - w.lastAccess > IDLE_EXPIRE_MS) {
-        watchers.delete(mint);
-        unsubscribeMint(mint);
-      }
+    for (const [k, w] of watchers) {
+      if (now - w.lastAccess > IDLE_EXPIRE_MS) watchers.delete(k);
     }
     if (watchers.size === 0) {
       if (pollTimer) {
@@ -263,17 +188,13 @@ async function pollAll(): Promise<void> {
       }
       return;
     }
-    ensureStream();
-    solUsdCache = await getSolUsd().catch(() => solUsdCache);
-    const prices = await getUsdPrices([...watchers.keys()]);
+    const live = [...watchers.values()];
+    const prices = await usdPrices(live.map((w) => w.address));
     const ts = Math.floor(Date.now() / 1000);
     const due: Promise<void>[] = [];
-    for (const [mint, w] of watchers) {
-      const p = prices.get(mint);
-      // trades are authoritative — the poll only fills quiet stretches
-      if (p && Date.now() - w.lastTradeAt > TRADE_FRESH_MS) {
-        fold(w, ts, p.usdPrice, 0);
-      }
+    for (const w of live) {
+      const price = prices.get(key(w.address));
+      if (price) fold(w, ts, price, 0);
       if (now - w.lastTradesPoll > TRADES_POLL_MS) {
         w.lastTradesPoll = now;
         due.push(pollTrades(w));
@@ -292,38 +213,33 @@ function ensurePolling(): void {
   if (pollTimer) return;
   pollTimer = setInterval(pollAll, POLL_MS);
   pollTimer.unref?.();
+  console.log(`[liveTicks] tape started (${GT_NETWORK})`);
 }
 
 /**
- * Get (or start) the live watcher for a mint. A new watcher is seeded
- * with a single bucket at the current price — no 1s history exists
- * anywhere, so pretending otherwise would be fakery. From that moment
- * on, every pump.fun trade streams in with real price + volume.
+ * Get (or start) the live watcher for a token. A new watcher backfills
+ * from the last real swaps — no 1s history exists anywhere else, so
+ * pretending otherwise would be fakery. From there the trades poll adds
+ * real volume and the price poll keeps the tape moving.
  */
-export async function watchToken(mint: string): Promise<Watcher> {
-  let w = watchers.get(mint);
+export async function watchToken(address: string): Promise<Watcher> {
+  const k = key(address);
+  let w = watchers.get(k);
   if (!w) {
     w = {
-      mint,
+      address,
       candles: [],
       lastPriceUsd: 0,
       lastAccess: Date.now(),
-      lastTradeAt: 0,
       seenTrades: new Set(),
-      lastTradesPoll: 0,
+      lastTradesPoll: Date.now(),
     };
-    watchers.set(mint, w);
-    ensureStream();
-    subscribeMint(mint);
-    // backfill from the last ~30 real swaps so the chart opens with
-    // genuine recent history instead of a single dot
-    w.lastTradesPoll = Date.now();
-    await pollTrades(w);
+    watchers.set(k, w);
+    // open the chart on genuine recent history instead of a single dot
+    await pollTrades(w, SEED_TRADES);
     try {
-      solUsdCache = await getSolUsd().catch(() => solUsdCache);
-      const prices = await getUsdPrices([mint]);
-      const p = prices.get(mint);
-      if (p) fold(w, Math.floor(Date.now() / 1000), p.usdPrice, 0);
+      const price = (await usdPrices([address])).get(k);
+      if (price) fold(w, Math.floor(Date.now() / 1000), price, 0);
     } catch (err) {
       console.warn('[liveTicks] seed price failed:', err instanceof Error ? err.message.slice(0, 120) : err);
     }

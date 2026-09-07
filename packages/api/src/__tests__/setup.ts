@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Test Setup
+// LOADED PROTOCOL — Test Setup
 // ──────────────────────────────────────────────
 
 import { vi } from 'vitest';
 
-// ─── Mock @scale/database (Prisma) ────
-vi.mock('@scale/database', () => ({
+// ─── Mock @loaded/database (Prisma) ────
+vi.mock('@loaded/database', () => ({
   prisma: {
     user: {
       findUnique: vi.fn(),
@@ -49,63 +49,68 @@ vi.mock('@scale/database', () => ({
   },
 }));
 
-// ─── Mock @scale/solana ──────────────
-// Mock keypairs mirror @solana/web3.js Keypair shape: publicKey.toBase58().
+// ─── Mock @loaded/evm ──────────────
+// Mock accounts mirror viem PrivateKeyAccount shape: .address
 // NOTE: vi.mock factories are hoisted — keep every value self-contained.
-export const MOCK_USER_WALLET = '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr';
-export const MOCK_POOL_WALLET = 'GDfnEsia2WLAW5t8yx2X5j2mkfA74B5675t2kNMaUMPb';
+export const MOCK_USER_WALLET = '0x0044adb6841a38e67f3741e981163f576013b696';
+export const MOCK_POOL_WALLET = '0x8cc7b91c4411f8be28e945a5f8e881a5aba0b8f2';
 
-vi.mock('@scale/solana', () => ({
-  SOLANA_RPC: 'https://api.mainnet-beta.solana.com',
-  JUPITER_API: 'https://lite-api.jup.ag',
-  WSOL_MINT: 'So11111111111111111111111111111111111111112',
-  INCINERATOR: '1nc1nerator11111111111111111111111111111111',
-  explorerTxUrl: vi.fn((sig: string) => `https://solscan.io/tx/${sig}`),
-  explorerAddressUrl: vi.fn((a: string) => `https://solscan.io/account/${a}`),
-  isPumpFunToken: vi.fn((mint: string, launchpad?: string) =>
-    (!!launchpad && launchpad.toLowerCase().includes('pump')) || mint.endsWith('pump')),
-  explorerTokenUrl: vi.fn((m: string) => `https://solscan.io/token/${m}`),
-  getConnection: vi.fn(() => ({})),
-  isValidSolanaAddress: vi.fn(
-    (addr: string) => typeof addr === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr),
+vi.mock('@loaded/evm', () => ({
+  ROBINHOOD_RPC: 'https://rpc.mainnet.chain.robinhood.com',
+  NATIVE_TOKEN: '0x0000000000000000000000000000000000000000',
+  DEAD_ADDRESS: '0x000000000000000000000000000000000000dEaD',
+  explorerTxUrl: vi.fn((h: string) => `https://explorer.chain.robinhood.com/tx/${h}`),
+  explorerAddressUrl: vi.fn((a: string) => `https://explorer.chain.robinhood.com/address/${a}`),
+  // mirrors the real classifier: the venue decides, and the "-robinhood"
+  // suffix must be stripped so plain AMMs are not treated as launchpads
+  isLaunchpadToken: vi.fn((_address: string, launchpad?: string | null) => {
+    if (!launchpad) return false;
+    const d = launchpad.toLowerCase().replace(/-robinhood$/, '');
+    return ['pons', 'hoodit', 'uniswap-pools-trade', 'clanker', 'bankr', 'virtuals']
+      .some((k) => d === k || d.startsWith(k + '-'));
+  }),
+  explorerTokenUrl: vi.fn((t: string) => `https://explorer.chain.robinhood.com/token/${t}`),
+  getPublicClient: vi.fn(() => ({})),
+  isValidAddress: vi.fn(
+    (addr: string) => typeof addr === 'string' && /^0x[a-fA-F0-9]{40}$/.test(addr),
   ),
   generateCustodialWallet: vi.fn(() => ({
-    address: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr',
+    address: '0x0044adb6841a38e67f3741e981163f576013b696',
     encryptedPrivateKey: 'iv:tag:cipher',
   })),
   loadCustodialWallet: vi.fn(() => ({
-    publicKey: { toBase58: () => '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr' },
+    address: '0x1111111111111111111111111111111111111111',
   })),
   getProtocolAccount: vi.fn(() => ({
-    publicKey: { toBase58: () => 'GDfnEsia2WLAW5t8yx2X5j2mkfA74B5675t2kNMaUMPb' },
+    address: '0x2222222222222222222222222222222222222222',
   })),
   hasProtocolKey: vi.fn(() => false),
   protocolPublicKey: vi.fn(() => (process.env.PROTOCOL_WALLET || '').trim() || null),
-  getSolBalance: vi.fn(() => Promise.resolve(0n)),
-  transferSol: vi.fn(() => Promise.resolve('mock-signature')),
-  splBalance: vi.fn(() => Promise.resolve(0n)),
-  splDecimals: vi.fn(() => Promise.resolve(6)),
-  splTotalSupply: vi.fn(() => Promise.resolve(0n)),
-  splTransfer: vi.fn(() => Promise.resolve('mock-signature')),
-  splBurn: vi.fn(() => Promise.resolve('mock-signature')),
-  jupiterQuote: vi.fn(() => Promise.resolve(null)),
+  getNativeBalance: vi.fn(() => Promise.resolve(0n)),
+  transferNative: vi.fn(() => Promise.resolve('mock-signature')),
+  erc20Balance: vi.fn(() => Promise.resolve(0n)),
+  erc20Decimals: vi.fn(() => Promise.resolve(6)),
+  erc20TotalSupply: vi.fn(() => Promise.resolve(0n)),
+  erc20Transfer: vi.fn(() => Promise.resolve('mock-signature')),
+  erc20Burn: vi.fn(() => Promise.resolve('mock-signature')),
+  aggregatorQuote: vi.fn(() => Promise.resolve(null)),
   quoteExactInput: vi.fn(() => Promise.resolve(0n)),
-  swapSolForToken: vi.fn(() => Promise.resolve({ txHash: 'mock-tx', amountOut: 0n })),
-  swapTokenForSol: vi.fn(() => Promise.resolve({ txHash: 'mock-tx', amountOut: 0n })),
-  getJupToken: vi.fn(() => Promise.resolve(null)),
-  getRecentPumpTokens: vi.fn(() => Promise.resolve([])),
+  swapNativeForToken: vi.fn(() => Promise.resolve({ txHash: 'mock-tx', amountOut: 0n })),
+  swapTokenForNative: vi.fn(() => Promise.resolve({ txHash: 'mock-tx', amountOut: 0n })),
+  getTokenInfo: vi.fn(() => Promise.resolve(null)),
   getTrendingTokens: vi.fn(() => Promise.resolve([])),
-  verifyPumpRewardShare: vi.fn(() => Promise.resolve({ status: 'not_found', walletPct: 0, shareholders: [] })),
-  verifyPumpToken: vi.fn(() => Promise.resolve({ status: 'not_found' })),
+  getTrendingTokens: vi.fn(() => Promise.resolve([])),
+  verifyCreatorFeeShare: vi.fn(() => Promise.resolve({ status: 'not_found', walletPct: 0, shareholders: [] })),
+  verifyLaunchpadToken: vi.fn(() => Promise.resolve({ status: 'not_found' })),
   getUsdPrices: vi.fn(() => Promise.resolve(new Map())),
-  getSolUsd: vi.fn(() => Promise.resolve(200)),
+  getEthUsd: vi.fn(() => Promise.resolve(200)),
   encryptPrivateKey: vi.fn(() => 'iv:tag:cipher'),
-  decryptPrivateKey: vi.fn(() => 'base58-secret-key'),
+  decryptPrivateKey: vi.fn(() => 'hex-secret-key'),
 }));
 
-// ─── Mock @scale/core ──────────────────
-vi.mock('@scale/core', () => ({
-  LAMPORTS_PER_SOL: 10n ** 9n,
+// ─── Mock @loaded/core ──────────────────
+vi.mock('@loaded/core', () => ({
+  WEI_PER_ETH: 10n ** 9n,
   getTierConfig: vi.fn(() => ({
     name: 'Bronze',
     label: 'DEGEN',

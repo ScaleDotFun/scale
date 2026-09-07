@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Sentry (optional, env-gated)
+// LOADED PROTOCOL — Sentry (optional, env-gated)
 //
 // Set SENTRY_DSN on the service to activate; without it this is a
 // complete no-op. Import once at process start.

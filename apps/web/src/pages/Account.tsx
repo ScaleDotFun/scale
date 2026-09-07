@@ -3,7 +3,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../lib/api';
 import { HoldingsPanel } from '../components/HoldingsPanel';
-import { formatSol, formatAddress, formatCountdown, formatTimeAgo, solscanTxUrl } from '../lib/format';
+import { formatEth, formatAddress, formatCountdown, formatTimeAgo, explorerTxUrl, isValidAddress, ethToWei } from '../lib/format';
 
 // Normalize VITE_API_URL: strip trailing /api if present, then add /api
 const API_BASE = import.meta.env.VITE_API_URL
@@ -79,17 +79,15 @@ export const Account: FC = () => {
 
   const handleWithdraw = useCallback(async () => {
     if (!destAddress || !withdrawAmount || withdrawing) return;
-    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(destAddress)) {
-      setWithdrawResult({ success: false, message: 'Invalid destination address. Enter a valid Solana (base58) address.' });
+    if (!isValidAddress(destAddress)) {
+      setWithdrawResult({ success: false, message: 'Invalid destination address. Enter a valid Robinhood Chain address (0x…).' });
       return;
     }
     setWithdrawing(true);
     setWithdrawResult(null);
     try {
-      // SOL → lamports (integer-safe well past 2^53 for the 10 SOL cap)
-      const amountLamports = String(BigInt(Math.round(parseFloat(withdrawAmount) * 1e9)));
-      const result = await api.withdrawWallet(destAddress, amountLamports);
-      setWithdrawResult({ success: true, message: 'Withdrawal successful!', txSig: result.txSignature });
+      const result = await api.withdrawWallet(destAddress.trim(), ethToWei(withdrawAmount));
+      setWithdrawResult({ success: true, message: 'Withdrawal successful!', txSig: result.txHash });
       setDestAddress('');
       setWithdrawAmount('');
       fetchBalance();
@@ -223,12 +221,12 @@ export const Account: FC = () => {
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={statLabel}>SOL Balance</div>
+            <div style={statLabel}>ETH Balance</div>
             <div style={{ ...statValue, color: 'var(--primary)' }}>
               {balanceLoading ? (
                 <span className="skeleton" style={{ display: 'inline-block', width: 80, height: 24, borderRadius: 0 }} />
               ) : (
-                <>{balance?.balanceSol || '0.0000'} SOL</>
+                <>{balance?.balanceEth || '0.0000'} ETH</>
               )}
             </div>
           </div>
@@ -238,7 +236,7 @@ export const Account: FC = () => {
         <div style={{ borderTop: '1px solid #12110c', paddingTop: 14, marginBottom: 16 }}>
           <div style={sectionLabel}>Deposit</div>
           <p style={{ fontSize: 12, color: '#66786a', marginBottom: 8 }}>
-            Send SOL on Solana to this address to deposit
+            Send ETH on Robinhood Chain to this address to deposit
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <code style={{
@@ -272,7 +270,7 @@ export const Account: FC = () => {
               <input
                 style={{ ...inputStyle, flex: 1 }}
                 type="number"
-                placeholder="Amount (SOL)"
+                placeholder="Amount (ETH)"
                 step="0.01"
                 min="0"
                 value={withdrawAmount}
@@ -298,7 +296,7 @@ export const Account: FC = () => {
             }}>
               {withdrawResult.message}
               {withdrawResult.txSig && (
-                <> · <a href={solscanTxUrl(withdrawResult.txSig)} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>View on Solscan →</a></>
+                <> · <a href={explorerTxUrl(withdrawResult.txSig)} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>View on explorer →</a></>
               )}
             </div>
           )}
@@ -311,9 +309,9 @@ export const Account: FC = () => {
         <HoldingsPanel />
       </div>
 
-      {/* ═══ B) Locked $SCALE Section ═══ */}
+      {/* ═══ B) Locked $LOADED Section ═══ */}
       <div style={cardStyle}>
-        <div style={sectionLabel}>Locked $SCALE</div>
+        <div style={sectionLabel}>Locked $LOADED</div>
 
         {locksLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
@@ -321,7 +319,7 @@ export const Account: FC = () => {
           </div>
         ) : locks.length === 0 ? (
           <div style={{ padding: '20px 0', textAlign: 'center', color: '#4a5236', fontSize: 13 }}>
-            No locks yet. Make profitable trades to earn $SCALE!
+            No locks yet. Make profitable trades to earn $LOADED!
           </div>
         ) : (
           <>
@@ -365,7 +363,7 @@ export const Account: FC = () => {
                     }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#f0f4e4', fontFamily: "'JetBrains Mono', monospace" }}>
-                          {formatSol(BigInt(lock.tokenAmount))} $SCALE
+                          {formatEth(BigInt(lock.tokenAmount))} $LOADED
                         </div>
                         <div style={{ fontSize: 11, color: '#67704f' }}>
                           From {lock.position?.tokenSymbol ?? 'token'} trade · Locked {formatTimeAgo(lock.lockedAt)}
@@ -400,7 +398,7 @@ export const Account: FC = () => {
                     }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#f0f4e4', fontFamily: "'JetBrains Mono', monospace" }}>
-                          {formatSol(BigInt(lock.tokenAmount))} $SCALE
+                          {formatEth(BigInt(lock.tokenAmount))} $LOADED
                         </div>
                         <div style={{ fontSize: 11, color: '#67704f' }}>
                           From {lock.position?.tokenSymbol ?? 'token'} trade · Locked {formatTimeAgo(lock.lockedAt)}

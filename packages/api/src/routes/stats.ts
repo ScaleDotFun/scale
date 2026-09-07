@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Stats Routes
+// LOADED PROTOCOL — Stats Routes
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError } from '../lib/response';
 import { getOnchainStats } from '../lib/onchain';
@@ -31,7 +31,7 @@ router.get('/stats', publicLimiter, async (req, res) => {
       // Total burned
       prisma.burn.aggregate({
         _sum: {
-          solAmount: true,
+          ethAmount: true,
           tokenAmount: true,
         },
       }),
@@ -39,7 +39,7 @@ router.get('/stats', publicLimiter, async (req, res) => {
       prisma.profitLock.aggregate({
         where: { isUnlocked: false },
         _sum: {
-          solAmount: true,
+          ethAmount: true,
           tokenAmount: true,
         },
       }),
@@ -68,20 +68,20 @@ router.get('/stats', publicLimiter, async (req, res) => {
     const onchain = await getOnchainStats();
 
     sendSuccess(res, {
-      totalBurnedLamports: String(burnAgg._sum.solAmount ?? 0n),
+      totalBurnedWei: String(burnAgg._sum.ethAmount ?? 0n),
       totalBurnedTokens: String(burnAgg._sum.tokenAmount ?? 0n),
-      totalLockedLamports: String(lockAgg._sum.solAmount ?? 0n),
+      totalLockedWei: String(lockAgg._sum.ethAmount ?? 0n),
       totalLockedTokens: String(lockAgg._sum.tokenAmount ?? 0n),
-      poolSizeLamports: onchain?.poolWalletLamports ?? String(poolAgg._sum.amount ?? 0n),
-      poolLedgerLamports: String(poolAgg._sum.amount ?? 0n),
+      poolSizeWei: onchain?.poolWalletWei ?? String(poolAgg._sum.amount ?? 0n),
+      poolLedgerWei: String(poolAgg._sum.amount ?? 0n),
       poolWalletAddress: onchain?.poolWalletAddress ?? null,
       poolSourceOnchain: onchain != null,
-      // The protocol's own $SCALE token — the Trade page features it by default
-      scaleToken: (process.env.SCALE_TOKEN_MINT || '').trim() || null,
+      // The protocol's own $LOADED token — the Trade page features it by default
+      loadedToken: (process.env.LOADED_TOKEN_MINT || '').trim() || null,
       frontLockedTokens: onchain?.frontLockedTokens ?? null,
       frontTotalSupply: onchain?.frontTotalSupply ?? null,
       frontLockedPct: onchain?.frontLockedPct ?? null,
-      totalCreatorPayoutsLamports: String(creatorPayoutAgg._sum.amount ?? 0n),
+      totalCreatorPayoutsWei: String(creatorPayoutAgg._sum.amount ?? 0n),
       totalTradesExecuted: totalPositions,
       totalListedTokens,
       activeListedTokens,
@@ -119,12 +119,12 @@ router.get('/pool', publicLimiter, async (req, res) => {
         where: { status: 'open' },
         _sum: { protocolCapital: true },
       }),
-      // Real wallet balance — the number users can verify on Solscan
+      // Real wallet balance — the number users can verify on the Robinhood explorer
       getOnchainStats(),
     ]);
 
     const balance = onchain
-      ? BigInt(onchain.poolWalletLamports)
+      ? BigInt(onchain.poolWalletWei)
       : (poolBalance._sum.amount ?? 0n);
     const lockedCapital = capitalLocked._sum.protocolCapital ?? 0n;
 
@@ -174,7 +174,7 @@ router.get('/pool', publicLimiter, async (req, res) => {
  * POST /admin/seed-pool
  *
  * Seed the pool ledger with an initial deposit. Protected by ADMIN_SECRET.
- * Body: { amountLamports: string }
+ * Body: { amountWei: string }
  */
 router.post('/admin/seed-pool', async (req, res) => {
   try {
@@ -183,16 +183,16 @@ router.post('/admin/seed-pool', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
 
-    const amountLamports = BigInt(req.body.amountLamports || '0');
-    if (amountLamports <= 0n) {
-      return res.status(400).json({ success: false, error: 'amountLamports must be positive' });
+    const amountWei = BigInt(req.body.amountWei || '0');
+    if (amountWei <= 0n) {
+      return res.status(400).json({ success: false, error: 'amountWei must be positive' });
     }
 
     await prisma.poolLedger.create({
       data: {
         type: 'initial_deposit',
-        amount: amountLamports,
-        txSignature: 'admin-seed-deposit',
+        amount: amountWei,
+        txHash: 'admin-seed-deposit',
       },
     });
 
@@ -200,7 +200,7 @@ router.post('/admin/seed-pool', async (req, res) => {
 
     sendSuccess(res, {
       message: 'Pool seeded',
-      deposited: amountLamports.toString(),
+      deposited: amountWei.toString(),
       totalPool: (poolAgg._sum.amount ?? 0n).toString(),
     });
   } catch (err) {
@@ -211,8 +211,8 @@ router.post('/admin/seed-pool', async (req, res) => {
 /**
  * POST /admin/fund-wallet
  *
- * Transfer SOL from the protocol wallet to a target address. Protected by ADMIN_SECRET.
- * Body: { destinationAddress: string, amountLamports: string }  (amount in lamports)
+ * Transfer ETH from the protocol wallet to a target address. Protected by ADMIN_SECRET.
+ * Body: { destinationAddress: string, amountWei: string }  (amount in wei)
  */
 router.post('/admin/fund-wallet', async (req, res) => {
   try {
@@ -221,25 +221,25 @@ router.post('/admin/fund-wallet', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
 
-    const { destinationAddress, amountLamports } = req.body;
-    if (!destinationAddress || !amountLamports) {
-      return res.status(400).json({ success: false, error: 'destinationAddress and amountLamports required' });
+    const { destinationAddress, amountWei } = req.body;
+    if (!destinationAddress || !amountWei) {
+      return res.status(400).json({ success: false, error: 'destinationAddress and amountWei required' });
     }
 
-    const { getProtocolAccount, transferSol, isValidSolanaAddress } = await import('@scale/solana');
-    if (!isValidSolanaAddress(String(destinationAddress))) {
-      return res.status(400).json({ success: false, error: 'destinationAddress must be a Solana (base58) address' });
+    const { getProtocolAccount, transferNative, isValidAddress } = await import('@loaded/evm');
+    if (!isValidAddress(String(destinationAddress))) {
+      return res.status(400).json({ success: false, error: 'destinationAddress must be a Robinhood Chain address (0x…)' });
     }
     const protocolAccount = getProtocolAccount();
-    const amount = BigInt(amountLamports);
+    const amount = BigInt(amountWei);
 
-    const txSig = await transferSol(protocolAccount, destinationAddress, amount);
+    const txSig = await transferNative(protocolAccount, destinationAddress, amount);
 
     sendSuccess(res, {
       message: 'Wallet funded',
       destination: destinationAddress,
       amount: amount.toString(),
-      txSignature: txSig,
+      txHash: txSig,
     });
   } catch (err) {
     sendError(res, err);
@@ -327,7 +327,7 @@ router.post('/admin/reset-tokens', async (req, res) => {
         await prisma.token.update({ where: { address: tokenAddress }, data: { isActive: true } });
         sendSuccess(res, { message: 'Token reactivated', address: tokenAddress });
       } else {
-        // Fetch metadata from GeckoTerminal (Solana)
+        // Fetch metadata from GeckoTerminal (Robinhood Chain)
         let name = 'Unknown', symbol = '???', imageUri = '', creator = '', marketCap = 0;
         let liquidity = 0;
         try {
@@ -340,7 +340,7 @@ router.post('/admin/reset-tokens', async (req, res) => {
           liquidity = gt.liquidity;
         } catch { /* use defaults */ }
 
-        const { determineTier } = await import('@scale/core');
+        const { determineTier } = await import('@loaded/core');
         const tierConfig = determineTier(marketCap, liquidity || marketCap * 0.1, liquidity > 0);
         const tier = tierConfig ? tierConfig.tier : 'degen';
 

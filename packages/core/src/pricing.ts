@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Tier Pricing & Fee Calculation
+// LOADED PROTOCOL — Tier Pricing & Fee Calculation
 // ──────────────────────────────────────────────
 
 import {
@@ -101,16 +101,16 @@ export function getTierConfig(tier: Tier): TierConfig {
 
 /**
  * Calculate the flat fee for a position.
- * @param positionSizeLamports - Total position size (user + protocol capital)
+ * @param positionSizeWei - Total position size (user + protocol capital)
  * @param tier - Risk tier
- * @returns Fee amount in lamports
+ * @returns Fee amount in wei
  */
 export function calculateFlatFee(
-  positionSizeLamports: bigint,
+  positionSizeWei: bigint,
   tier: Tier,
 ): bigint {
   const config = TIER_CONFIGS[tier];
-  return (positionSizeLamports * BigInt(config.flatFeeBps)) / BigInt(BPS.FULL);
+  return (positionSizeWei * BigInt(config.flatFeeBps)) / BigInt(BPS.FULL);
 }
 
 /**
@@ -147,18 +147,18 @@ export function isValidLeverage(leverage: number, tier: Tier): boolean {
  * Protocol capital = (user_capital * leverage) - user_capital
  */
 export function calculateProtocolCapital(
-  userCapitalLamports: bigint,
+  userCapitalWei: bigint,
   leverage: number,
 ): bigint {
-  return userCapitalLamports * BigInt(leverage) - userCapitalLamports;
+  return userCapitalWei * BigInt(leverage) - userCapitalWei;
 }
 
 /**
  * Calculate the total position size.
  */
 export function calculatePositionSize(
-  userCapitalLamports: bigint,
+  userCapitalWei: bigint,
   leverage: number,
 ): bigint {
-  return userCapitalLamports * BigInt(leverage);
+  return userCapitalWei * BigInt(leverage);
 }

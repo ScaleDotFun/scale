@@ -1,12 +1,13 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Auth Routes (Email/Password)
+// LOADED PROTOCOL — Auth Routes (Email/Password)
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { prisma } from '@scale/database';
-import { generateCustodialWallet, loadCustodialWallet, getSolBalance, transferSol, isValidSolanaAddress } from '@scale/solana';
+import { prisma } from '@loaded/database';
+import { WEI_PER_ETH } from '@loaded/core';
+import { generateCustodialWallet, loadCustodialWallet, getNativeBalance, transferNative, isValidAddress } from '@loaded/evm';
 import { issueToken, verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, AuthError } from '../lib/errors';
@@ -26,7 +27,7 @@ function isValidEmail(email: string): boolean {
  * POST /auth/register
  *
  * Create a new custodial account with email + password.
- * Generates a Solana wallet and encrypts the private key.
+ * Generates a Robinhood Chain wallet and encrypts the private key.
  *
  * Body: { email: string, password: string }
  * Returns: { token, user: { id, email, walletAddress } }
@@ -73,10 +74,10 @@ router.post('/register', authLimiter, async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Generate a custodial Solana wallet
+    // Generate a custodial Robinhood Chain wallet
     const { address: walletAddress, encryptedPrivateKey: encryptedKey } = generateCustodialWallet();
 
-    const referredById = await resolveReferrer(referralCode ?? req.cookies?.scale_ref);
+    const referredById = await resolveReferrer(referralCode ?? req.cookies?.loaded_ref);
 
     // Create user
     const user = await prisma.user.create({
@@ -138,13 +139,13 @@ router.post('/login', authLimiter, async (req, res) => {
       throw new AuthError('Invalid email or password');
     }
 
-    // Solana migration: accounts created in a previous chain era (e.g.
-    // an EVM 0x… wallet) get a fresh Solana wallet on first login; the
+    // Robinhood Chain migration: accounts created in a previous chain era (e.g.
+    // an EVM 0x… wallet) get a fresh Robinhood Chain wallet on first login; the
     // old wallet + key move to legacy columns so any funds stay
     // recoverable. If a legacy wallet is already preserved from an
     // earlier migration, keep the FIRST one and just replace the
     // active wallet.
-    if (!isValidSolanaAddress(user.walletAddress)) {
+    if (!isValidAddress(user.walletAddress)) {
       const fresh = generateCustodialWallet();
       user = await prisma.user.update({
         where: { id: user.id },
@@ -211,7 +212,7 @@ router.get('/me', verifyWalletSignature, async (req, res) => {
 /**
  * GET /auth/wallet
  *
- * Return the authenticated user's wallet address and real SOL balance.
+ * Return the authenticated user's wallet address and real ETH balance.
  */
 router.get('/wallet', verifyWalletSignature, async (req, res) => {
   try {
@@ -227,14 +228,14 @@ router.get('/wallet', verifyWalletSignature, async (req, res) => {
       throw new AuthError('User not found');
     }
 
-    // Fetch real balance from Solana
-    const balanceLamports = await getSolBalance(user.walletAddress);
-    const balanceSol = (Number(balanceLamports) / 1e9).toFixed(6);
+    // Fetch real balance from Robinhood Chain
+    const balanceWei = await getNativeBalance(user.walletAddress);
+    const balanceEth = (Number(balanceWei) / 1e18).toFixed(6);
 
     sendSuccess(res, {
       walletAddress: user.walletAddress,
-      balanceLamports: balanceLamports.toString(),
-      balanceSol,
+      balanceWei: balanceWei.toString(),
+      balanceEth,
     });
   } catch (err) {
     sendError(res, err);
@@ -244,25 +245,25 @@ router.get('/wallet', verifyWalletSignature, async (req, res) => {
 /**
  * POST /auth/withdraw
  *
- * Withdraw SOL from the user's custodial wallet to an external Solana address.
- * Users can only withdraw SOL from their own wallet — never protocol funds.
+ * Withdraw ETH from the user's custodial wallet to an external Robinhood Chain address.
+ * Users can only withdraw ETH from their own wallet — never protocol funds.
  */
 router.post('/withdraw', verifyWalletSignature, async (req, res) => {
   try {
     const authReq = req as AuthenticatedRequest;
     const userId = authReq.userId!;
-    const { destinationAddress, amountLamports } = req.body;
+    const { destinationAddress, amountWei } = req.body;
 
-    if (!destinationAddress || !amountLamports) {
+    if (!destinationAddress || !amountWei) {
       throw new ValidationError('Missing required fields', [
         ...(!destinationAddress ? ['destinationAddress is required'] : []),
-        ...(!amountLamports ? ['amountLamports is required'] : []),
+        ...(!amountWei ? ['amountWei is required'] : []),
       ]);
     }
 
-    // Validate Solana address format
-    if (typeof destinationAddress !== 'string' || !isValidSolanaAddress(destinationAddress)) {
-      throw new ValidationError('Invalid destination address — expected a Solana (base58) address');
+    // Validate Robinhood Chain address format
+    if (typeof destinationAddress !== 'string' || !isValidAddress(destinationAddress)) {
+      throw new ValidationError('Invalid destination address — expected a Robinhood Chain address (0x…)');
     }
 
     const user = await prisma.user.findUnique({
@@ -288,28 +289,30 @@ router.post('/withdraw', verifyWalletSignature, async (req, res) => {
     const userAccount = loadCustodialWallet(user.encryptedKey);
     let amount: bigint;
     try {
-      amount = BigInt(amountLamports);
+      amount = BigInt(amountWei);
     } catch {
       throw new ValidationError('Invalid amount — must be a numeric string');
     }
 
     // Check balance (reserve a fee buffer so the tx can always pay for itself)
-    const GAS_BUFFER_LAMPORTS = 5_000_000n; // 0.005 SOL
-    const balance = await getSolBalance(user.walletAddress);
-    if (balance < amount + GAS_BUFFER_LAMPORTS) {
+    // Robinhood Chain is a cheap Orbit L2 — 0.0002 ETH covers a native
+    // transfer many times over without stranding a meaningful balance.
+    const GAS_BUFFER_WEI = WEI_PER_ETH / 5_000n; // 0.0002 ETH
+    const balance = await getNativeBalance(user.walletAddress);
+    if (balance < amount + GAS_BUFFER_WEI) {
       throw new AuthError(
-        `Insufficient balance. You have ${(Number(balance) / 1e9).toFixed(6)} SOL but tried to withdraw ${(Number(amount) / 1e9).toFixed(6)} SOL (plus fees)`,
+        `Insufficient balance. You have ${(Number(balance) / 1e18).toFixed(6)} ETH but tried to withdraw ${(Number(amount) / 1e18).toFixed(6)} ETH (plus fees)`,
       );
     }
 
-    // Execute transfer on Solana
-    const signature = await transferSol(userAccount, destinationAddress, amount);
+    // Execute transfer on Robinhood Chain
+    const signature = await transferNative(userAccount, destinationAddress, amount);
 
-    console.log(`[auth] Withdraw ${Number(amount) / 1e9} SOL from ${user.walletAddress} to ${destinationAddress}: ${signature}`);
+    console.log(`[auth] Withdraw ${Number(amount) / 1e18} ETH from ${user.walletAddress} to ${destinationAddress}: ${signature}`);
 
     sendSuccess(res, {
-      txSignature: signature,
-      amountSol: (Number(amount) / 1e9).toFixed(6),
+      txHash: signature,
+      amountEth: (Number(amount) / 1e18).toFixed(6),
       from: user.walletAddress,
       to: destinationAddress,
     });
@@ -324,14 +327,14 @@ router.post('/withdraw', verifyWalletSignature, async (req, res) => {
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 // Route OAuth through the branded domain — Google's consent screen shows
-// this redirect_uri, so it must be scale.fun, never the raw Railway host.
+// this redirect_uri, so it must be loaded.fun, never the raw Railway host.
 // Vercel proxies /api/* to this backend, so the branded path resolves here.
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL
   || (process.env.NODE_ENV === 'production'
-    ? 'https://www.scale.fun/api/auth/google/callback'
+    ? 'https://www.loaded.fun/api/auth/google/callback'
     : 'http://localhost:4001/api/auth/google/callback');
 const FRONTEND_URL = process.env.FRONTEND_URL
-  || (process.env.NODE_ENV === 'production' ? 'https://www.scale.fun' : 'http://localhost:5173');
+  || (process.env.NODE_ENV === 'production' ? 'https://www.loaded.fun' : 'http://localhost:5173');
 
 /** One-time auth codes: code → { token, expiresAt } */
 const authCodeStore = new Map<string, { token: string; expiresAt: number }>();
@@ -435,11 +438,11 @@ router.get('/google/callback', async (req, res) => {
     // Find or create user
     let user = await prisma.user.findUnique({ where: { email: googleUser.email } });
 
-    // Solana migration — same as password login: previous-chain-era
-    // (e.g. EVM 0x…) accounts get a fresh Solana wallet; the old wallet
+    // Robinhood Chain migration — same as password login: previous-chain-era
+    // (e.g. EVM 0x…) accounts get a fresh Robinhood Chain wallet; the old wallet
     // + key move to legacy columns so any funds stay recoverable
     // (only if the legacy slot is empty — the first legacy is kept).
-    if (user && !isValidSolanaAddress(user.walletAddress)) {
+    if (user && !isValidAddress(user.walletAddress)) {
       const fresh = generateCustodialWallet();
       user = await prisma.user.update({
         where: { id: user.id },
@@ -454,12 +457,12 @@ router.get('/google/callback', async (req, res) => {
           encryptedKey: fresh.encryptedPrivateKey,
         },
       });
-      console.log(`[auth] Migrated ${user.email} to Solana wallet ${user.walletAddress} (google login)`);
+      console.log(`[auth] Migrated ${user.email} to Robinhood Chain wallet ${user.walletAddress} (google login)`);
     }
 
     if (!user) {
       // Sybil resistance — same caps as email signup. The device cookie
-      // (scale_did) rides the top-level OAuth navigation; IP is best-effort.
+      // (loaded_did) rides the top-level OAuth navigation; IP is best-effort.
       const identity = signupIdentity(req);
       try {
         await assertSignupAllowed(identity);
@@ -467,7 +470,7 @@ router.get('/google/callback', async (req, res) => {
         return res.redirect(`${FRONTEND_URL}/auth?error=account_limit`);
       }
 
-      // New user — generate a Solana custodial wallet
+      // New user — generate a Robinhood Chain custodial wallet
       const { address: walletAddress, encryptedPrivateKey: encryptedKey } = generateCustodialWallet();
 
       // Create with a random password hash (they'll use Google to sign in)
@@ -479,7 +482,7 @@ router.get('/google/callback', async (req, res) => {
           passwordHash: randomPass,
           walletAddress,
           encryptedKey,
-          referredById: await resolveReferrer(req.cookies?.scale_ref),
+          referredById: await resolveReferrer(req.cookies?.loaded_ref),
           registrationIp: identity.ip,
           deviceId: identity.deviceId,
         },

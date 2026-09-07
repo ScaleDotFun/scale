@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /alerts, /slippage Commands
+// LOADED PROTOCOL — /alerts, /slippage Commands
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';

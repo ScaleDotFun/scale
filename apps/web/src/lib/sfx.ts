@@ -4,7 +4,7 @@
  * bleeps, the way 1983 intended. Off by default, persisted.
  */
 
-const KEY = 'scale_sfx';
+const KEY = 'loaded_sfx';
 const EVT = 'front-sfx-change';
 
 let ctx: AudioContext | null = null;

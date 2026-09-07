@@ -1,34 +1,34 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — On-chain truth for public stats (Solana)
+// LOADED PROTOCOL — On-chain truth for public stats (Robinhood Chain)
 //
 // The DB ledger is protocol accounting; the chain is reality.
-// Public stats report the pool wallet's REAL SOL balance and the
-// protocol token's locked supply, read from Solana mainnet and
+// Public stats report the pool wallet's REAL ETH balance and the
+// protocol token's locked supply, read from Robinhood Chain and
 // cached briefly.
 // ──────────────────────────────────────────────
 
 import {
-  getSolBalance,
-  splBalance,
-  splTotalSupply,
-  splDecimals,
+  getNativeBalance,
+  erc20Balance,
+  erc20TotalSupply,
+  erc20Decimals,
   protocolPublicKey,
-  isValidSolanaAddress,
-} from '@scale/solana';
+  isValidAddress,
+} from '@loaded/evm';
 
-// The protocol token ($SCALE mint on Solana), configured per-launch.
+// The protocol token ($LOADED mint on Robinhood Chain), configured per-launch.
 // Until it's set, locked-supply stats are honestly null.
-const TOKEN_MINT = (process.env.SCALE_TOKEN_MINT ?? '').trim();
+const TOKEN_MINT = (process.env.LOADED_TOKEN_MINT ?? '').trim();
 
 /** Wallets whose protocol-token holdings count as "locked supply"
- *  (base58, comma-separated — invalid entries are dropped). */
-const LOCKED_WALLETS: string[] = (process.env.SCALE_LOCKED_WALLETS ?? '')
-  .split(',').map((s) => s.trim()).filter((s) => isValidSolanaAddress(s));
+ *  (0x addresses, comma-separated — invalid entries are dropped). */
+const LOCKED_WALLETS: string[] = (process.env.LOADED_LOCKED_WALLETS ?? '')
+  .split(',').map((s) => s.trim()).filter((s) => isValidAddress(s));
 
 export interface OnchainStats {
-  /** Real SOL balance of the protocol pool wallet, in lamports (string) */
-  poolWalletLamports: string;
-  /** Pool wallet address — verify on Solscan */
+  /** Real ETH balance of the protocol pool wallet, in wei (string) */
+  poolWalletWei: string;
+  /** Pool wallet address — verify on the Robinhood explorer */
   poolWalletAddress: string;
   frontLockedTokens: number | null;
   frontTotalSupply: number | null;
@@ -46,17 +46,17 @@ async function fetchSnapshot(): Promise<OnchainStats | null> {
     // no pool wallet configured means nothing truthful to report.
     const wallet = protocolPublicKey();
     if (!wallet) return null;
-    const balance = await getSolBalance(wallet);
+    const balance = await getNativeBalance(wallet);
 
     let frontLockedTokens: number | null = null;
     let frontTotalSupply: number | null = null;
     let frontLockedPct: number | null = null;
 
-    if (isValidSolanaAddress(TOKEN_MINT)) {
+    if (isValidAddress(TOKEN_MINT)) {
       const [supplyRaw, decimals, ...locked] = await Promise.all([
-        splTotalSupply(TOKEN_MINT),
-        splDecimals(TOKEN_MINT),
-        ...LOCKED_WALLETS.map((w) => splBalance(TOKEN_MINT, w).catch(() => 0n)),
+        erc20TotalSupply(TOKEN_MINT),
+        erc20Decimals(TOKEN_MINT),
+        ...LOCKED_WALLETS.map((w) => erc20Balance(TOKEN_MINT, w).catch(() => 0n)),
       ]);
       const div = Math.pow(10, decimals);
       frontTotalSupply = Number(supplyRaw) / div;
@@ -65,7 +65,7 @@ async function fetchSnapshot(): Promise<OnchainStats | null> {
     }
 
     return {
-      poolWalletLamports: balance.toString(),
+      poolWalletWei: balance.toString(),
       poolWalletAddress: wallet,
       frontLockedTokens,
       frontTotalSupply,

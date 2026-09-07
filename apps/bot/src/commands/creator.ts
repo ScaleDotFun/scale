@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /creator, /earnings, /claim
+// LOADED PROTOCOL — /creator, /earnings, /claim
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -8,7 +8,7 @@ import * as api from '../lib/api.js';
 import {
   bold,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatUsd,
   formatTimestamp,
   tierBadge,
@@ -28,16 +28,16 @@ export async function handleCreator(ctx: CommandContext<Context>): Promise<void>
     const tier = escapeMarkdown(tierBadge(dash.tier));
     const listedAt = escapeMarkdown(formatTimestamp(new Date(dash.listedAt)));
 
-    const totalVol = escapeMarkdown(formatSol(BigInt(dash.totalTradingVolume)));
-    const totalFees = escapeMarkdown(formatSol(BigInt(dash.totalFeesGenerated)));
-    const totalEarnings = escapeMarkdown(formatSol(BigInt(dash.totalEarnings)));
+    const totalVol = escapeMarkdown(formatEth(BigInt(dash.totalTradingVolume)));
+    const totalFees = escapeMarkdown(formatEth(BigInt(dash.totalFeesGenerated)));
+    const totalEarnings = escapeMarkdown(formatEth(BigInt(dash.totalEarnings)));
 
-    const todayVol = escapeMarkdown(formatSol(BigInt(dash.todayTradingVolume)));
-    const todayFees = escapeMarkdown(formatSol(BigInt(dash.todayFeesGenerated)));
-    const todayEarnings = escapeMarkdown(formatSol(BigInt(dash.todayEarnings)));
+    const todayVol = escapeMarkdown(formatEth(BigInt(dash.todayTradingVolume)));
+    const todayFees = escapeMarkdown(formatEth(BigInt(dash.todayFeesGenerated)));
+    const todayEarnings = escapeMarkdown(formatEth(BigInt(dash.todayEarnings)));
 
-    const unclaimed = escapeMarkdown(formatSol(BigInt(dash.unclaimedEarnings)));
-    const redirected = escapeMarkdown(formatSol(BigInt(dash.feesRedirected)));
+    const unclaimed = escapeMarkdown(formatEth(BigInt(dash.unclaimedEarnings)));
+    const redirected = escapeMarkdown(formatEth(BigInt(dash.feesRedirected)));
 
     const msg = [
       `🎨 ${bold('Creator Dashboard')}`,
@@ -74,7 +74,7 @@ export async function handleCreator(ctx: CommandContext<Context>): Promise<void>
           `🎨 ${bold('Creator Dashboard')}`,
           ``,
           `You don't have a listed token yet\\.`,
-          `List your Pump\\.fun token to start earning 30% of trading fees\\!`,
+          `List your PONS token to start earning 30% of trading fees\\!`,
         ].join('\n'),
         { parse_mode: 'MarkdownV2' },
       );
@@ -97,9 +97,9 @@ export async function handleEarnings(ctx: CommandContext<Context>): Promise<void
   try {
     const earnings = await api.getCreatorEarnings(telegramId);
 
-    const total = escapeMarkdown(formatSol(BigInt(earnings.totalEarnings)));
-    const unclaimed = escapeMarkdown(formatSol(BigInt(earnings.unclaimedEarnings)));
-    const claimed = escapeMarkdown(formatSol(BigInt(earnings.claimedEarnings)));
+    const total = escapeMarkdown(formatEth(BigInt(earnings.totalEarnings)));
+    const unclaimed = escapeMarkdown(formatEth(BigInt(earnings.unclaimedEarnings)));
+    const claimed = escapeMarkdown(formatEth(BigInt(earnings.claimedEarnings)));
 
     const lines: string[] = [
       `💰 ${bold('Earnings Breakdown')}`,
@@ -116,7 +116,7 @@ export async function handleEarnings(ctx: CommandContext<Context>): Promise<void
       lines.push(``);
 
       for (const payout of earnings.payouts.slice(0, 15)) {
-        const amt = escapeMarkdown(formatSol(BigInt(payout.amountLamports)));
+        const amt = escapeMarkdown(formatEth(BigInt(payout.amountWei)));
         const status = payout.status === 'claimed' ? '✅' : payout.status === 'claimable' ? '💰' : '⏳';
         const date = escapeMarkdown(formatTimestamp(new Date(payout.createdAt)));
         lines.push(`${status} ${amt} — ${date}`);
@@ -151,16 +151,16 @@ export async function handleClaim(ctx: CommandContext<Context>): Promise<void> {
 
   try {
     const earnings = await api.getCreatorEarnings(telegramId);
-    const unclaimedLamports = BigInt(earnings.unclaimedEarnings);
+    const unclaimedWei = BigInt(earnings.unclaimedEarnings);
 
-    if (unclaimedLamports === 0n) {
+    if (unclaimedWei === 0n) {
       await ctx.reply('📭 No unclaimed earnings\\. Check back after more trades\\!', {
         parse_mode: 'MarkdownV2',
       });
       return;
     }
 
-    const unclaimed = escapeMarkdown(formatSol(unclaimedLamports));
+    const unclaimed = escapeMarkdown(formatEth(unclaimedWei));
 
     const keyboard = new InlineKeyboard()
       .text('✅ Claim', 'confirm_claim')

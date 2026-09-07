@@ -55,7 +55,7 @@ export const Auth: FC = () => {
   };
 
   const handleGoogleLogin = () => {
-    getDeviceId(); // ensure the scale_did cookie exists before the redirect
+    getDeviceId(); // ensure the loaded_did cookie exists before the redirect
     const apiUrl = import.meta.env.VITE_API_URL
       ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
       : '/api';
@@ -96,7 +96,7 @@ export const Auth: FC = () => {
               <path d="M2 17l10 5 10-5" />
               <path d="M2 12l10 5 10-5" />
             </svg>
-            <span style={{ fontSize: 20, fontWeight: 700, color: '#f0f4e4', letterSpacing: '0.04em' }}>SCALE</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: '#f0f4e4', letterSpacing: '0.04em' }}>LOADED</span>
           </div>
         </Link>
 
@@ -114,7 +114,7 @@ export const Auth: FC = () => {
           }}>
             Leverage trade<br />
             any memecoin<br />
-            <span style={{ color: 'var(--primary)' }}>on Solana.</span>
+            <span style={{ color: 'var(--primary)' }}>on Robinhood Chain.</span>
           </h1>
           <p style={{
             fontSize: 15,
@@ -123,8 +123,8 @@ export const Auth: FC = () => {
             maxWidth: 400,
             marginBottom: 40,
           }}>
-            Deposit SOL, choose your leverage, and the protocol fills the rest.
-            Real on-chain execution via Jupiter. No synthetic perps.
+            Deposit ETH, choose your leverage, and the protocol fills the rest.
+            Real on-chain execution on Robinhood Chain. No synthetic perps.
           </p>
 
           {/* Stats */}
@@ -391,7 +391,7 @@ export const Auth: FC = () => {
           }}>
             <div style={{ fontSize: 11, color: '#67704f', lineHeight: 1.6 }}>
               {mode === 'register' ? (
-                <>A fresh Solana wallet will be generated for your account. You can deposit SOL to start trading with leverage.</>
+                <>A fresh Robinhood Chain wallet will be generated for your account. You can deposit ETH to start trading with leverage.</>
               ) : (
                 <>Sign in to access your trading account and managed wallet.</>
               )}

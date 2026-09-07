@@ -1,5 +1,6 @@
 import { type FC, useState } from 'react';
 import * as api from '../lib/api';
+import { isValidAddress } from '../lib/format';
 import { useStats } from '../hooks/useStats';
 
 const stepStyle = {
@@ -35,13 +36,17 @@ const inputStyle = {
   outline: 'none',
 } as const;
 
-const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-
-const guideImgStyle = {
-  width: '100%',
-  display: 'block',
+const calloutStyle = {
+  background: 'var(--bg-1)',
   border: '1px solid var(--border)',
-  borderRadius: 0,
+  padding: '12px 14px',
+  fontSize: '0.8rem',
+  lineHeight: 1.65,
+} as const;
+
+const codeStyle = {
+  color: 'var(--primary)',
+  wordBreak: 'break-all',
 } as const;
 
 export const ListToken: FC = () => {
@@ -63,7 +68,7 @@ export const ListToken: FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const addr = tokenAddress.trim();
-    if (!addr || !BASE58_RE.test(addr)) return;
+    if (!isValidAddress(addr)) return;
 
     setLoading(true);
     setResult(null);
@@ -102,41 +107,60 @@ export const ListToken: FC = () => {
       <div>
         <h2 style={{ marginBottom: 4 }}>List Your Coin</h2>
         <p className="text-muted" style={{ fontSize: '0.93rem', margin: 0 }}>
-          The deal is simple: share your coin's pump.fun <b>creator rewards 100%</b> with
-          the SCALE pool, and your coin gets leverage trading. SCALE verifies the share
+          The deal is simple: point your coin's PONS <b>creator fee</b> at the LOADED
+          pool, and your coin gets leverage trading. LOADED verifies the recipient
           <b> on-chain, automatically</b> — no forms, no DMs. In return you earn{' '}
           <b>30% of every flat fee</b> traded on your coin, forever.
         </p>
       </div>
 
-      {/* Step 1 — Go to pump.fun and hit Create */}
+      {/* How the PONS fee works */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <span className="text-muted" style={stepHead}>
-          Step 1 — Go to pump.fun and hit “Create”
+          What you're actually giving up
         </span>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
-          Head to <a href="https://pump.fun" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>pump.fun</a> and
-          click the <b>+ Create</b> button in the top-right corner. Any genuine
-          pump.fun launch qualifies for SCALE — still on the bonding curve or
-          already graduated.
+          PONS takes <b>1% of every trade</b> on your bonding curve and splits it{' '}
+          <b>70% to the creator, 30% to the protocol</b>. The 70% creator slice is
+          paid to whatever address is set as the curve's creator fee recipient —
+          that's the only thing you change. The PONS protocol's 30% is untouched,
+          and your token contract, supply, and curve stay exactly as launched.
         </p>
-        <img
-          src="/guide/pumpfun-home.jpg"
-          alt="pump.fun homepage — the Create button sits in the top-right corner"
-          style={guideImgStyle}
-        />
+        <div style={calloutStyle}>
+          <span className="text-muted">
+            You hand over the 70% creator slice and take back <b>30% of every LOADED
+            flat fee</b> on leveraged trades of your coin. Leverage multiplies the
+            volume that fee is charged on, which is why the trade is usually
+            lopsided in your favor.
+          </span>
+        </div>
       </div>
 
-      {/* Step 2 — Fill in the coin + share creator rewards */}
+      {/* Step 1 — Launch on PONS */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <span className="text-muted" style={stepHead}>
-          Step 2 — Name your coin, then enable “Share creator rewards”
+          Step 1 — Launch your coin on PONS
+        </span>
+        <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 0' }}>
+          Create your coin on PONS as usual — name, ticker, image, launch. Any
+          genuine PONS launch on Robinhood Chain qualifies for LOADED, whether
+          it's still on the bonding curve or has already graduated to Uniswap V4.
+          Nothing here has to be decided at launch time; the fee recipient can be
+          changed later.
+        </p>
+      </div>
+
+      {/* Step 2 — Point the creator fee at the pool */}
+      <div className="card" style={{ padding: '16px 20px' }}>
+        <span className="text-muted" style={stepHead}>
+          Step 2 — Set your creator fee recipient to the LOADED pool
         </span>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
-          Pick a name, ticker, and image. Then flip the <b>“Share creator rewards”</b>{' '}
-          toggle on the create form and add the SCALE pool wallet below as a
-          shareholder at <b>100%</b>. Already launched? The sharing config can
-          still be set from your coin's creator settings on pump.fun.
+          From the wallet that deployed the coin, call{' '}
+          <code style={codeStyle}>setCreatorFeeRecipient(address)</code> on your
+          coin's PONS bonding-curve contract with the pool address below — either
+          from your coin's creator settings on PONS, or straight from the contract
+          write tab on the explorer. Only the deployer can set it.
         </p>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
@@ -158,46 +182,39 @@ export const ListToken: FC = () => {
             {copied ? 'Copied ✓' : 'Copy'}
           </button>
         </div>
-        <img
-          src="/guide/pumpfun-share-rewards.png"
-          alt="The Share creator rewards toggle on pump.fun — flip it on and add the SCALE pool wallet as the shareholder at 100%"
-          style={guideImgStyle}
-        />
-        <img
-          src="/guide/pumpfun-create.png"
-          alt="pump.fun Create new coin form — coin name, ticker, description, and image"
-          style={{ ...guideImgStyle, marginTop: 12 }}
-        />
+        <div style={calloutStyle}>
+          <span className="text-muted">
+            Copy the address character for character and check it after pasting.
+            Creator fees paid to a wrong address are gone — LOADED cannot recover
+            them, and the listing check will simply fail.
+          </span>
+        </div>
       </div>
 
-      {/* Step 3 — Copy the mint address */}
+      {/* Step 3 — Copy the contract address */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <span className="text-muted" style={stepHead}>
-          Step 3 — Copy your coin's mint address (CA)
+          Step 3 — Copy your coin's contract address (CA)
         </span>
-        <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
-          Open your coin's page on pump.fun and click the address chip next to the
-          market cap (it always ends in <code style={{ color: 'var(--primary)' }}>pump</code>)
-          to copy the contract address. That's the mint address SCALE needs.
+        <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 0' }}>
+          Open your coin's page on PONS and copy the contract address chip — a
+          40-character Robinhood Chain address starting with{' '}
+          <code style={codeStyle}>0x</code>. That's the token address, not the
+          curve address; LOADED resolves the curve from it.
         </p>
-        <img
-          src="/guide/pumpfun-coin.png"
-          alt="pump.fun coin page — the contract address chip next to the market cap copies the mint address"
-          style={guideImgStyle}
-        />
       </div>
 
       {/* Step 4 — Paste it below */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <span className="text-muted" style={stepHead}>
-          Step 4 — Paste the mint address below
+          Step 4 — Paste the contract address below
         </span>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 0' }}>
-          SCALE reads your coin's fee-sharing config straight from the chain. If
-          the pool wallet holds 100% of creator rewards, you're listed instantly —
-          name, logo, and risk tier auto-detected. If not, you get the exact
-          reason and what to fix. Re-routing rewards away later delists the coin
-          automatically, so the deal stays honest both ways.
+          LOADED reads your coin's creator fee recipient straight from the chain.
+          If it's the pool wallet, you're listed instantly — name, logo, and risk
+          tier auto-detected. If not, you get the exact reason and what to fix.
+          Re-routing the fee away later delists the coin automatically, so the
+          deal stays honest both ways.
         </p>
       </div>
 
@@ -205,25 +222,27 @@ export const ListToken: FC = () => {
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
           <label style={{ fontSize: '0.82rem', color: 'var(--text-1)', marginBottom: 6, display: 'block' }}>
-            Mint Address
+            Contract Address
           </label>
           <input
             type="text"
             value={tokenAddress}
             onChange={(e) => setTokenAddress(e.target.value)}
-            placeholder="Paste pump.fun coin mint address"
+            placeholder="0x…"
+            spellCheck={false}
+            autoComplete="off"
             style={inputStyle}
             required
           />
           <div style={{ fontSize: '0.72rem', color: '#67704f', marginTop: 4 }}>
-            Tier is auto-detected by market cap. The pump.fun launch is verified on-chain.
+            Tier is auto-detected by market cap. The PONS launch is verified on-chain.
           </div>
         </div>
 
         <button
           type="submit"
           className="btn btn-primary"
-          disabled={loading || !BASE58_RE.test(tokenAddress.trim())}
+          disabled={loading || !isValidAddress(tokenAddress)}
           style={{
             padding: '12px 0',
             fontSize: '0.93rem',
@@ -257,10 +276,10 @@ export const ListToken: FC = () => {
       {/* Steps */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
-          { title: 'Launch on pump.fun', desc: 'Hit Create on pump.fun, pick a name and image, and launch.' },
-          { title: 'Share Creator Rewards 100%', desc: 'Enable "Share creator rewards" and add the SCALE pool wallet as the shareholder at 100% — that\'s the listing deal, verified on-chain.' },
-          { title: 'Paste the Mint Address', desc: 'Copy the CA from your coin\'s pump.fun page (ends in "pump"), paste it above, and SCALE lists it instantly with tier, name, and logo auto-detected.' },
-          { title: 'Earn 30% of Flat Fees', desc: 'Traders take leveraged positions on your coin with real Jupiter swaps, and 30% of every flat fee accrues to your launch wallet — usually worth far more than the shared rewards.' },
+          { title: 'Launch on PONS', desc: 'Create your coin on PONS — name, ticker, image, launch. Bonding curve or already graduated, both qualify.' },
+          { title: 'Route the Creator Fee to the Pool', desc: 'Call setCreatorFeeRecipient with the LOADED pool address on your curve. PONS charges 1% per trade split 70% creator / 30% protocol — the 70% creator slice is what you route.' },
+          { title: 'Paste the Contract Address', desc: 'Copy the 0x… CA from your coin\'s PONS page, paste it above, and LOADED lists it instantly with tier, name, and logo auto-detected.' },
+          { title: 'Earn 30% of Flat Fees', desc: 'Traders take leveraged positions on your coin with real on-chain swaps, and 30% of every flat fee accrues to your launch wallet — usually worth far more than the creator fee you routed.' },
         ].map((step, i) => (
           <div key={i} style={stepStyle}>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>

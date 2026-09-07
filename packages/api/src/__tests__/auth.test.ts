@@ -1,10 +1,10 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Auth Route Tests
+// LOADED PROTOCOL — Auth Route Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestApp } from './setup';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import { issueToken } from '../middleware/auth';
 
 describe('Auth Routes', () => {
@@ -73,7 +73,7 @@ describe('Auth Routes', () => {
       vi.mocked(prisma.user.create).mockResolvedValue({
         id: 1,
         email: 'new@example.com',
-        walletAddress: 'MockNewBotPubkey',
+        walletAddress: '0x359da3194fa82ca8db41546fffa69ac90054802c',
         encryptedKey: 'mock-encrypted-key',
         passwordHash: 'hashed',
         createdAt: new Date(),
@@ -91,7 +91,7 @@ describe('Auth Routes', () => {
       expect(res.body.data).toHaveProperty('token');
       expect(res.body.data).toHaveProperty('user');
       expect(res.body.data.user.email).toBe('new@example.com');
-      expect(res.body.data.user.walletAddress).toBe('MockNewBotPubkey');
+      expect(res.body.data.user.walletAddress).toBe('0x359da3194fa82ca8db41546fffa69ac90054802c');
     });
   });
 
@@ -118,7 +118,7 @@ describe('Auth Routes', () => {
       vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
       vi.mocked(prisma.user.count).mockResolvedValue(0);
       const createSpy = vi.mocked(prisma.user.create).mockResolvedValue({
-        id: 2, email: 'fresh@example.com', walletAddress: 'MockPubkey2',
+        id: 2, email: 'fresh@example.com', walletAddress: '0xf9049eef4f0bdc7a2014e04874e4c74d20df6268',
         encryptedKey: 'k', passwordHash: 'h', createdAt: new Date(),
         registrationIp: null, deviceId: null,
       } as any);
@@ -181,11 +181,11 @@ describe('Auth Routes', () => {
     });
 
     it('returns user data with valid token', async () => {
-      const token = issueToken(1, '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr');
+      const token = issueToken(1, '0x0044adb6841a38e67f3741e981163f576013b696');
       vi.mocked(prisma.user.findUnique).mockResolvedValue({
         id: 1,
         email: 'test@example.com',
-        walletAddress: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr',
+        walletAddress: '0x0044adb6841a38e67f3741e981163f576013b696',
         createdAt: new Date(),
       } as any);
 
@@ -197,7 +197,7 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.email).toBe('test@example.com');
-      expect(res.body.data.walletAddress).toBe('7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr');
+      expect(res.body.data.walletAddress).toBe('0x0044adb6841a38e67f3741e981163f576013b696');
     });
   });
 
@@ -232,26 +232,26 @@ describe('Auth Routes', () => {
     });
 
     it('rejects missing destination address', async () => {
-      const token = issueToken(1, '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr');
+      const token = issueToken(1, '0x0044adb6841a38e67f3741e981163f576013b696');
 
       const { agent } = createTestApp();
       const res = await agent
         .post('/api/auth/withdraw')
         .set('Authorization', `Bearer ${token}`)
-        .send({ amountLamports: '100000000' });
+        .send({ amountWei: '100000000' });
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
     });
 
-    it('rejects invalid Solana address', async () => {
-      const token = issueToken(1, '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr');
+    it('rejects invalid Robinhood Chain address', async () => {
+      const token = issueToken(1, '0x0044adb6841a38e67f3741e981163f576013b696');
 
       const { agent } = createTestApp();
       const res = await agent
         .post('/api/auth/withdraw')
         .set('Authorization', `Bearer ${token}`)
-        .send({ destinationAddress: 'short', amountLamports: '100000000' });
+        .send({ destinationAddress: 'short', amountWei: '100000000' });
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);

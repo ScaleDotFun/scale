@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /burns, /stats, /pool Commands
+// LOADED PROTOCOL — /burns, /stats, /pool Commands
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -7,7 +7,7 @@ import * as api from '../lib/api.js';
 import {
   bold,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatTimestamp,
   formatAddress,
   code,
@@ -23,15 +23,15 @@ export async function handleBurns(ctx: CommandContext<Context>): Promise<void> {
       api.getBurnStats(),
     ]);
 
-    const totalSol = escapeMarkdown(formatSol(BigInt(stats.totalBurnedLamports)));
+    const totalSol = escapeMarkdown(formatEth(BigInt(stats.totalBurnedWei)));
     const totalTokens = escapeMarkdown(BigInt(stats.totalBurnedTokens).toLocaleString());
     const count = escapeMarkdown(stats.burnCount.toString());
 
     const lines: string[] = [
-      `🔥 ${bold('\\$SCALE Burns')}`,
+      `🔥 ${bold('\\$LOADED Burns')}`,
       ``,
       `${bold('Total Burned:')} ${totalSol}`,
-      `${bold('Tokens Burned:')} ${totalTokens} \\$SCALE`,
+      `${bold('Tokens Burned:')} ${totalTokens} \\$LOADED`,
       `${bold('Burn Count:')} ${count}`,
       ``,
     ];
@@ -42,12 +42,12 @@ export async function handleBurns(ctx: CommandContext<Context>): Promise<void> {
       lines.push(``);
 
       for (const burn of burns.slice(0, 10)) {
-        const amt = escapeMarkdown(formatSol(BigInt(burn.amountLamports)));
+        const amt = escapeMarkdown(formatEth(BigInt(burn.amountWei)));
         const tokens = escapeMarkdown(BigInt(burn.apeTokensBurned).toLocaleString());
         const when = escapeMarkdown(formatTimestamp(new Date(burn.burnedAt)));
-        const tx = escapeMarkdown(formatAddress(burn.txSignature));
+        const tx = escapeMarkdown(formatAddress(burn.txHash));
 
-        lines.push(`🔥 ${amt} \\(${tokens} \\$SCALE\\) — ${when}`);
+        lines.push(`🔥 ${amt} \\(${tokens} \\$LOADED\\) — ${when}`);
         lines.push(`   tx: ${code(tx)}`);
       }
     }
@@ -68,10 +68,10 @@ export async function handleStats(ctx: CommandContext<Context>): Promise<void> {
   try {
     const stats = await api.getProtocolStats();
 
-    const pool = escapeMarkdown(formatSol(BigInt(stats.poolSizeLamports)));
-    const burned = escapeMarkdown(formatSol(BigInt(stats.totalBurnedLamports)));
-    const locked = escapeMarkdown(formatSol(BigInt(stats.totalLockedLamports)));
-    const creatorPay = escapeMarkdown(formatSol(BigInt(stats.totalCreatorPayoutsLamports)));
+    const pool = escapeMarkdown(formatEth(BigInt(stats.poolSizeWei)));
+    const burned = escapeMarkdown(formatEth(BigInt(stats.totalBurnedWei)));
+    const locked = escapeMarkdown(formatEth(BigInt(stats.totalLockedWei)));
+    const creatorPay = escapeMarkdown(formatEth(BigInt(stats.totalCreatorPayoutsWei)));
     const trades = escapeMarkdown(stats.totalTradesExecuted.toLocaleString());
     const listed = escapeMarkdown(stats.totalListedTokens.toString());
     const active = escapeMarkdown(stats.activePositions.toString());
@@ -107,8 +107,8 @@ export async function handlePool(ctx: CommandContext<Context>): Promise<void> {
   try {
     const pool = await api.getPoolInfo();
 
-    const size = escapeMarkdown(formatSol(BigInt(pool.sizeLamports)));
-    const avail = escapeMarkdown(formatSol(BigInt(pool.availableLamports)));
+    const size = escapeMarkdown(formatEth(BigInt(pool.sizeWei)));
+    const avail = escapeMarkdown(formatEth(BigInt(pool.availableWei)));
     const util = escapeMarkdown(pool.utilizationPct.toFixed(1));
 
     // Simple utilization bar

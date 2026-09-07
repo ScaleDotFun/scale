@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Shared Types
+// LOADED PROTOCOL — Shared Types
 // ──────────────────────────────────────────────
 
 /** Risk tier for a listed token */
@@ -50,7 +50,7 @@ export interface TierConfig {
 export interface PositionOpenParams {
   userWallet: string;
   tokenAddress: string;
-  userCapitalLamports: bigint;
+  userCapitalWei: bigint;
   leverage: number;
   slippageBps?: number;
 }
@@ -59,11 +59,11 @@ export interface PositionPreview {
   tokenAddress: string;
   tier: Tier;
   tierEmoji: string;
-  userCapitalLamports: bigint;
+  userCapitalWei: bigint;
   leverage: number;
-  positionSizeLamports: bigint;
-  protocolCapitalLamports: bigint;
-  flatFeeLamports: bigint;
+  positionSizeWei: bigint;
+  protocolCapitalWei: bigint;
+  flatFeeWei: bigint;
   flatFeePct: number;
   exitThresholdPct: number;
   maxDurationHours: number;
@@ -77,11 +77,11 @@ export interface PositionPreview {
 export interface ScenarioProjection {
   label: string;
   priceMovePercent: number;
-  totalValueLamports: bigint;
-  profitLamports: bigint;
-  userCashoutLamports: bigint;
-  userLockLamports: bigint;
-  maxLossLamports: bigint;
+  totalValueWei: bigint;
+  profitWei: bigint;
+  userCashoutWei: bigint;
+  userLockWei: bigint;
+  maxLossWei: bigint;
 }
 
 // ──────────────────────────────────────────────
@@ -89,17 +89,17 @@ export interface ScenarioProjection {
 // ──────────────────────────────────────────────
 
 export interface PnLResult {
-  totalValueLamports: bigint;
-  totalProfitLamports: bigint;
+  totalValueWei: bigint;
+  totalProfitWei: bigint;
   isProfitable: boolean;
   // User side
-  userGrossProfitLamports: bigint;  // 70% of profit → SOL to user
-  userLockLamports: bigint;         // 30% of profit → buy & lock $FRONT
-  userCashoutLamports: bigint;      // 70% of profit (same as gross, all cash)
+  userGrossProfitWei: bigint;  // 70% of profit → ETH to user
+  userLockWei: bigint;         // 30% of profit → buy & lock $FRONT
+  userCashoutWei: bigint;      // 70% of profit (same as gross, all cash)
   // Protocol side
-  protocolProfitShareLamports: bigint; // 0% — protocol earns from fees, not profit
-  flatFeeLamports: bigint;
-  totalProtocolRevenueLamports: bigint;
+  protocolProfitShareWei: bigint; // 0% — protocol earns from fees, not profit
+  flatFeeWei: bigint;
+  totalProtocolRevenueWei: bigint;
 }
 
 // ──────────────────────────────────────────────
@@ -107,18 +107,18 @@ export interface PnLResult {
 // ──────────────────────────────────────────────
 
 export interface RevenueBreakdown {
-  totalRevenueLamports: bigint;
-  creatorPayoutLamports: bigint;   // 30%
-  burnAmountLamports: bigint;      // 20%
-  poolReturnLamports: bigint;      // 50%
+  totalRevenueWei: bigint;
+  creatorPayoutWei: bigint;   // 30%
+  burnAmountWei: bigint;      // 20%
+  poolReturnWei: bigint;      // 50%
 }
 
 export interface FullDistribution {
   pnl: PnLResult;
   revenue: RevenueBreakdown;
   capitalReturn: {
-    userCapitalLamports: bigint;
-    protocolCapitalLamports: bigint;
+    userCapitalWei: bigint;
+    protocolCapitalWei: bigint;
   };
 }
 
@@ -141,7 +141,7 @@ export interface ListedToken {
 export interface TokenMarketData {
   address: string;
   priceUsd: number;
-  priceSol: number;
+  priceEth: number;
   marketCapUsd: number;
   liquidityUsd: number;
   volume24hUsd: number;
@@ -154,13 +154,13 @@ export interface TokenMarketData {
 // ──────────────────────────────────────────────
 
 export interface ProtocolStats {
-  totalBurnedLamports: bigint;
+  totalBurnedWei: bigint;
   totalBurnedTokens: bigint;
-  totalLockedLamports: bigint;
+  totalLockedWei: bigint;
   totalLockedTokens: bigint;
-  poolSizeLamports: bigint;
-  insuranceFundLamports: bigint;
-  totalCreatorPayoutsLamports: bigint;
+  poolSizeWei: bigint;
+  insuranceFundWei: bigint;
+  totalCreatorPayoutsWei: bigint;
   totalTradesExecuted: number;
   totalListedTokens: number;
   activePositions: number;
@@ -193,12 +193,12 @@ export const BPS = {
   FULL: 10_000,
 } as const;
 
-/** Lamports per SOL */
-export const LAMPORTS_PER_SOL = 10n ** 9n;
+/** Wei per ETH */
+export const WEI_PER_ETH = 10n ** 18n;
 
-/** Format lamports as SOL string for logging */
-export function formatSol(lamports: bigint): string {
-  return (Number(lamports) / Number(LAMPORTS_PER_SOL)).toFixed(6);
+/** Format wei as ETH string for logging */
+export function formatEth(wei: bigint): string {
+  return (Number(wei) / Number(WEI_PER_ETH)).toFixed(6);
 }
 
 /** Max position duration in milliseconds (24 hours) */
@@ -218,14 +218,14 @@ export const REVENUE_SPLIT = {
  * Profit split between user and $FRONT lock
  *
  * When a position is profitable:
- *   70% of profit → SOL directly to user (cash out)
+ *   70% of profit → ETH directly to user (cash out)
  *   30% of profit → auto-buy $FRONT, locked for 7 days, then claimable by user
  *
  * The protocol does NOT take a cut of profit — it earns from flat fees and
  * creator reward inflows only. This keeps the protocol trustless and aligned.
  */
 export const PROFIT_SPLIT = {
-  USER_CASH: 7_000,   // 70% → SOL to user
+  USER_CASH: 7_000,   // 70% → ETH to user
   USER_LOCK: 3_000,   // 30% → buy $FRONT & lock 7 days for user
 } as const;
 

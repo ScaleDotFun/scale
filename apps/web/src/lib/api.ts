@@ -5,12 +5,12 @@ const BASE_URL = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
   : '/api';
 
-const TOKEN_KEY = 'scale_token';
-const DEVICE_KEY = 'scale_did';
+const TOKEN_KEY = 'loaded_token';
+const DEVICE_KEY = 'loaded_did';
 
 /**
  * Stable per-device id for sybil resistance. Persisted in localStorage
- * and mirrored to the `scale_did` cookie so it also rides the top-level
+ * and mirrored to the `loaded_did` cookie so it also rides the top-level
  * Google OAuth navigation (which can't carry custom headers).
  */
 export function getDeviceId(): string {
@@ -148,7 +148,7 @@ export interface PointsMe {
   breakdown: Record<string, string>;
   referralCode: string;
   referralCount: number;
-  pointsPerSol: string;
+  pointsPerEth: string;
   referralBonusPct: number;
 }
 
@@ -193,7 +193,7 @@ export interface TokenInfo {
   listedAt?: string;
   // Price fields (may be undefined if not available)
   priceUsd?: number;
-  priceSol?: number;
+  priceEth?: number;
   marketCapUsd?: number;
   liquidityUsd?: number;
   volume24hUsd?: number;
@@ -213,31 +213,37 @@ export function getTokenDetails(address: string): Promise<TokenInfo> {
   return request(`/tokens/${address}`);
 }
 
-export function getListedTokens(limit?: number): Promise<TokenInfo[]> {
-  const q = limit ? `?limit=${limit}` : '';
-  return request(`/tokens/listed${q}`);
+export function getListedTokens(limit?: number, includeDelisted = false): Promise<TokenInfo[]> {
+  // Default active=true keeps delisted coins out of the command palette and
+  // trade pickers — you should never be able to pick a dead coin to trade.
+  // The Explorer opts in via includeDelisted so the full history stays
+  // browsable (delisted rows render dimmed with a DELISTED badge).
+  const parts = [includeDelisted ? '' : 'active=true', limit ? `limit=${limit}` : '']
+    .filter(Boolean)
+    .join('&');
+  return request(`/tokens/listed${parts ? `?${parts}` : ''}`);
 }
 
 // ── Wallet ──
 
 export interface WalletBalance {
   address: string;
-  balanceLamports: string;
-  balanceSol: string;
+  balanceWei: string;
+  balanceEth: string;
 }
 
 export function getWalletBalance(): Promise<WalletBalance> {
   return request('/wallet/balance');
 }
 
-export function withdrawWallet(destinationAddress: string, amountLamports: string): Promise<{
-  txSignature: string;
-  amountLamports: string;
+export function withdrawWallet(destinationAddress: string, amountWei: string): Promise<{
+  txHash: string;
+  amountWei: string;
   destination: string;
 }> {
   return request('/wallet/withdraw', {
     method: 'POST',
-    body: JSON.stringify({ destinationAddress, amountLamports }),
+    body: JSON.stringify({ destinationAddress, amountWei }),
   });
 }
 
@@ -273,7 +279,8 @@ export interface PositionInfo {
   livePnLPercent?: number | null;
   // History fields
   exitPrice?: string | null;
-  pnlSol?: string | null;
+  /** Realized P&L in wei (negative on a loss). */
+  pnlWei?: string | null;
   userProfit?: string | null;
   protocolRevenue?: string | null;
   closedAt?: string | null;
@@ -284,10 +291,10 @@ export interface PositionPreviewResponse {
   tier: string;
   tierEmoji: string;
   leverage: number;
-  userCapitalLamports: string;
-  positionSizeLamports: string;
-  protocolCapitalLamports: string;
-  flatFeeLamports: string;
+  userCapitalWei: string;
+  positionSizeWei: string;
+  protocolCapitalWei: string;
+  flatFeeWei: string;
   flatFeePct: number;
   exitThresholdPct: number;
   maxDurationHours: number;
@@ -300,14 +307,14 @@ export interface PositionPreviewResponse {
 export interface ScenarioResponse {
   label: string;
   priceMovePercent: number;
-  profitLamports: string;
-  degenCashoutLamports: string;
-  degenLockLamports: string;
+  profitWei: string;
+  degenCashoutWei: string;
+  degenLockWei: string;
 }
 
 export function openPosition(
   tokenAddress: string,
-  capitalLamports: string,
+  capitalWei: string,
   leverage: number,
   takeProfitPct?: number,
   stopLossPct?: number,
@@ -316,7 +323,7 @@ export function openPosition(
     method: 'POST',
     body: JSON.stringify({
       tokenAddress,
-      capitalLamports,
+      capitalWei,
       leverage,
       ...(takeProfitPct != null && takeProfitPct > 0 ? { takeProfitPct } : {}),
       ...(stopLossPct != null && stopLossPct > 0 ? { stopLossPct } : {}),
@@ -343,9 +350,9 @@ export function closePosition(positionId: string, slippageBps = 200): Promise<Po
 
 export interface BurnEntry {
   id: number;
-  solAmount: string;
+  ethAmount: string;
   tokenAmount: string;
-  txSignature: string;
+  txHash: string;
   burnedAt: string;
   position?: {
     id: number;
@@ -357,22 +364,22 @@ export interface BurnEntry {
 }
 
 export interface ProtocolStatsResponse {
-  totalBurnedLamports: string;
+  totalBurnedWei: string;
   totalBurnedTokens: string;
-  totalLockedLamports: string;
+  totalLockedWei: string;
   totalLockedTokens: string;
   /** Real on-chain pool wallet balance (falls back to ledger if RPC down) */
-  poolSizeLamports: string;
-  poolLedgerLamports?: string;
+  poolSizeWei: string;
+  poolLedgerWei?: string;
   poolWalletAddress?: string | null;
-  /** protocol $SCALE token — Trade page default */
-  scaleToken?: string | null;
+  /** protocol $LOADED token — Trade page default */
+  loadedToken?: string | null;
   poolSourceOnchain?: boolean;
-  /** $SCALE locked supply, read on-chain */
+  /** $LOADED locked supply, read on-chain */
   frontLockedTokens?: number | null;
   frontTotalSupply?: number | null;
   frontLockedPct?: number | null;
-  totalCreatorPayoutsLamports: string;
+  totalCreatorPayoutsWei: string;
   totalTradesExecuted: number;
   totalListedTokens: number;
   activeListedTokens: number;
@@ -390,7 +397,7 @@ export function getRecentBurns(limit?: number): Promise<BurnEntry[]> {
 
 export interface ProfitLockEntry {
   id: number;
-  solAmount: string;
+  ethAmount: string;
   tokenAmount: string;
   lockedAt: string;
   unlocksAt: string;
@@ -423,14 +430,14 @@ export function getRecentLocks(limit?: number): Promise<LocksResponse> {
 }
 
 export interface GlobalLockStats {
-  totalLocked: { tokenAmount: string; solAmount: string };
-  totalUnlocked: { tokenAmount: string; solAmount: string };
-  upcoming7d: { tokenAmount: string; solAmount: string; count: number };
+  totalLocked: { tokenAmount: string; ethAmount: string };
+  totalUnlocked: { tokenAmount: string; ethAmount: string };
+  upcoming7d: { tokenAmount: string; ethAmount: string; count: number };
   activeLockCount: number;
   totalLockCount: number;
   nextUnlocks: Array<{
     id: number;
-    solAmount: string;
+    ethAmount: string;
     tokenAmount: string;
     unlocksAt: string;
   }>;
@@ -536,7 +543,7 @@ export function listToken(
   });
 }
 
-// ── Market Data (GeckoTerminal via API — Solana) ──
+// ── Market Data (GeckoTerminal via API — Robinhood Chain) ──
 
 export interface MarketToken {
   address: string;
@@ -590,12 +597,12 @@ export function getMarketPriceHistory(
 }
 
 export interface ReferenceFeed {
-  /** What the candles actually are (top trending Solana pool), e.g. "CASHCAT/USD" */
+  /** What the candles actually are (top trending Robinhood Chain pool), e.g. "CASHCAT/USD" */
   label: string;
   candles: OHLCVCandle[];
 }
 
-/** Top-pool OHLCV on Solana — the landing hero reference feed. */
+/** Top-pool OHLCV on Robinhood Chain — the landing hero reference feed. */
 export function getReferenceHistory(type = '15m'): Promise<ReferenceFeed> {
   return request(`/market/reference-history?type=${encodeURIComponent(type)}`);
 }
@@ -610,17 +617,17 @@ export interface MarketTrade {
   owner: string;
 }
 
-/** Recent real swaps in the token's top Solana pool. */
+/** Recent real swaps in the token's top Robinhood Chain pool. */
 export function getMarketTrades(address: string, limit = 30): Promise<MarketTrade[]> {
   return request(`/market/token/${address}/trades?limit=${limit}`);
 }
 
-/** Top Solana pool for a token — used for the GeckoTerminal embed. */
+/** Top Robinhood Chain pool for a token — used for the GeckoTerminal embed. */
 export function getMarketPool(address: string): Promise<{ pool: string | null }> {
   return request(`/market/token/${address}/pool`);
 }
 
-/** Seconds-level candles from the live Jupiter price feed. */
+/** Seconds-level candles from the live on-chain price feed. */
 export function getLiveHistory(
   address: string,
   type: '1s' | '5s' | '15s' = '1s',
@@ -634,8 +641,8 @@ export function getLiveHistory(
 export interface PortfolioData {
   wallet: {
     address: string;
-    balanceLamports: string;
-    balanceSol: string;
+    balanceWei: string;
+    balanceEth: string;
   };
   positions: {
     open: number;
@@ -651,12 +658,12 @@ export interface PortfolioData {
   };
   history: {
     totalTrades: number;
-    totalPnlLamports: string;
-    totalProfitLamports: string;
+    totalPnlWei: string;
+    totalProfitWei: string;
   };
   locks: {
     activeLocks: number;
-    totalLockedLamports: string;
+    totalLockedWei: string;
   };
 }
 

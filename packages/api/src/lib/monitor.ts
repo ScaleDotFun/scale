@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Error Monitoring
+// LOADED PROTOCOL — Error Monitoring
 // ──────────────────────────────────────────────
 //
 // Captures and reports critical errors. Forwards to Sentry when
@@ -49,7 +49,7 @@ export function captureMessage(
 
 /**
  * Track critical financial operations for audit trail.
- * All SOL movements, burns, and payouts should go through this.
+ * All ETH movements, burns, and payouts should go through this.
  */
 export function trackFinancialOp(
   op: string,

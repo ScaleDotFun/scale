@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Core Package Barrel Export
+// LOADED PROTOCOL — Core Package Barrel Export
 // ──────────────────────────────────────────────
 
 // Types & constants

@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Burns Routes
+// LOADED PROTOCOL — Burns Routes
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
 
@@ -46,9 +46,9 @@ router.get('/', publicLimiter, async (req, res) => {
 
     const data = burns.map((burn) => ({
       id: burn.id,
-      solAmount: String(burn.solAmount),
+      ethAmount: String(burn.ethAmount),
       tokenAmount: String(burn.tokenAmount),
-      txSignature: burn.txSignature,
+      txHash: burn.txHash,
       burnedAt: burn.burnedAt,
       position: burn.position
         ? {
@@ -79,14 +79,14 @@ router.get('/stats', publicLimiter, async (req, res) => {
     const [totalAgg, recent24hAgg, totalCount, recent24hCount] = await Promise.all([
       prisma.burn.aggregate({
         _sum: {
-          solAmount: true,
+          ethAmount: true,
           tokenAmount: true,
         },
       }),
       prisma.burn.aggregate({
         where: { burnedAt: { gte: twentyFourHoursAgo } },
         _sum: {
-          solAmount: true,
+          ethAmount: true,
           tokenAmount: true,
         },
       }),
@@ -101,7 +101,7 @@ router.get('/stats', publicLimiter, async (req, res) => {
     const recentBurns = await prisma.burn.findMany({
       where: { burnedAt: { gte: thirtyDaysAgo } },
       select: {
-        solAmount: true,
+        ethAmount: true,
         tokenAmount: true,
         burnedAt: true,
       },
@@ -109,11 +109,11 @@ router.get('/stats', publicLimiter, async (req, res) => {
     });
 
     // Bucket into daily aggregates
-    const dailyBuckets = new Map<string, { solAmount: bigint; tokenAmount: bigint; count: number }>();
+    const dailyBuckets = new Map<string, { ethAmount: bigint; tokenAmount: bigint; count: number }>();
     for (const burn of recentBurns) {
       const dateKey = burn.burnedAt.toISOString().split('T')[0];
-      const bucket = dailyBuckets.get(dateKey) || { solAmount: 0n, tokenAmount: 0n, count: 0 };
-      bucket.solAmount += burn.solAmount;
+      const bucket = dailyBuckets.get(dateKey) || { ethAmount: 0n, tokenAmount: 0n, count: 0 };
+      bucket.ethAmount += burn.ethAmount;
       bucket.tokenAmount += burn.tokenAmount;
       bucket.count += 1;
       dailyBuckets.set(dateKey, bucket);
@@ -123,24 +123,24 @@ router.get('/stats', publicLimiter, async (req, res) => {
     let cumulativeSol = 0n;
     let cumulativeToken = 0n;
     const cumulativeData = Array.from(dailyBuckets.entries()).map(([date, bucket]) => {
-      cumulativeSol += bucket.solAmount;
+      cumulativeSol += bucket.ethAmount;
       cumulativeToken += bucket.tokenAmount;
       return {
         date,
-        dailySolBurned: String(bucket.solAmount),
+        dailyEthBurned: String(bucket.ethAmount),
         dailyTokensBurned: String(bucket.tokenAmount),
         dailyCount: bucket.count,
-        cumulativeSolBurned: String(cumulativeSol),
+        cumulativeEthBurned: String(cumulativeSol),
         cumulativeTokensBurned: String(cumulativeToken),
       };
     });
 
     sendSuccess(res, {
-      totalSolBurned: String(totalAgg._sum.solAmount ?? 0n),
+      totalEthBurned: String(totalAgg._sum.ethAmount ?? 0n),
       totalTokensBurned: String(totalAgg._sum.tokenAmount ?? 0n),
       totalBurnCount: totalCount,
       burnRate24h: {
-        solBurned: String(recent24hAgg._sum.solAmount ?? 0n),
+        ethBurned: String(recent24hAgg._sum.ethAmount ?? 0n),
         tokensBurned: String(recent24hAgg._sum.tokenAmount ?? 0n),
         burnCount: recent24hCount,
       },

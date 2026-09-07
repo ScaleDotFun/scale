@@ -1,7 +1,7 @@
 import { type FC, type ReactNode, createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getReferral } from '../lib/referral';
 
-const TOKEN_KEY = 'scale_token';
+const TOKEN_KEY = 'loaded_token';
 const BASE_URL = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
   : '/api';

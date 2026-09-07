@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Telegram Bot Entry Point
+// LOADED PROTOCOL — Telegram Bot Entry Point
 // ──────────────────────────────────────────────
 
 import 'dotenv/config';
@@ -115,7 +115,7 @@ bot.catch((err) => {
 // Start the bot
 // ──────────────────────────────────────────────
 
-console.log('🚀 SCALE Protocol Bot starting...');
+console.log('🚀 LOADED Protocol Bot starting...');
 
 bot.start({
   onStart: (botInfo) => {

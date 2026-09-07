@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Price Monitor Worker (Solana)
+// LOADED PROTOCOL — Price Monitor Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
 // Polls all open positions every 10 seconds, checks P&L against exit
@@ -7,13 +7,19 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import {
   shouldAutoClose,
   calculateLivePnLPercent,
   type Tier,
-} from '@scale/core';
-import { getTokenPricesSol } from './solana-prices.js';
+} from '@loaded/core';
+import {
+  transferNative,
+  getProtocolAccount,
+  hasProtocolKey,
+  confirmedTokenDelta,
+} from '@loaded/evm';
+import { getTokenPricesEth } from './chain-prices.js';
 import {
   redisConnection,
   QUEUE_NAMES,
@@ -32,12 +38,113 @@ interface PriceCheckJobData {
 }
 
 /**
+ * Reconciliation sweep — the safety net for every crash window in the
+ * open/close state machines. Positions stuck in a transient status past
+ * their staleness threshold are finished forward (markers present) or
+ * rolled back/refunded (markers absent). Runs on every monitor tick.
+ */
+async function reconcileStalePositions(): Promise<void> {
+  const now = Date.now();
+
+  // A. Stale 'closing' rows.
+  //    - closeTx set: the sell landed but settlement/payout never finished
+  //      → enqueue a finalize job (idempotent; resumes from markers).
+  //    - closeTx null: the claim was orphaned before any sell landed
+  //      → release back to 'open' so monitoring resumes. Wait longer here,
+  //      since an in-flight close may legitimately take a couple minutes.
+  const staleClosing = await prisma.position.findMany({
+    where: {
+      status: 'closing',
+      OR: [
+        { closeTx: { not: null }, statusChangedAt: { lt: new Date(now - 60_000) } },
+        { closeTx: null, statusChangedAt: { lt: new Date(now - 300_000) } },
+      ],
+    },
+    select: { id: true, closeTx: true },
+  });
+  for (const row of staleClosing) {
+    if (row.closeTx) {
+      console.warn(`${PREFIX} reconcile: #${row.id} stuck in 'closing' with landed sell — enqueueing finalize`);
+      await positionCloseQueue.add(
+        'close-position',
+        { positionId: row.id, reason: 'finalize' },
+        { attempts: 3, backoff: { type: 'exponential', delay: 5000 }, jobId: `finalize-${row.id}-${row.closeTx.slice(0, 8)}` },
+      );
+    } else {
+      console.warn(`${PREFIX} reconcile: #${row.id} orphaned in 'closing' (no sell landed) — releasing to 'open'`);
+      await prisma.position.updateMany({
+        where: { id: row.id, status: 'closing' },
+        data: { status: 'open', statusChangedAt: new Date() },
+      });
+    }
+  }
+
+  // B. Stale 'opening' rows (>5 min).
+  //    - openTx set: the buy landed but settlement never committed
+  //      → derive entry data from the transaction itself and open the row.
+  //    - collateralTx only: user paid, buy never landed → refund, 'failed'.
+  //    - neither: nothing moved → 'failed'.
+  const staleOpening = await prisma.position.findMany({
+    where: { status: 'opening', statusChangedAt: { lt: new Date(now - 300_000) } },
+    include: { token: { select: { address: true } } },
+  });
+  for (const row of staleOpening) {
+    try {
+      if (row.openTx && hasProtocolKey()) {
+        const pool = getProtocolAccount().address;
+        const tokens = await confirmedTokenDelta(row.openTx, pool, row.token.address);
+        if (tokens && tokens > 0n) {
+          const positionSize = row.userCapital + row.protocolCapital;
+          const entryPrice = Number(positionSize) / Number(tokens);
+          await prisma.$transaction([
+            prisma.position.update({
+              where: { id: row.id },
+              data: { status: 'open', statusChangedAt: new Date(), entryPrice, tokensBought: tokens },
+            }),
+            prisma.poolLedger.create({
+              data: { type: 'position_open', amount: -row.protocolCapital, referenceId: row.id },
+            }),
+          ]);
+          console.warn(`${PREFIX} reconcile: #${row.id} recovered forward to 'open' (${tokens} tokens @ ${entryPrice})`);
+          continue;
+        }
+        console.error(`${PREFIX} reconcile: #${row.id} has openTx but no token delta found — leaving for next sweep`);
+        continue;
+      }
+      if (row.collateralTx && hasProtocolKey()) {
+        const refundSig = await transferNative(getProtocolAccount(), row.userWallet, row.userCapital);
+        await prisma.position.update({
+          where: { id: row.id },
+          data: { status: 'failed', statusChangedAt: new Date(), userReturnTx: refundSig },
+        });
+        console.warn(`${PREFIX} reconcile: #${row.id} refunded ${Number(row.userCapital) / 1e18} ETH to ${row.userWallet} (buy never landed)`);
+        continue;
+      }
+      await prisma.position.update({
+        where: { id: row.id },
+        data: { status: 'failed', statusChangedAt: new Date() },
+      });
+      console.warn(`${PREFIX} reconcile: #${row.id} marked 'failed' (no funds moved)`);
+    } catch (err) {
+      console.error(`${PREFIX} reconcile: #${row.id} recovery attempt failed (will retry next sweep):`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+/**
  * Process a price-check job: scan all open positions and evaluate auto-close.
  */
 async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> {
   const startTime = Date.now();
 
   try {
+    // Reconcile crash-window leftovers before evaluating live positions —
+    // never let a failure here stop price monitoring.
+    if (!job.data.positionId) {
+      await reconcileStalePositions().catch((err) =>
+        console.error(`${PREFIX} reconcile sweep failed:`, err instanceof Error ? err.message : err),
+      );
+    }
     // Build query for open positions
     const whereClause = job.data.positionId
       ? { id: job.data.positionId, status: 'open' }
@@ -63,9 +170,9 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
     }
     const tokenAddresses = Array.from(addrSet);
 
-    // Fetch live prices from Jupiter, converted into the same
-    // lamports-per-raw-unit basis entryPrice is stored in
-    const priceMap = await getTokenPricesSol(tokenAddresses);
+    // Fetch live prices from LI.FI, converted into the same
+    // wei-per-raw-unit basis entryPrice is stored in
+    const priceMap = await getTokenPricesEth(tokenAddresses);
 
     let closedCount = 0;
     let warningCount = 0;
@@ -73,9 +180,19 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
     for (const position of openPositions) {
       try {
         const priceData = priceMap.get(position.token.address);
-        const currentPrice = priceData?.lamportsPerRawUnit ?? 0;
+        const currentPrice = priceData?.weiPerRawUnit ?? 0;
 
         if (!currentPrice || !position.entryPrice) {
+          if (!position.entryPrice || !position.tokensBought) {
+            // Malformed row: open on-chain exposure with no entry data means
+            // TP/SL/liquidation can never fire and a close would sell 0 tokens.
+            // Needs manual repair — keep this loud on every sweep.
+            console.error(
+              `${PREFIX} CRITICAL: position #${position.id} is open but missing entry data ` +
+              `(entryPrice=${position.entryPrice}, tokensBought=${position.tokensBought}) — ` +
+              `unmonitorable and unclosable until repaired`,
+            );
+          }
           // No live price or no entry price recorded — skip price-based checks
           // but still check timeout
           const openedAtMs = position.openedAt.getTime();
@@ -97,7 +214,7 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
               {
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 5000 },
-                jobId: `close-timeout-${position.id}`, // deduplicate
+                jobId: `close-${position.id}`, // ONE close job per position, regardless of reason
               },
             );
             closedCount++;
@@ -130,7 +247,7 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
             {
               attempts: 3,
               backoff: { type: 'exponential', delay: 5000 },
-              jobId: `close-${result.reason}-${position.id}`,
+              jobId: `close-${position.id}`,
             },
           );
           closedCount++;
@@ -152,7 +269,7 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
             {
               attempts: 3,
               backoff: { type: 'exponential', delay: 5000 },
-              jobId: `close-take_profit-${position.id}`,
+              jobId: `close-${position.id}`,
             },
           );
           closedCount++;
@@ -169,7 +286,7 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
             {
               attempts: 3,
               backoff: { type: 'exponential', delay: 5000 },
-              jobId: `close-stop_loss-${position.id}`,
+              jobId: `close-${position.id}`,
             },
           );
           closedCount++;

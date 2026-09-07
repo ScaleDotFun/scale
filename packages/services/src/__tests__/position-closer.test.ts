@@ -1,10 +1,10 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Position Closer Worker Tests
+// LOADED PROTOCOL — Position Closer Worker Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { prisma } from '@scale/database';
-import { swapTokenForSol, transferSol } from '@scale/solana';
+import { prisma } from '@loaded/database';
+import { swapTokenForNative, transferNative } from '@loaded/evm';
 import { positionCloseQueue, burnQueue, lockQueue, creatorPayoutsQueue, insuranceFundQueue } from '../queues.js';
 
 // Import the module under test — the worker factory is mocked,
@@ -12,7 +12,7 @@ import { positionCloseQueue, burnQueue, lockQueue, creatorPayoutsQueue, insuranc
 // Since we mock BullMQ's Worker constructor, we need to test the handler.
 // The easiest approach: import and call the worker's process function directly.
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const WEI_PER_ETH = 1_000_000_000_000_000_000n;
 
 describe('position-closer logic', () => {
   beforeEach(() => {
@@ -49,35 +49,35 @@ describe('position-closer logic', () => {
 
       vi.mocked(prisma.position.findUnique).mockResolvedValue(mockPosition as any);
       // Worker should log error and return without swap
-      expect(vi.mocked(swapTokenForSol)).not.toHaveBeenCalled();
+      expect(vi.mocked(swapTokenForNative)).not.toHaveBeenCalled();
     });
   });
 
   describe('revenue split correctness', () => {
     it('flat fee splits to 30% creator + 20% burn + 50% pool', () => {
-      const flatFee = LAMPORTS_PER_SOL; // 1 SOL
+      const flatFee = WEI_PER_ETH; // 1 ETH
       const creatorPayout = (flatFee * 30n) / 100n;
       const burnAmount = (flatFee * 20n) / 100n;
       const poolReturn = flatFee - creatorPayout - burnAmount;
 
-      expect(creatorPayout).toBe(300_000_000n); // 0.3 SOL
-      expect(burnAmount).toBe(200_000_000n);     // 0.2 SOL
-      expect(poolReturn).toBe(500_000_000n);     // 0.5 SOL
+      expect(creatorPayout).toBe((WEI_PER_ETH * 3n) / 10n); // 0.3 ETH
+      expect(burnAmount).toBe((WEI_PER_ETH * 2n) / 10n);     // 0.2 ETH
+      expect(poolReturn).toBe(WEI_PER_ETH / 2n);             // 0.5 ETH
       expect(creatorPayout + burnAmount + poolReturn).toBe(flatFee); // no dust
     });
 
     it('profit splits to 70% cash + 30% lock', () => {
-      const totalProfit = LAMPORTS_PER_SOL * 10n; // 10 SOL profit
+      const totalProfit = WEI_PER_ETH * 10n; // 10 ETH profit
       const userCash = (totalProfit * 70n) / 100n;
       const userLock = totalProfit - userCash;
 
-      expect(userCash).toBe(7_000_000_000n);  // 7 SOL
-      expect(userLock).toBe(3_000_000_000n);  // 3 SOL
+      expect(userCash).toBe(WEI_PER_ETH * 7n);  // 7 ETH
+      expect(userLock).toBe(WEI_PER_ETH * 3n);  // 3 ETH
       expect(userCash + userLock).toBe(totalProfit); // no dust
     });
 
     it('handles small amounts without precision loss', () => {
-      const flatFee = 100n; // 100 lamports
+      const flatFee = 100n; // 100 wei
       const creatorPayout = (flatFee * 30n) / 100n; // 30
       const burnAmount = (flatFee * 20n) / 100n;     // 20
       const poolReturn = flatFee - creatorPayout - burnAmount; // 50
@@ -85,11 +85,11 @@ describe('position-closer logic', () => {
       expect(creatorPayout + burnAmount + poolReturn).toBe(flatFee);
     });
 
-    it('handles odd lamport amounts (dust stays in pool)', () => {
+    it('handles odd wei amounts (dust stays in pool)', () => {
       const flatFee = 101n; // odd number
       const creatorPayout = (flatFee * 30n) / 100n; // 30 (floor)
       const burnAmount = (flatFee * 20n) / 100n;     // 20
-      const poolReturn = flatFee - creatorPayout - burnAmount; // 51 (gets the extra lamport)
+      const poolReturn = flatFee - creatorPayout - burnAmount; // 51 (gets the extra wei)
 
       expect(creatorPayout).toBe(30n);
       expect(burnAmount).toBe(20n);
@@ -100,36 +100,36 @@ describe('position-closer logic', () => {
 
   describe('user return calculation', () => {
     it('profitable: user gets capital + 70% profit - fee', () => {
-      const userCapital = LAMPORTS_PER_SOL; // 1 SOL
-      const totalProfit = LAMPORTS_PER_SOL; // 1 SOL profit
-      const flatFee = LAMPORTS_PER_SOL / 10n; // 0.1 SOL fee
-      const userCashProfit = (totalProfit * 70n) / 100n; // 0.7 SOL
+      const userCapital = WEI_PER_ETH; // 1 ETH
+      const totalProfit = WEI_PER_ETH; // 1 ETH profit
+      const flatFee = WEI_PER_ETH / 10n; // 0.1 ETH fee
+      const userCashProfit = (totalProfit * 70n) / 100n; // 0.7 ETH
 
       const userReturn = userCapital + userCashProfit - flatFee;
-      // 1 + 0.7 - 0.1 = 1.6 SOL
-      expect(userReturn).toBe(1_600_000_000n);
+      // 1 + 0.7 - 0.1 = 1.6 ETH
+      expect(userReturn).toBe((WEI_PER_ETH * 16n) / 10n);
     });
 
     it('loss: user gets remainder after protocol + fee, or 0', () => {
-      const protocolCapital = 2_000_000_000n; // 2 SOL from pool
-      const flatFee = 100_000_000n; // 0.1 SOL fee
-      const solReceived = 2_500_000_000n; // only 2.5 SOL back (loss)
+      const protocolCapital = WEI_PER_ETH * 2n; // 2 ETH from pool
+      const flatFee = WEI_PER_ETH / 10n; // 0.1 ETH fee
+      const ethReceived = (WEI_PER_ETH * 25n) / 10n; // only 2.5 ETH back (loss)
 
-      const userReturn = solReceived > protocolCapital + flatFee
-        ? solReceived - protocolCapital - flatFee
+      const userReturn = ethReceived > protocolCapital + flatFee
+        ? ethReceived - protocolCapital - flatFee
         : 0n;
 
-      // 2.5 > 2.1 → 2.5 - 2.0 - 0.1 = 0.4 SOL
-      expect(userReturn).toBe(400_000_000n);
+      // 2.5 > 2.1 → 2.5 - 2.0 - 0.1 = 0.4 ETH
+      expect(userReturn).toBe((WEI_PER_ETH * 4n) / 10n);
     });
 
     it('total loss: user gets nothing', () => {
-      const protocolCapital = 2_000_000_000n;
-      const flatFee = 100_000_000n;
-      const solReceived = 1_500_000_000n; // less than protocol + fee
+      const protocolCapital = WEI_PER_ETH * 2n;
+      const flatFee = WEI_PER_ETH / 10n;
+      const ethReceived = (WEI_PER_ETH * 15n) / 10n; // less than protocol + fee
 
-      const userReturn = solReceived > protocolCapital + flatFee
-        ? solReceived - protocolCapital - flatFee
+      const userReturn = ethReceived > protocolCapital + flatFee
+        ? ethReceived - protocolCapital - flatFee
         : 0n;
 
       expect(userReturn).toBe(0n);
@@ -138,24 +138,24 @@ describe('position-closer logic', () => {
 
   describe('queue dispatching', () => {
     it('burn queue receives stringified bigint amounts', () => {
-      const burnAmount = 200_000_000n;
+      const burnAmount = (WEI_PER_ETH * 2n) / 10n;
       const jobData = {
         positionId: 1,
-        solAmountLamports: burnAmount.toString(),
+        ethAmountWei: burnAmount.toString(),
       };
-      expect(jobData.solAmountLamports).toBe('200000000');
+      expect(jobData.ethAmountWei).toBe('200000000000000000');
       // Verify it can be reconstructed
-      expect(BigInt(jobData.solAmountLamports)).toBe(burnAmount);
+      expect(BigInt(jobData.ethAmountWei)).toBe(burnAmount);
     });
 
     it('lock queue receives wallet + amount correctly', () => {
-      const lockAmount = 3_000_000_000n;
+      const lockAmount = WEI_PER_ETH * 3n;
       const jobData = {
         userWallet: 'UserWallet123456789012345678901234567',
-        solAmountLamports: lockAmount.toString(),
+        ethAmountWei: lockAmount.toString(),
         positionId: 42,
       };
-      expect(BigInt(jobData.solAmountLamports)).toBe(lockAmount);
+      expect(BigInt(jobData.ethAmountWei)).toBe(lockAmount);
       expect(jobData.positionId).toBe(42);
     });
   });

@@ -1,6 +1,7 @@
 import { type FC, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../lib/api';
+import { weiToEth } from '../lib/format';
 
 /**
  * Holdings — open positions, capital and performance. Lives inside
@@ -51,7 +52,7 @@ export const HoldingsPanel: FC = () => {
         <div style={cardStyle}>
           <div style={statLabel}>Capital Locked</div>
           <div style={statValue}>
-            {((Number(portfolio?.positions.totalCapitalLocked || 0)) / 1e9).toFixed(4)} SOL
+            {weiToEth(portfolio?.positions.totalCapitalLocked).toFixed(4)} ETH
           </div>
         </div>
         <div style={cardStyle}>
@@ -105,7 +106,7 @@ export const HoldingsPanel: FC = () => {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#f0f4e4', fontFamily: "'JetBrains Mono', monospace" }}>
-                    {(Number(p.userCapital) / 1e9).toFixed(4)} SOL
+                    {weiToEth(p.userCapital).toFixed(4)} ETH
                   </div>
                   <div style={{ fontSize: 11, color: '#67704f' }}>
                     {new Date(p.openedAt).toLocaleDateString()}
@@ -126,15 +127,15 @@ export const HoldingsPanel: FC = () => {
             <div style={{
               ...statValue,
               fontSize: 16,
-              color: Number(portfolio?.history.totalPnlLamports || 0) >= 0 ? '#c8ff00' : '#ff4d4d',
+              color: Number(portfolio?.history.totalPnlWei || 0) >= 0 ? '#c8ff00' : '#ff4d4d',
             }}>
-              {((Number(portfolio?.history.totalPnlLamports || 0)) / 1e9).toFixed(4)} SOL
+              {weiToEth(portfolio?.history.totalPnlWei).toFixed(4)} ETH
             </div>
           </div>
           <div>
             <div style={statLabel}>Locked Profits</div>
             <div style={{ ...statValue, fontSize: 16 }}>
-              {((Number(portfolio?.locks.totalLockedLamports || 0)) / 1e9).toFixed(4)} SOL
+              {weiToEth(portfolio?.locks.totalLockedWei).toFixed(4)} ETH
             </div>
           </div>
         </div>

@@ -1,15 +1,15 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Position Route Tests
+// LOADED PROTOCOL — Position Route Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestApp } from './setup';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import { issueToken } from '../middleware/auth';
 
 describe('Position Routes', () => {
-  // A valid base58 Solana address — 0x-era wallets no longer pass auth
-  const testWallet = '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr';
+  // A valid Robinhood Chain (EVM) address — auth rejects anything else
+  const testWallet = '0x0044adb6841a38e67f3741e981163f576013b696';
   let authToken: string;
 
   beforeEach(() => {
@@ -43,7 +43,7 @@ describe('Position Routes', () => {
       const res = await agent
         .post('/api/positions/open')
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ userCapitalLamports: '1000000000', leverage: 3 });
+        .send({ userCapitalWei: '1000000000', leverage: 3 });
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
@@ -58,7 +58,7 @@ describe('Position Routes', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           tokenAddress: 'NonexistentToken1234567890123456789',
-          userCapitalLamports: '1000000000',
+          userCapitalWei: '1000000000',
           leverage: 3,
         });
 
@@ -80,7 +80,7 @@ describe('Position Routes', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           tokenAddress: 'TestToken1234567890123456789012345678',
-          userCapitalLamports: '1000000000',
+          userCapitalWei: '1000000000',
           leverage: 3,
         });
 
@@ -108,7 +108,7 @@ describe('Position Routes', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           tokenAddress: 'TestToken1234567890123456789012345678',
-          userCapitalLamports: '1000000000',
+          userCapitalWei: '1000000000',
           leverage: 3,
         });
 

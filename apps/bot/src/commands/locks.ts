@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /locks Command
+// LOADED PROTOCOL — /locks Command
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -7,13 +7,13 @@ import * as api from '../lib/api.js';
 import {
   bold,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatTimestamp,
   formatCountdown,
 } from '../lib/format.js';
 
 /**
- * /locks — show all locked $SCALE with unlock dates
+ * /locks — show all locked $LOADED with unlock dates
  */
 export async function handleLocks(ctx: CommandContext<Context>): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
@@ -27,7 +27,7 @@ export async function handleLocks(ctx: CommandContext<Context>): Promise<void> {
         [
           `🔓 ${bold('No Locks')}`,
           ``,
-          `Profitable trades automatically lock 10% as \\$SCALE\\.`,
+          `Profitable trades automatically lock 10% as \\$LOADED\\.`,
           `Start trading with /ape to accumulate\\!`,
         ].join('\n'),
         { parse_mode: 'MarkdownV2' },
@@ -40,12 +40,12 @@ export async function handleLocks(ctx: CommandContext<Context>): Promise<void> {
     const unlocked = locks.filter((l) => l.isUnlocked);
 
     // Calculate totals
-    const totalLockedLamports = locked.reduce(
-      (sum, l) => sum + BigInt(l.amountLamports),
+    const totalLockedWei = locked.reduce(
+      (sum, l) => sum + BigInt(l.amountWei),
       0n,
     );
-    const totalUnlockedLamports = unlocked.reduce(
-      (sum, l) => sum + BigInt(l.amountLamports),
+    const totalUnlockedWei = unlocked.reduce(
+      (sum, l) => sum + BigInt(l.amountWei),
       0n,
     );
     const totalLockedApe = locked.reduce(
@@ -58,10 +58,10 @@ export async function handleLocks(ctx: CommandContext<Context>): Promise<void> {
     );
 
     const lines: string[] = [
-      `🔒 ${bold('\\$SCALE Locks')}`,
+      `🔒 ${bold('\\$LOADED Locks')}`,
       ``,
-      `${bold('Total Locked:')} ${escapeMarkdown(totalLockedApe.toString())} \\$SCALE \\(${escapeMarkdown(formatSol(totalLockedLamports))}\\)`,
-      `${bold('Total Unlocked:')} ${escapeMarkdown(totalUnlockedApe.toString())} \\$SCALE \\(${escapeMarkdown(formatSol(totalUnlockedLamports))}\\)`,
+      `${bold('Total Locked:')} ${escapeMarkdown(totalLockedApe.toString())} \\$LOADED \\(${escapeMarkdown(formatEth(totalLockedWei))}\\)`,
+      `${bold('Total Unlocked:')} ${escapeMarkdown(totalUnlockedApe.toString())} \\$LOADED \\(${escapeMarkdown(formatEth(totalUnlockedWei))}\\)`,
       ``,
     ];
 
@@ -78,14 +78,14 @@ export async function handleLocks(ctx: CommandContext<Context>): Promise<void> {
 
       for (const lock of sorted) {
         const apeAmt = escapeMarkdown(BigInt(lock.apeTokens).toString());
-        const solAmt = escapeMarkdown(formatSol(BigInt(lock.amountLamports)));
+        const ethAmt = escapeMarkdown(formatEth(BigInt(lock.amountWei)));
         const unlocksAt = new Date(lock.unlocksAt);
         const remaining = unlocksAt.getTime() - Date.now();
         const countdown = remaining > 0
           ? escapeMarkdown(formatCountdown(remaining))
           : '✅ Ready';
 
-        lines.push(`• ${apeAmt} \\$SCALE \\(${solAmt}\\) — unlocks in ${countdown}`);
+        lines.push(`• ${apeAmt} \\$LOADED \\(${ethAmt}\\) — unlocks in ${countdown}`);
       }
     }
 
@@ -97,9 +97,9 @@ export async function handleLocks(ctx: CommandContext<Context>): Promise<void> {
 
       for (const lock of unlocked) {
         const apeAmt = escapeMarkdown(BigInt(lock.apeTokens).toString());
-        const solAmt = escapeMarkdown(formatSol(BigInt(lock.amountLamports)));
+        const ethAmt = escapeMarkdown(formatEth(BigInt(lock.amountWei)));
         const unlockedAt = escapeMarkdown(formatTimestamp(new Date(lock.unlocksAt)));
-        lines.push(`• ${apeAmt} \\$SCALE \\(${solAmt}\\) — unlocked ${unlockedAt}`);
+        lines.push(`• ${apeAmt} \\$LOADED \\(${ethAmt}\\) — unlocked ${unlockedAt}`);
       }
     }
 

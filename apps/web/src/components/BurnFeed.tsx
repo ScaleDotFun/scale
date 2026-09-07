@@ -1,6 +1,6 @@
 import { type FC } from 'react';
 import type { BurnEntry } from '../lib/api';
-import { formatSol, formatAddress, formatTimeAgo, solscanTxUrl } from '../lib/format';
+import { formatEth, formatAddress, formatTimeAgo, explorerTxUrl } from '../lib/format';
 
 interface BurnFeedProps {
   burns: BurnEntry[];
@@ -24,14 +24,14 @@ export const BurnFeed: FC<BurnFeedProps> = ({ burns, loading }) => {
     <div>
       {burns.map((burn) => (
         <div key={burn.id} className="feed-item">
-          <span className="feed-amount">{formatSol(burn.solAmount || '0', 4)}</span>
+          <span className="feed-amount">{formatEth(burn.ethAmount || '0', 4)}</span>
           <a
-            href={solscanTxUrl(burn.txSignature)}
+            href={explorerTxUrl(burn.txHash)}
             target="_blank"
             rel="noreferrer"
             className="feed-tx"
           >
-            {formatAddress(burn.txSignature, 6)}
+            {formatAddress(burn.txHash, 6)}
           </a>
           <span className="feed-time">{formatTimeAgo(burn.burnedAt)}</span>
         </div>

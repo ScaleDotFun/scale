@@ -1,20 +1,42 @@
-const SOL_DECIMALS = 9;
+export const ETH_DECIMALS = 18;
+export const WEI_PER_ETH = 10 ** ETH_DECIMALS;
 
 /**
- * Format lamports as SOL.
- * @example formatSol(1_500_000_000n) => "1.500"
+ * Convert a wei amount to a floating-point ETH value.
+ * Values above 2^53 wei lose precision, which is well below display resolution.
  */
-export function formatSol(
-  lamports: bigint | string | number,
+export function weiToEth(wei: bigint | string | number | null | undefined): number {
+  if (wei == null || wei === '') return 0;
+  const num = Number(wei);
+  if (isNaN(num)) return 0;
+  return num / WEI_PER_ETH;
+}
+
+/**
+ * Convert an ETH amount to a wei string for the API.
+ * Goes through a fixed-point string so float drift never reaches the chain.
+ */
+export function ethToWei(eth: number | string): string {
+  const num = typeof eth === 'string' ? parseFloat(eth) : eth;
+  if (!isFinite(num) || num <= 0) return '0';
+  const [whole, frac = ''] = num.toFixed(ETH_DECIMALS).split('.');
+  return BigInt(whole + frac.padEnd(ETH_DECIMALS, '0').slice(0, ETH_DECIMALS)).toString();
+}
+
+/**
+ * Format wei as ETH.
+ * @example formatEth(1_500_000_000_000_000_000n) => "1.5000"
+ */
+export function formatEth(
+  wei: bigint | string | number,
   decimals = 4,
 ): string {
   try {
     // Handle null/undefined/empty
-    if (lamports == null || lamports === '') return '0.0000';
-    const num = typeof lamports === 'string' ? Number(lamports) : Number(lamports);
+    if (wei == null || wei === '') return '0.0000';
+    const num = typeof wei === 'string' ? Number(wei) : Number(wei);
     if (isNaN(num)) return '0.0000';
-    const value = num / 10 ** SOL_DECIMALS;
-    return value.toFixed(decimals);
+    return (num / WEI_PER_ETH).toFixed(decimals);
   } catch {
     return '0.0000';
   }
@@ -75,9 +97,10 @@ export function formatPercentText(pct: number): { text: string; className: strin
 
 /**
  * Truncate an address for display.
- * @example formatAddress("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU") => "7xKX...gAsU"
+ * @example formatAddress("0x3711cea4feade896c913c68f01eda97cb06d1a42") => "0x37...1a42"
  */
 export function formatAddress(addr: string, chars = 4): string {
+  if (!addr) return '';
   if (addr.length <= chars * 2 + 3) return addr;
   return `${addr.slice(0, chars)}...${addr.slice(-chars)}`;
 }
@@ -155,14 +178,14 @@ export function formatCountdown(ms: number): string {
 }
 
 /**
- * Format a SOL-denominated price (no trailing unit).
- * @example formatSolPrice(0.0000234) => "0.0000234"
+ * Format a ETH-denominated price (no trailing unit).
+ * @example formatEthPrice(0.0000234) => "0.0000234"
  */
-export function formatSolPrice(sol: number | undefined | null): string {
-  if (sol == null || isNaN(sol)) return '0.0000';
-  if (sol >= 1) return sol.toFixed(4);
-  if (sol >= 0.001) return sol.toFixed(6);
-  return sol.toFixed(9);
+export function formatEthPrice(eth: number | undefined | null): string {
+  if (eth == null || isNaN(eth)) return '0.0000';
+  if (eth >= 1) return eth.toFixed(4);
+  if (eth >= 0.001) return eth.toFixed(6);
+  return eth.toFixed(9);
 }
 
 /**
@@ -175,16 +198,33 @@ export function pnlColor(value: number | undefined | null): string {
   return 'text-secondary';
 }
 
-/**
- * Solscan link for a transaction.
- */
-export function solscanTxUrl(sig: string): string {
-  return `https://solscan.io/tx/${sig}`;
+const EXPLORER = 'https://explorer.chain.robinhood.com';
+
+/** Matches a checksummed-or-not EVM address. */
+export const EVM_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+
+/** True when `addr` is a well-formed Robinhood Chain address. */
+export function isValidAddress(addr: string | undefined | null): boolean {
+  return !!addr && EVM_ADDRESS_RE.test(addr.trim());
 }
 
 /**
- * Solscan link for an address.
+ * Block-explorer link for a transaction.
  */
-export function solscanAddressUrl(addr: string): string {
-  return `https://solscan.io/account/${addr}`;
+export function explorerTxUrl(hash: string): string {
+  return `${EXPLORER}/tx/${hash}`;
+}
+
+/**
+ * Block-explorer link for an address.
+ */
+export function explorerAddressUrl(addr: string): string {
+  return `${EXPLORER}/address/${addr}`;
+}
+
+/**
+ * Block-explorer link for a token contract.
+ */
+export function explorerTokenUrl(addr: string): string {
+  return `${EXPLORER}/token/${addr}`;
 }

@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Custom Error Classes
+// LOADED PROTOCOL — Custom Error Classes
 // ──────────────────────────────────────────────
 
 /**

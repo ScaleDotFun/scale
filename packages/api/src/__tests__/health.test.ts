@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Health Check Tests
+// LOADED PROTOCOL — Health Check Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';

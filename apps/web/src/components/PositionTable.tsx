@@ -1,6 +1,6 @@
 import { type FC } from 'react';
 import type { PositionInfo } from '../lib/api';
-import { formatSol, formatSolPrice, formatCountdown } from '../lib/format';
+import { formatEth, formatEthPrice, formatCountdown } from '../lib/format';
 import { TierBadge } from './TierBadge';
 import { LiquidationBar } from './LiquidationBar';
 
@@ -52,8 +52,8 @@ export const PositionTable: FC<PositionTableProps> = ({
                 <td className="cell-name">{pos.token?.symbol ?? '???'}</td>
                 <td><TierBadge tier={pos.tier} /></td>
                 <td className="mono">{pos.leverage}x</td>
-                <td className="mono">{formatSol(pos.userCapital, 2)}</td>
-                <td className="mono">{pos.entryPriceUsd ? `$${formatSolPrice(pos.entryPriceUsd)}` : '—'}</td>
+                <td className="mono">{formatEth(pos.userCapital, 2)}</td>
+                <td className="mono">{pos.entryPriceUsd ? `$${formatEthPrice(pos.entryPriceUsd)}` : '—'}</td>
                 <td>
                   <LiquidationBar
                     livePnlPercent={pos.livePnLPercent ?? null}

@@ -1,5 +1,5 @@
 import { type FC, useState, useEffect, useCallback } from 'react';
-import { formatSol, formatTimeAgo, formatCountdown } from '../lib/format';
+import { formatEth, formatTimeAgo, formatCountdown } from '../lib/format';
 import { getRecentLocks, getAuthToken, type ProfitLockEntry } from '../lib/api';
 
 // Use ProfitLockEntry from lib/api.ts as LockItem
@@ -89,9 +89,9 @@ export const Locks: FC = () => {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
       <div>
-        <h2 style={{ marginBottom: 4 }}>$SCALE Locks</h2>
+        <h2 style={{ marginBottom: 4 }}>$LOADED Locks</h2>
         <p style={{ fontSize: '0.86rem' }}>
-          30% of your trading profits auto-buy $SCALE and lock for 7 days. Claim here once unlocked.
+          30% of your trading profits auto-buy $LOADED and lock for 7 days. Claim here once unlocked.
         </p>
       </div>
 
@@ -105,13 +105,13 @@ export const Locks: FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         <div className="stat-card">
           <div className="stat-card-label">Locked</div>
-          <div className="stat-card-value">{formatSol(totalLocked)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$SCALE</span></div>
+          <div className="stat-card-value">{formatEth(totalLocked)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$LOADED</span></div>
           <div className="stat-card-sub">{activeLocks.length} active lock{activeLocks.length !== 1 ? 's' : ''}</div>
         </div>
         <div className="stat-card" style={{ borderColor: claimable.length > 0 ? 'rgba(52, 211, 153, 0.2)' : undefined }}>
           <div className="stat-card-label">Claimable</div>
           <div className="stat-card-value" style={{ color: claimable.length > 0 ? 'var(--green)' : undefined }}>
-            {formatSol(totalClaimable)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$SCALE</span>
+            {formatEth(totalClaimable)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$LOADED</span>
           </div>
           <div className="stat-card-sub">{claimable.length} ready to claim</div>
         </div>
@@ -133,7 +133,7 @@ export const Locks: FC = () => {
               <div key={lock.id} className="lock-card lock-card-claimable">
                 <div className="lock-card-info">
                   <div className="lock-card-amount">
-                    {formatSol(BigInt(lock.tokenAmount))} $SCALE
+                    {formatEth(BigInt(lock.tokenAmount))} $LOADED
                   </div>
                   <div className="lock-card-detail">
                     From {lock.position?.tokenSymbol ?? 'token'} trade #{lock.position?.id ?? '?'} · Locked {formatTimeAgo(lock.lockedAt)}
@@ -144,7 +144,7 @@ export const Locks: FC = () => {
                   onClick={() => handleClaim(lock.id)}
                   disabled={claiming === lock.id}
                 >
-                  {claiming === lock.id ? 'Claiming...' : 'Claim $SCALE'}
+                  {claiming === lock.id ? 'Claiming...' : 'Claim $LOADED'}
                 </button>
               </div>
             ))}
@@ -159,7 +159,7 @@ export const Locks: FC = () => {
         </h3>
         {activeLocks.length === 0 ? (
           <div className="empty-state" style={{ padding: '32px 16px' }}>
-            <div className="empty-state-text">No active locks. Make profitable trades to earn $SCALE!</div>
+            <div className="empty-state-text">No active locks. Make profitable trades to earn $LOADED!</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -169,7 +169,7 @@ export const Locks: FC = () => {
                 <div key={lock.id} className="lock-card">
                   <div className="lock-card-info">
                     <div className="lock-card-amount">
-                      {formatSol(BigInt(lock.tokenAmount))} $SCALE
+                      {formatEth(BigInt(lock.tokenAmount))} $LOADED
                     </div>
                     <div className="lock-card-detail">
                       From {lock.position?.tokenSymbol ?? 'token'} trade #{lock.position?.id ?? '?'} · Locked {formatTimeAgo(lock.lockedAt)}

@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useApi, usePolling } from './useApi';
 import * as api from '../lib/api';
+import { weiToEth } from '../lib/format';
 
 /** Hook for managing positions: active positions, trade history, open/close. */
 export function usePositions() {
@@ -31,7 +32,7 @@ export function usePositions() {
   const openPosition = useCallback(
     async (
       tokenAddress: string,
-      capitalLamports: string,
+      capitalWei: string,
       leverage: number,
       takeProfitPct?: number,
       stopLossPct?: number,
@@ -39,7 +40,7 @@ export function usePositions() {
       setIsOpening(true);
       try {
         const position = await api.openPosition(
-          tokenAddress, capitalLamports, leverage, takeProfitPct, stopLossPct,
+          tokenAddress, capitalWei, leverage, takeProfitPct, stopLossPct,
         );
         activeResult.refetch();
         return position;
@@ -69,13 +70,14 @@ export function usePositions() {
     const all = tradeHistory;
     const wins = all.filter((p) => p.status === 'closed_profit').length;
     const total = all.length;
-    const totalPnl = all.reduce((sum, p) => sum + Number(p.pnlSol || 0), 0);
+    // ETH, not wei — these feed display-side summaries
+    const totalPnl = all.reduce((sum, p) => sum + weiToEth(p.pnlWei), 0);
     const totalProfit = all
-      .filter((p) => Number(p.pnlSol || 0) > 0)
-      .reduce((sum, p) => sum + Number(p.pnlSol || 0), 0);
+      .filter((p) => weiToEth(p.pnlWei) > 0)
+      .reduce((sum, p) => sum + weiToEth(p.pnlWei), 0);
     const totalLoss = all
-      .filter((p) => Number(p.pnlSol || 0) < 0)
-      .reduce((sum, p) => sum + Number(p.pnlSol || 0), 0);
+      .filter((p) => weiToEth(p.pnlWei) < 0)
+      .reduce((sum, p) => sum + weiToEth(p.pnlWei), 0);
     return {
       totalTrades: total,
       wins,

@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Lock Engine Worker Tests
+// LOADED PROTOCOL — Lock Engine Worker Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PROFIT_LOCK_DURATION_MS } from '@scale/core';
+import { PROFIT_LOCK_DURATION_MS } from '@loaded/core';
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const WEI_PER_ETH = 1_000_000_000_000_000_000n;
 
 describe('lock-engine logic', () => {
   beforeEach(() => {
@@ -39,16 +39,16 @@ describe('lock-engine logic', () => {
   });
 
   describe('$FRONT buy estimation (simulation mode)', () => {
-    it('simulation estimates 500 tokens per SOL', () => {
-      const solAmount = LAMPORTS_PER_SOL; // 1 SOL
-      const estimatedTokens = solAmount * 500n;
-      expect(estimatedTokens).toBe(500_000_000_000n);
+    it('simulation estimates 500 tokens per ETH', () => {
+      const ethAmount = WEI_PER_ETH; // 1 ETH
+      const estimatedTokens = ethAmount * 500n;
+      expect(estimatedTokens).toBe(WEI_PER_ETH * 500n);
     });
 
-    it('simulation handles fractional SOL', () => {
-      const solAmount = LAMPORTS_PER_SOL / 10n; // 0.1 SOL
-      const estimatedTokens = solAmount * 500n;
-      expect(estimatedTokens).toBe(50_000_000_000n);
+    it('simulation handles fractional ETH', () => {
+      const ethAmount = WEI_PER_ETH / 10n; // 0.1 ETH
+      const estimatedTokens = ethAmount * 500n;
+      expect(estimatedTokens).toBe((WEI_PER_ETH / 10n) * 500n);
     });
   });
 
@@ -92,15 +92,15 @@ describe('lock-engine logic', () => {
       expect(tx1).not.toBe(tx2);
     });
 
-    it('falls back to simulation when SCALE_TOKEN_MINT is empty', () => {
-      const SCALE_TOKEN_MINT = '';
-      const isSimulation = !SCALE_TOKEN_MINT;
+    it('falls back to simulation when LOADED_TOKEN_MINT is empty', () => {
+      const LOADED_TOKEN_MINT = '';
+      const isSimulation = !LOADED_TOKEN_MINT;
       expect(isSimulation).toBe(true);
     });
 
-    it('uses real implementation when SCALE_TOKEN_MINT is set', () => {
-      const SCALE_TOKEN_MINT = 'FRONTmint12345678901234567890123456789012';
-      const isSimulation = !SCALE_TOKEN_MINT;
+    it('uses real implementation when LOADED_TOKEN_MINT is set', () => {
+      const LOADED_TOKEN_MINT = 'FRONTmint12345678901234567890123456789012';
+      const isSimulation = !LOADED_TOKEN_MINT;
       expect(isSimulation).toBe(false);
     });
   });
@@ -109,17 +109,17 @@ describe('lock-engine logic', () => {
     it('profitLock record contains all required fields', () => {
       const lockRecord = {
         userWallet: 'UserWallet12345678901234567890123456789012',
-        solAmount: LAMPORTS_PER_SOL,
+        ethAmount: WEI_PER_ETH,
         tokenAmount: 500_000_000_000n,
         positionId: 42,
-        buyTx: 'sim_scale_buy_123',
+        buyTx: 'sim_loaded_buy_123',
         lockTx: 'lock_verified_UserWallet_123',
         unlocksAt: new Date(Date.now() + PROFIT_LOCK_DURATION_MS),
         isUnlocked: false,
       };
 
       expect(lockRecord.userWallet).toBeDefined();
-      expect(lockRecord.solAmount).toBeGreaterThan(0n);
+      expect(lockRecord.ethAmount).toBeGreaterThan(0n);
       expect(lockRecord.tokenAmount).toBeGreaterThan(0n);
       expect(lockRecord.positionId).toBeDefined();
       expect(lockRecord.buyTx).toBeDefined();

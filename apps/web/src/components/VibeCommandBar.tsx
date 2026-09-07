@@ -9,7 +9,7 @@ interface VibeCommandBarProps {
 
 export interface ParsedCommand {
   tokenQuery?: string;
-  capitalSol?: number;
+  capitalEth?: number;
   leverage?: number;
   priority?: 'normal' | 'fast' | 'turbo';
   action?: 'long' | 'close' | 'closeall';
@@ -60,10 +60,10 @@ export const VibeCommandBar: FC<VibeCommandBarProps> = ({
     }
     result.action = 'long';
 
-    // Extract SOL amount: "0.5 sol", "0.5sol", "0.5 SOL"
-    const solMatch = lower.match(/(\d+\.?\d*)\s*sol/);
-    if (solMatch) {
-      result.capitalSol = parseFloat(solMatch[1]);
+    // Extract ETH amount: "0.5 eth", "0.5eth", "0.5 ETH"
+    const ethMatch = lower.match(/(\d+\.?\d*)\s*eth/);
+    if (ethMatch) {
+      result.capitalEth = parseFloat(ethMatch[1]);
     }
 
     // Extract leverage: "7x", "at 7x", "5x lev"
@@ -78,7 +78,7 @@ export const VibeCommandBar: FC<VibeCommandBarProps> = ({
     else if (lower.includes('normal') || lower.includes('slow')) result.priority = 'normal';
 
     // Extract token — try to find a capitalized word that isn't a keyword
-    const keywords = new Set(['long', 'short', 'buy', 'sell', 'sol', 'at', 'on', 'with', 'fast', 'turbo', 'normal', 'close', 'ape']);
+    const keywords = new Set(['long', 'short', 'buy', 'sell', 'eth', 'at', 'on', 'with', 'fast', 'turbo', 'normal', 'close', 'ape']);
     const words = input.split(/\s+/);
     for (const word of words) {
       const clean = word.replace(/[^a-zA-Z]/g, '');
@@ -115,8 +115,8 @@ export const VibeCommandBar: FC<VibeCommandBarProps> = ({
     } else if (selectedTokenSymbol) {
       chips.push({ label: 'TOKEN', value: selectedTokenSymbol, color: 'var(--text-2)' });
     }
-    if (lastParsed.capitalSol) {
-      chips.push({ label: 'SIZE', value: `${lastParsed.capitalSol} SOL`, color: 'var(--cyan)' });
+    if (lastParsed.capitalEth) {
+      chips.push({ label: 'SIZE', value: `${lastParsed.capitalEth} ETH`, color: 'var(--cyan)' });
     }
     if (lastParsed.leverage) {
       chips.push({ label: 'LEV', value: `${lastParsed.leverage}x`, color: 'var(--yellow)' });
@@ -138,7 +138,7 @@ export const VibeCommandBar: FC<VibeCommandBarProps> = ({
     >
       <div className={`vibe-bar ${focused ? 'vibe-bar-focused' : ''}`}>
         {/* Prompt prefix */}
-        <span className="vibe-bar-prefix">SCALE</span>
+        <span className="vibe-bar-prefix">LOADED</span>
         <span className="vibe-bar-caret">&gt;</span>
 
         {/* Input */}
@@ -151,7 +151,7 @@ export const VibeCommandBar: FC<VibeCommandBarProps> = ({
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={handleKeyDown}
-          placeholder={focused ? 'long 0.5 sol on POPCAT at 7x fast' : 'Press Cmd+K to trade...'}
+          placeholder={focused ? 'long 0.5 eth on POPCAT at 7x fast' : 'Press Cmd+K to trade...'}
           spellCheck={false}
           autoComplete="off"
         />

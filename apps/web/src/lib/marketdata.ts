@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Solana market data client
+// LOADED PROTOCOL — Robinhood Chain market data client
 //
 // All data flows through our API (GeckoTerminal-backed) — no client
-// API keys, no Birdeye. GeckoTerminal has no websocket, so "live" is
-// honest polling: the stream badge shows POLL, never a fake LIVE.
+// API keys. GeckoTerminal has no websocket, so "live" is honest
+// polling: the stream badge shows POLL, never a fake LIVE.
 // ──────────────────────────────────────────────
 
 import {
@@ -15,7 +15,7 @@ import {
   type MarketTrade,
 } from './api';
 
-// ─── Types (shapes kept from the old birdeye client) ────────
+// ─── Types ──────────────────────────────────────────────────
 
 export interface OHLCVBar {
   time: number;   // Unix seconds
@@ -55,7 +55,7 @@ export type TradeItem = MarketTrade;
 
 // ─── Interval map: our keys → API `type` param ──────────────
 // Minute+ frames come from GeckoTerminal; seconds frames come from
-// the live Jupiter price feed (see /live-history).
+// the live on-chain price feed (see /live-history).
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': '1m', '5': '5m', '15': '15m',
@@ -163,7 +163,7 @@ export async function fetchTopPool(tokenAddress: string): Promise<string | null>
 }
 
 // ─── Live price stream ──────────────────────────────────────
-// Ticks come from the live engine (real Jupiter swaps on Solana,
+// Ticks come from the live engine (real swaps on Robinhood Chain,
 // ~1.2s cadence server-side) — status 'ws' = genuinely live data.
 // If the live engine is unreachable, minute+ frames fall back to
 // GeckoTerminal bar polling with an honest 'polling' badge.

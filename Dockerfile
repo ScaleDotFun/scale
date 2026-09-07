@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────
-# SCALE — Main Dockerfile
+# LOADED — Main Dockerfile
 # ──────────────────────────────────────────────
 
 FROM node:22-slim
@@ -12,7 +12,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/database/package.json packages/database/
-COPY packages/solana/package.json packages/solana/
+COPY packages/evm/package.json packages/evm/
 COPY packages/services/package.json packages/services/
 COPY packages/api/package.json packages/api/
 

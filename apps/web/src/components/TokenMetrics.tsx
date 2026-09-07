@@ -23,7 +23,7 @@ function formatNum(n: number): string {
 /**
  * Token metrics bar powered by GeckoTerminal data (via our API).
  * Shows MCAP, LIQ, VOL 24H, tier badge and 24h change. Holder and
- * trade-count stats will come from Jupiter when wired — dropped
+ * trade-count stats will come from the aggregator when wired — dropped
  * rather than faked until then.
  */
 export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {

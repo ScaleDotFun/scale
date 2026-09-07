@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Shared Queue Definitions & Redis
+// LOADED PROTOCOL — Shared Queue Definitions & Redis
 // ──────────────────────────────────────────────
 
 import { Queue, type JobsOptions } from 'bullmq';

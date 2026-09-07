@@ -7,13 +7,13 @@ import {
   timeRemainingMs,
 } from '../position.js';
 import {
-  LAMPORTS_PER_SOL,
+  WEI_PER_ETH,
   MAX_POSITION_DURATION_MS,
   SAFETY_BUFFER_BPS,
 } from '../types.js';
 import { TIER_CONFIGS } from '../pricing.js';
 
-const ONE_SOL = LAMPORTS_PER_SOL;
+const ONE_SOL = WEI_PER_ETH;
 
 // ──────────────────────────────────────────────
 // shouldAutoClose
@@ -101,13 +101,13 @@ describe('shouldAutoClose', () => {
 
 describe('validatePositionOpen', () => {
   const validParams = {
-    userWallet: 'A'.repeat(44), // valid length Solana address
+    userWallet: 'A'.repeat(44), // valid length Robinhood Chain address
     tokenAddress: 'B'.repeat(44),
-    userCapitalLamports: ONE_SOL, // 1 SOL
+    userCapitalWei: ONE_SOL, // 1 ETH
     leverage: 3,
   };
   const tier = 'degen' as const;
-  const bigPool = ONE_SOL * 1000n; // 1000 SOL pool
+  const bigPool = ONE_SOL * 1000n; // 1000 ETH pool
 
   it('validates a correct position', () => {
     const result = validatePositionOpen(validParams, tier, bigPool);
@@ -115,9 +115,9 @@ describe('validatePositionOpen', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('rejects capital below minimum (0.01 SOL)', () => {
+  it('rejects capital below minimum (0.001 ETH)', () => {
     const result = validatePositionOpen(
-      { ...validParams, userCapitalLamports: ONE_SOL / 2000n }, // 0.0005 SOL
+      { ...validParams, userCapitalWei: ONE_SOL / 2000n }, // 0.0005 ETH
       tier,
       bigPool,
     );
@@ -125,9 +125,9 @@ describe('validatePositionOpen', () => {
     expect(result.errors).toContainEqual(expect.stringContaining('Minimum collateral'));
   });
 
-  it('rejects capital above maximum (10 SOL)', () => {
+  it('rejects capital above maximum (1 ETH)', () => {
     const result = validatePositionOpen(
-      { ...validParams, userCapitalLamports: ONE_SOL * 11n },
+      { ...validParams, userCapitalWei: ONE_SOL * 2n },
       tier,
       bigPool,
     );
@@ -135,18 +135,18 @@ describe('validatePositionOpen', () => {
     expect(result.errors).toContainEqual(expect.stringContaining('Maximum collateral'));
   });
 
-  it('accepts capital at exact minimum (0.01 SOL)', () => {
+  it('accepts capital at exact minimum (0.001 ETH)', () => {
     const result = validatePositionOpen(
-      { ...validParams, userCapitalLamports: ONE_SOL / 100n },
+      { ...validParams, userCapitalWei: ONE_SOL / 1000n },
       tier,
       bigPool,
     );
     expect(result.valid).toBe(true);
   });
 
-  it('accepts capital at exact maximum (10 SOL)', () => {
+  it('accepts capital at exact maximum (1 ETH)', () => {
     const result = validatePositionOpen(
-      { ...validParams, userCapitalLamports: ONE_SOL * 10n },
+      { ...validParams, userCapitalWei: ONE_SOL },
       tier,
       bigPool,
     );
@@ -164,9 +164,9 @@ describe('validatePositionOpen', () => {
   });
 
   it('rejects when pool has insufficient capital', () => {
-    const tinyPool = ONE_SOL / 10n; // 0.1 SOL pool
+    const tinyPool = ONE_SOL / 10n; // 0.1 ETH pool
     const result = validatePositionOpen(
-      { ...validParams, leverage: 3 }, // needs 2 SOL from pool
+      { ...validParams, leverage: 3 }, // needs 2 ETH from pool
       tier,
       tinyPool,
     );
@@ -198,7 +198,7 @@ describe('validatePositionOpen', () => {
       {
         userWallet: '', // invalid
         tokenAddress: 'x',
-        userCapitalLamports: 1n, // below min
+        userCapitalWei: 1n, // below min
         leverage: 10, // above max
       },
       tier,
@@ -245,8 +245,8 @@ describe('calculateExitPrice', () => {
 describe('generatePositionPreview', () => {
   it('returns correct position size at 3x', () => {
     const preview = generatePositionPreview(ONE_SOL, 3, 'degen');
-    expect(preview.positionSizeLamports).toBe(3n * ONE_SOL);
-    expect(preview.protocolCapitalLamports).toBe(2n * ONE_SOL);
+    expect(preview.positionSizeWei).toBe(3n * ONE_SOL);
+    expect(preview.protocolCapitalWei).toBe(2n * ONE_SOL);
   });
 
   it('includes correct tier metadata', () => {
@@ -258,14 +258,14 @@ describe('generatePositionPreview', () => {
 
   it('scenarios show increasing profit for 2x → 3x', () => {
     const preview = generatePositionPreview(ONE_SOL, 3, 'degen');
-    expect(preview.scenarioIf3x.userCashoutLamports)
-      .toBeGreaterThan(preview.scenarioIf2x.userCashoutLamports);
+    expect(preview.scenarioIf3x.userCashoutWei)
+      .toBeGreaterThan(preview.scenarioIf2x.userCashoutWei);
   });
 
   it('dump scenario shows max loss', () => {
     const preview = generatePositionPreview(ONE_SOL, 3, 'degen');
     // Max loss = user capital + flat fee
-    expect(preview.scenarioIfDump.maxLossLamports).toBeGreaterThan(ONE_SOL);
+    expect(preview.scenarioIfDump.maxLossWei).toBeGreaterThan(ONE_SOL);
   });
 });
 

@@ -1,11 +1,11 @@
 import { type FC, useState } from 'react';
 import { useAuth } from '../providers/AuthProvider';
 import type { TokenInfo } from '../lib/api';
-import { formatSolPrice, formatPercentText, formatNumber } from '../lib/format';
+import { formatEthPrice, formatPercentText, formatNumber, ethToWei } from '../lib/format';
 
 interface PositionPanelProps {
   token: TokenInfo | null;
-  onOpen: (tokenAddress: string, capitalLamports: string, leverage: number) => Promise<unknown>;
+  onOpen: (tokenAddress: string, capitalWei: string, leverage: number) => Promise<unknown>;
   isOpening: boolean;
 }
 
@@ -41,9 +41,7 @@ export const PositionPanel: FC<PositionPanelProps> = ({ token, onOpen, isOpening
 
   const handleSubmit = async () => {
     if (amountNum <= 0) return;
-    // SOL → lamports (integer-safe well past 2^53 for the 10 SOL cap)
-    const lamports = String(BigInt(Math.round(amountNum * 1e9)));
-    await onOpen(token.address, lamports, leverage);
+    await onOpen(token.address, ethToWei(amountNum), leverage);
     setAmount('');
   };
 
@@ -54,7 +52,7 @@ export const PositionPanel: FC<PositionPanelProps> = ({ token, onOpen, isOpening
         <div className="position-panel-title">{token.symbol}</div>
         <div className="flex items-center gap-sm" style={{ marginTop: 4 }}>
           <span className="font-mono" style={{ fontSize: '1.1rem', fontWeight: 700 }}>
-            {formatSolPrice(token.priceSol)}
+            {formatEthPrice(token.priceEth)}
           </span>
           <span className={`font-mono ${pctChange.className}`} style={{ fontSize: '0.82rem' }}>
             {pctChange.text}
@@ -81,7 +79,7 @@ export const PositionPanel: FC<PositionPanelProps> = ({ token, onOpen, isOpening
           >
             Max
           </button>
-          <span className="position-panel-input-suffix">SOL</span>
+          <span className="position-panel-input-suffix">ETH</span>
         </div>
       </div>
 
@@ -107,11 +105,11 @@ export const PositionPanel: FC<PositionPanelProps> = ({ token, onOpen, isOpening
         <div className="position-preview">
           <div className="position-preview-row">
             <span className="position-preview-row-label">Position Size</span>
-            <span className="position-preview-row-value">{positionSize.toFixed(4)} SOL</span>
+            <span className="position-preview-row-value">{positionSize.toFixed(4)} ETH</span>
           </div>
           <div className="position-preview-row">
             <span className="position-preview-row-label">Fee (1%)</span>
-            <span className="position-preview-row-value">{fee.toFixed(5)} SOL</span>
+            <span className="position-preview-row-value">{fee.toFixed(5)} ETH</span>
           </div>
           <div className="position-preview-row">
             <span className="position-preview-row-label">Exit Threshold</span>

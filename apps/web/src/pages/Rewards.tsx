@@ -55,7 +55,7 @@ export const Rewards: FC = () => {
       <div>
         <h2 style={{ marginBottom: 4 }}>Points &amp; Referrals</h2>
         <p className="text-muted" style={{ fontSize: '0.9rem', margin: 0 }}>
-          Every leveraged trade earns points — <b>{me?.pointsPerSol ?? '100'}</b> per 1 SOL of
+          Every leveraged trade earns points — <b>{me?.pointsPerEth ?? '100'}</b> per 1 ETH of
           position size. Refer traders and earn <b>{me?.referralBonusPct ?? 20}%</b> of everything
           they make, forever. Points are pre-token; the leaderboard is public.
         </p>
@@ -73,7 +73,7 @@ export const Rewards: FC = () => {
             <div className="stat-card">
               <div className="stat-card-label">From Trading</div>
               <div className="stat-card-value">{fmtPoints(me.breakdown['trade_volume'])}</div>
-              <div className="stat-card-sub">{me.pointsPerSol} pts / SOL of size</div>
+              <div className="stat-card-sub">{me.pointsPerEth} pts / ETH of size</div>
             </div>
             <div className="stat-card">
               <div className="stat-card-label">From Referrals</div>
@@ -152,7 +152,7 @@ export const Rewards: FC = () => {
 
       <p className="text-muted" style={{ fontSize: '0.74rem', margin: 0 }}>
         Points reward real on-chain trading volume and referred volume only — never posting or social
-        actions. Redemption details announced before the $SCALE token goes live.
+        actions. Redemption details announced before the $LOADED token goes live.
       </p>
     </div>
   );

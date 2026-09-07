@@ -1,44 +1,44 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Lock Engine Worker (Solana)
+// LOADED PROTOCOL — Lock Engine Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// Handles $SCALE profit locks: buys $SCALE with 30% of trading profit,
+// Handles $LOADED profit locks: buys $LOADED with 30% of trading profit,
 // locks it for 7 days (protocol wallet is the escrow, DB enforces the
 // hold), and processes unlock checks hourly. No simulation mode — if
-// the $SCALE token isn't configured, jobs fail loudly and stay visible
+// the $LOADED token isn't configured, jobs fail loudly and stay visible
 // in the queue instead of writing fake records.
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@scale/database';
-import { PROFIT_LOCK_DURATION_MS } from '@scale/core';
+import { prisma } from '@loaded/database';
+import { PROFIT_LOCK_DURATION_MS, WEI_PER_ETH } from '@loaded/core';
 import {
   getProtocolAccount,
   hasProtocolKey,
-  swapSolForToken,
-  splBalance,
-  splTransfer,
-} from '@scale/solana';
-const fmtSol = (lamports: bigint): string => (Number(lamports) / 1e9).toFixed(4);
+  swapNativeForToken,
+  erc20Balance,
+  erc20Transfer,
+} from '@loaded/evm';
+const fmtSol = (wei: bigint): string => (Number(wei) / Number(WEI_PER_ETH)).toFixed(4);
 import { redisConnection, QUEUE_NAMES, lockQueue } from './queues.js';
 
 const PREFIX = '[lock-engine]';
 
-/** $SCALE token mint (SPL on Solana) */
-const SCALE_TOKEN_MINT = (process.env.SCALE_TOKEN_MINT ?? '').trim();
+/** $LOADED token mint (SPL on Robinhood Chain) */
+const LOADED_TOKEN_MINT = (process.env.LOADED_TOKEN_MINT ?? '').trim();
 
 function assertLockConfigured(): void {
-  if (SCALE_TOKEN_MINT.length < 32 || SCALE_TOKEN_MINT.length > 44) {
-    throw new Error(`${PREFIX} SCALE_TOKEN_MINT is not a Solana (base58) token mint — cannot execute $SCALE locks`);
+  if (LOADED_TOKEN_MINT.length < 32 || LOADED_TOKEN_MINT.length > 44) {
+    throw new Error(`${PREFIX} LOADED_TOKEN_MINT is not a Robinhood Chain (hex) token mint — cannot execute $LOADED locks`);
   }
   if (!hasProtocolKey()) {
-    throw new Error(`${PREFIX} Solana protocol pool key not configured — cannot execute $SCALE locks`);
+    throw new Error(`${PREFIX} Robinhood Chain protocol pool key not configured — cannot execute $LOADED locks`);
   }
 }
 
 interface LockJobData {
   userWallet: string;
-  solAmountLamports: string; // bigint serialized as string
+  ethAmountWei: string; // bigint serialized as string
   positionId: number;
 }
 
@@ -50,11 +50,11 @@ interface UnlockCheckJobData {
 type LockEngineJobData = LockJobData | UnlockCheckJobData;
 
 /**
- * Buy $SCALE with SOL via Jupiter for the lock.
+ * Buy $LOADED with ETH via LI.FI for the lock.
  *
- * @returns Transaction signature and number of $SCALE tokens purchased
+ * @returns Transaction signature and number of $LOADED tokens purchased
  */
-async function executeFrontBuy(solAmountLamports: bigint): Promise<{
+async function executeFrontBuy(ethAmountWei: bigint): Promise<{
   buyTx: string;
   tokensPurchased: bigint;
 }> {
@@ -62,19 +62,19 @@ async function executeFrontBuy(solAmountLamports: bigint): Promise<{
   const protocolAccount = getProtocolAccount();
 
   console.log(
-    `${PREFIX} Buying $SCALE (${SCALE_TOKEN_MINT.substring(0, 10)}…) with ${fmtSol(solAmountLamports)} SOL via Jupiter`,
+    `${PREFIX} Buying $LOADED (${LOADED_TOKEN_MINT.substring(0, 10)}…) with ${fmtSol(ethAmountWei)} ETH via LI.FI`,
   );
 
-  // amountOutMinimum comes from the Jupiter quote inside swapSolForToken
-  const { txHash, amountOut: tokensReceived } = await swapSolForToken(
+  // amountOutMinimum comes from the LI.FI quote inside swapNativeForToken
+  const { txHash, amountOut: tokensReceived } = await swapNativeForToken(
     protocolAccount,
-    SCALE_TOKEN_MINT,
-    solAmountLamports,
+    LOADED_TOKEN_MINT,
+    ethAmountWei,
     300, // 3% slippage (bps)
   );
 
   console.log(
-    `${PREFIX} Buy complete: received ${tokensReceived} $SCALE (tx: ${txHash})`,
+    `${PREFIX} Buy complete: received ${tokensReceived} $LOADED (tx: ${txHash})`,
   );
 
   return {
@@ -84,9 +84,9 @@ async function executeFrontBuy(solAmountLamports: bigint): Promise<{
 }
 
 /**
- * Lock the purchased $SCALE tokens by retaining them in the protocol wallet.
+ * Lock the purchased $LOADED tokens by retaining them in the protocol wallet.
  *
- * The swap already deposits $SCALE into the protocol wallet, so "locking"
+ * The swap already deposits $LOADED into the protocol wallet, so "locking"
  * means verifying the tokens are there. The protocol wallet IS the escrow —
  * the DB record (with `unlocksAt`) enforces the 7-day hold.
  *
@@ -100,17 +100,17 @@ async function executeLock(
 
   // Verify protocol wallet actually holds the tokens
   const protocolAccount = getProtocolAccount();
-  const balance = await splBalance(SCALE_TOKEN_MINT, protocolAccount.publicKey.toBase58());
+  const balance = await erc20Balance(LOADED_TOKEN_MINT, protocolAccount.address);
 
   if (balance < tokenAmount) {
     throw new Error(
-      `${PREFIX} Protocol wallet $SCALE balance (${balance}) is less than lock amount (${tokenAmount}). ` +
+      `${PREFIX} Protocol wallet $LOADED balance (${balance}) is less than lock amount (${tokenAmount}). ` +
       `Swap may have failed silently.`,
     );
   }
 
   console.log(
-    `${PREFIX} 🔒 Verified ${tokenAmount} $SCALE held in protocol wallet escrow for ${userWallet}`,
+    `${PREFIX} 🔒 Verified ${tokenAmount} $LOADED held in protocol wallet escrow for ${userWallet}`,
   );
 
   // No separate on-chain tx needed — the protocol wallet holds the tokens
@@ -119,7 +119,7 @@ async function executeLock(
 }
 
 /**
- * Release unlocked $SCALE tokens to the user's custodial wallet via a
+ * Release unlocked $LOADED tokens to the user's custodial wallet via a
  * standard SPL transfer from the protocol wallet (escrow).
  *
  * @returns Transfer transaction signature
@@ -132,37 +132,37 @@ async function executeUnlock(
   const protocolAccount = getProtocolAccount();
 
   console.log(
-    `${PREFIX} 🔓 Transferring ${tokenAmount} $SCALE to ${userWallet}`,
+    `${PREFIX} 🔓 Transferring ${tokenAmount} $LOADED to ${userWallet}`,
   );
 
-  const txSignature = await splTransfer(
+  const txHash = await erc20Transfer(
     protocolAccount,
-    SCALE_TOKEN_MINT,
+    LOADED_TOKEN_MINT,
     userWallet,
     tokenAmount,
   );
 
   console.log(
-    `${PREFIX} 🔓 Unlock complete: ${tokenAmount} $SCALE → ${userWallet} (tx: ${txSignature})`,
+    `${PREFIX} 🔓 Unlock complete: ${tokenAmount} $LOADED → ${userWallet} (tx: ${txHash})`,
   );
 
-  return txSignature;
+  return txHash;
 }
 
 /**
  * Process a lock job: buy $FRONT and lock it for 7 days.
  */
 async function processLockJob(job: Job<LockJobData>): Promise<void> {
-  const { userWallet, solAmountLamports: solAmountStr, positionId } = job.data;
-  const solAmount = BigInt(solAmountStr);
+  const { userWallet, ethAmountWei: ethAmountStr, positionId } = job.data;
+  const ethAmount = BigInt(ethAmountStr);
 
   console.log(
-    `${PREFIX} Processing lock: ${fmtSol(solAmount)} SOL → $SCALE for wallet ${userWallet} (position #${positionId})`,
+    `${PREFIX} Processing lock: ${fmtSol(ethAmount)} ETH → $LOADED for wallet ${userWallet} (position #${positionId})`,
   );
 
   try {
-    // Step 1: Buy $SCALE with the SOL amount
-    const { buyTx, tokensPurchased } = await executeFrontBuy(solAmount);
+    // Step 1: Buy $LOADED with the ETH amount
+    const { buyTx, tokensPurchased } = await executeFrontBuy(ethAmount);
 
     // Step 2: Lock the tokens
     const lockTx = await executeLock(userWallet, tokensPurchased);
@@ -173,7 +173,7 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
     await prisma.profitLock.create({
       data: {
         userWallet,
-        solAmount: solAmount,
+        ethAmount: ethAmount,
         tokenAmount: tokensPurchased,
         positionId,
         buyTx,
@@ -184,7 +184,7 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
     });
 
     console.log(
-      `${PREFIX} 🔒 Locked ${tokensPurchased} $SCALE for ${userWallet} until ${unlocksAt.toISOString()} (buy: ${buyTx}, lock: ${lockTx})`,
+      `${PREFIX} 🔒 Locked ${tokensPurchased} $LOADED for ${userWallet} until ${unlocksAt.toISOString()} (buy: ${buyTx}, lock: ${lockTx})`,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -235,7 +235,7 @@ async function processUnlockCheck(_job: Job<UnlockCheckJobData>): Promise<void> 
 
         unlockedCount++;
         console.log(
-          `${PREFIX} 🔓 Unlocked ${lock.tokenAmount} $SCALE for ${lock.userWallet} (lock #${lock.id}, tx: ${unlockTx})`,
+          `${PREFIX} 🔓 Unlocked ${lock.tokenAmount} $LOADED for ${lock.userWallet} (lock #${lock.id}, tx: ${unlockTx})`,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

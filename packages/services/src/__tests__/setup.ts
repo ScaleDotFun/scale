@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Services Test Setup
+// LOADED PROTOCOL — Services Test Setup
 // ──────────────────────────────────────────────
 
 import { vi } from 'vitest';
 
-// ─── Mock @scale/database (Prisma) ────
-vi.mock('@scale/database', () => ({
+// ─── Mock @loaded/database (Prisma) ────
+vi.mock('@loaded/database', () => ({
   prisma: {
     position: {
       findUnique: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('@scale/database', () => ({
       create: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
-      aggregate: vi.fn(() => ({ _sum: { amount: 0n, tokenAmount: 0n, solAmount: 0n }, _count: 0 })),
+      aggregate: vi.fn(() => ({ _sum: { amount: 0n, tokenAmount: 0n, ethAmount: 0n }, _count: 0 })),
       count: vi.fn(),
     },
     creatorPayout: { create: vi.fn() },
@@ -58,33 +58,32 @@ vi.mock('@scale/database', () => ({
   },
 }));
 
-// ─── Mock @scale/solana ──────────────
-const MOCK_POOL_PUBKEY = 'Poo1Wa11etMock1111111111111111111111111111';
-vi.mock('@scale/solana', () => ({
-  WSOL_MINT: 'So11111111111111111111111111111111111111112',
-  INCINERATOR: '1nc1nerator11111111111111111111111111111111',
+// ─── Mock @loaded/evm ──────────────
+const MOCK_POOL_PUBKEY = '0x00000000000000000000000000000000000a0001';
+vi.mock('@loaded/evm', () => ({
+  NATIVE_TOKEN: '0x0000000000000000000000000000000000000000',
+  DEAD_ADDRESS: '0x000000000000000000000000000000000000dEaD',
   getProtocolAccount: vi.fn(() => ({
-    publicKey: { toBase58: () => MOCK_POOL_PUBKEY },
+    address: MOCK_POOL_PUBKEY,
   })),
   hasProtocolKey: vi.fn(() => true),
   protocolPublicKey: vi.fn(() => MOCK_POOL_PUBKEY),
-  isValidSolanaAddress: vi.fn((addr: string) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)),
-  getSolBalance: vi.fn(() => Promise.resolve(0n)),
-  transferSol: vi.fn(() => Promise.resolve('mockTransferSig1111111111111111111111111111')),
-  splBalance: vi.fn(() => Promise.resolve(10n ** 15n)),
-  splDecimals: vi.fn(() => Promise.resolve(6)),
-  splTotalSupply: vi.fn(() => Promise.resolve(10n ** 15n)),
-  splTransfer: vi.fn(() => Promise.resolve('mockSplTransferSig111111111111111111111111')),
-  splBurn: vi.fn(() => Promise.resolve('mockBurnSig11111111111111111111111111111111')),
-  swapSolForToken: vi.fn(() => Promise.resolve({ txHash: 'mockBuySig11111111111111111111111111111111', amountOut: 1_000_000n })),
-  swapTokenForSol: vi.fn(() => Promise.resolve({ txHash: 'mockSellSig1111111111111111111111111111111', amountOut: 10n ** 9n })),
-  getJupToken: vi.fn(() => Promise.resolve(null)),
-  getRecentPumpTokens: vi.fn(() => Promise.resolve([])),
+  isValidAddress: vi.fn((addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr)),
+  getNativeBalance: vi.fn(() => Promise.resolve(0n)),
+  transferNative: vi.fn(() => Promise.resolve('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')),
+  erc20Balance: vi.fn(() => Promise.resolve(10n ** 15n)),
+  erc20Decimals: vi.fn(() => Promise.resolve(18)),
+  erc20TotalSupply: vi.fn(() => Promise.resolve(10n ** 15n)),
+  erc20Transfer: vi.fn(() => Promise.resolve('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')),
+  erc20Burn: vi.fn(() => Promise.resolve('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')),
+  swapNativeForToken: vi.fn(() => Promise.resolve({ txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', amountOut: 1_000_000n })),
+  swapTokenForNative: vi.fn(() => Promise.resolve({ txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', amountOut: 10n ** 18n })),
+  getTokenInfo: vi.fn(() => Promise.resolve(null)),
   getTrendingTokens: vi.fn(() => Promise.resolve([])),
-  verifyPumpToken: vi.fn(() => Promise.resolve({ status: 'not_found' })),
-  verifyPumpRewardShare: vi.fn(() => Promise.resolve({ status: 'not_found', walletPct: 0, shareholders: [] })),
+  verifyLaunchpadToken: vi.fn(() => Promise.resolve({ status: 'not_found' })),
+  verifyCreatorFeeShare: vi.fn(() => Promise.resolve({ status: 'not_found', walletPct: 0, shareholders: [] })),
   getUsdPrices: vi.fn(() => Promise.resolve(new Map())),
-  getSolUsd: vi.fn(() => Promise.resolve(75)),
+  getEthUsd: vi.fn(() => Promise.resolve(2_500)),
 }));
 
 // ─── Mock BullMQ ──────────────────────────────

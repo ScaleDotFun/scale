@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — OAuth Callback Handler
+// LOADED PROTOCOL — OAuth Callback Handler
 // ──────────────────────────────────────────────
 
 import { useEffect, useState } from 'react';

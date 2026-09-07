@@ -1,14 +1,15 @@
 import { Router } from 'express';
-import { prisma } from '@scale/database';
-import { getTierConfig, determineTier, type Tier } from '@scale/core';
+import { prisma } from '@loaded/database';
+import { getTierConfig, determineTier, type Tier } from '@loaded/core';
 import {
-  splTotalSupply,
-  verifyPumpRewardShare,
-  getJupToken,
+  erc20TotalSupply,
+  verifyCreatorFeeShare,
+  getTokenInfo,
   protocolPublicKey,
-  isValidSolanaAddress,
-  type JupTokenInfo,
-} from '@scale/solana';
+  isValidAddress,
+  explorerTokenUrl,
+  type TokenInfo,
+} from '@loaded/evm';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -21,17 +22,13 @@ export function poolWalletAddress(): string {
   return protocolPublicKey() ?? '';
 }
 
-/** Admin escape hatch for edge cases (comma-separated base58 mints —
- *  case-sensitive, never lowercased). */
-const VERIFIED_TOKENS = new Set(
-  (process.env.SCALE_VERIFIED_TOKENS ?? '')
-    .split(',').map((s) => s.trim()).filter(Boolean),
-);
-
-/** Required creator-reward share to the pool wallet (percent, default 100). */
-export function minFeeSharePct(): number {
-  const raw = Number(process.env.SCALE_MIN_FEE_SHARE_PCT);
-  return Number.isFinite(raw) ? Math.min(100, Math.max(1, raw)) : 100;
+/** Admin escape hatch for edge cases (comma-separated token addresses).
+ *  Read at call time, like the pool wallet above. */
+export function verifiedTokens(): Set<string> {
+  return new Set(
+    (process.env.LOADED_VERIFIED_TOKENS ?? '')
+      .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  );
 }
 
 const router = Router();
@@ -48,7 +45,11 @@ router.get('/listed', publicLimiter, async (req, res) => {
     const offset = parseInt(req.query.offset as string, 10) || 0;
     const tierFilter = req.query.tier as string | undefined;
 
-    const where: Record<string, unknown> = { isActive: true };
+    // Delisted coins stay visible (isActive:false) so traders can see the
+    // full history — active coins sort first, and trading stays gated on
+    // isActive elsewhere. ?active=true keeps the old active-only behavior.
+    const where: Record<string, unknown> =
+      req.query.active === 'true' ? { isActive: true } : {};
     if (tierFilter && ['bonded', 'rising', 'degen'].includes(tierFilter)) {
       where.tier = tierFilter;
     }
@@ -56,7 +57,7 @@ router.get('/listed', publicLimiter, async (req, res) => {
     const [tokens, total] = await Promise.all([
       prisma.token.findMany({
         where,
-        orderBy: { totalTradingVolume: 'desc' },
+        orderBy: [{ isActive: 'desc' }, { totalTradingVolume: 'desc' }],
         take: limit,
         skip: offset,
       }),
@@ -298,10 +299,10 @@ router.get('/:address', publicLimiter, async (req, res) => {
 /**
  * POST /tokens/list
  *
- * A creator lists their pump.fun-launched token on SCALE.
- * Verifies the mint is a real SPL token on Solana, gates on Jupiter's
- * launchpad attribution (only genuine pump.fun launches list), and
- * takes metadata straight from the verification result.
+ * A creator lists their PONS-launched token on LOADED.
+ * Verifies the address is a real ERC-20 on Robinhood Chain, gates on the coin
+ * being a launchpad token whose PONS creator fees demonstrably reach the pool
+ * wallet, and takes metadata straight from the verification result.
  */
 router.post('/list', async (req, res) => {
   try {
@@ -311,9 +312,9 @@ router.post('/list', async (req, res) => {
       throw new ValidationError('tokenAddress is required');
     }
 
-    // Validate mint address format (Solana — base58, case-sensitive)
-    if (typeof tokenAddress !== 'string' || !isValidSolanaAddress(tokenAddress)) {
-      throw new ValidationError('Invalid token address — must be a Solana (base58) mint address');
+    // Validate token address format (Robinhood Chain — 20-byte 0x hex)
+    if (typeof tokenAddress !== 'string' || !isValidAddress(tokenAddress)) {
+      throw new ValidationError('Invalid token address — must be a Robinhood Chain (0x…) token address');
     }
 
     // Check if token already listed
@@ -325,29 +326,29 @@ router.post('/list', async (req, res) => {
     }
 
     // ── On-chain existence check ──
-    // The mint must be a real SPL token on Solana (RPC-level proof).
+    // The address must be a real ERC-20 on Robinhood Chain (RPC-level proof).
     try {
-      await splTotalSupply(tokenAddress);
+      await erc20TotalSupply(tokenAddress);
     } catch {
       throw new ValidationError(
-        'Token mint not found on Solana — is it a real pump.fun coin? ' +
-        `(https://pump.fun/coin/${tokenAddress})`,
+        'Token contract not found on Robinhood Chain — is it a real PONS coin? ' +
+        `(${explorerTokenUrl(tokenAddress)})`,
       );
     }
 
     // ── The listing deal — REAL, verified on-chain ──
-    // The coin must be a genuine pump.fun launch AND its creator must
-    // share creator rewards with the SCALE pool wallet (pump.fun's
-    // "Share creator rewards" — read straight from the fee-sharing
-    // program's on-chain config, nothing self-reported).
-    const SCALE_MINT = (process.env.SCALE_TOKEN_MINT || '').trim();
+    // The coin must be a launchpad token AND its PONS creator fees must reach
+    // the LOADED pool wallet. PONS takes 1% per trade and splits it 70/30
+    // creator/protocol; the creator's 70% is what gets pointed at the pool.
+    // There is no public getter for the recipient, so the gate is economic:
+    // fees have to show up in the pool wallet on-chain, nothing self-reported.
+    const LOADED_TOKEN = (process.env.LOADED_TOKEN_MINT || '').trim().toLowerCase();
+    const addrKey = tokenAddress.toLowerCase();
     const pool = poolWalletAddress();
-    const minPct = minFeeSharePct();
     let feeVerified =
-      (tokenAddress === SCALE_MINT && SCALE_MINT.length > 0) ||
-      VERIFIED_TOKENS.has(tokenAddress);
-    let creatorWallet: string | null = null;
-    let tokenInfo: JupTokenInfo | null = null;
+      (addrKey === LOADED_TOKEN && LOADED_TOKEN.length > 0) ||
+      verifiedTokens().has(addrKey);
+    let tokenInfo: TokenInfo | null = null;
     let isBonded = false;
 
     if (!feeVerified) {
@@ -356,52 +357,52 @@ router.post('/list', async (req, res) => {
       }
       let check;
       try {
-        check = await verifyPumpRewardShare(tokenAddress, pool, minPct);
+        check = await verifyCreatorFeeShare(tokenAddress, pool);
       } catch (err) {
-        console.error('[tokens] reward-share verification failed:', err);
+        console.error('[tokens] creator-fee verification failed:', err);
         throw new ValidationError(
           'Could not verify this coin on-chain right now — try again in a minute.',
         );
       }
 
       const fixIt =
-        ` Enable "Share creator rewards" on your pump.fun coin and add the SCALE pool wallet ` +
-        `${pool} at ${minPct}%, then list again. Guide: scale.fun/list`;
+        ` Set your PONS creator fee recipient to the LOADED pool wallet ${pool} ` +
+        `(setCreatorFeeRecipient on your coin), let one trade settle so the fee lands, ` +
+        `then list again. Guide: loaded.fun/list`;
 
       switch (check.status) {
         case 'verified':
           feeVerified = true;
-          creatorWallet = check.creator ?? null;
-          tokenInfo = check.token ?? null;
-          isBonded = check.graduated ?? false;
+          tokenInfo = check.token;
+          isBonded = check.graduated;
           console.log(
-            `[tokens] ✅ reward share verified for ${tokenAddress} (${check.walletPct}% → pool, creator: ${creatorWallet ?? 'unknown'})`,
+            `[tokens] creator fees verified for ${tokenAddress} (${check.launchpad}): ${check.detail}`,
           );
           break;
         case 'not_found':
           throw new ValidationError(
-            'Token not found on Solana — is it a real pump.fun coin? ' +
-            `(https://pump.fun/coin/${tokenAddress})`,
+            'Token not found on Robinhood Chain — is it a real PONS coin? ' +
+            `(${explorerTokenUrl(tokenAddress)})`,
           );
-        case 'not_pump_token':
+        case 'not_launchpad_token':
           throw new ValidationError(
-            'Only pump.fun launches can be listed on SCALE. Launch on pump.fun and list again.',
+            'Only PONS launches can be listed on LOADED. Launch on PONS and list again.',
           );
-        case 'not_configured':
-          throw new ValidationError('Creator-reward sharing is not enabled for this coin.' + fixIt);
         case 'not_redirected':
-          throw new ValidationError('The SCALE pool wallet is not a shareholder of this coin.' + fixIt);
-        case 'partial':
           throw new ValidationError(
-            `The pool wallet only receives ${check.walletPct}% of creator rewards — ${minPct}% is required.` + fixIt,
+            'PONS creator fees on this coin are not reaching the LOADED pool wallet.' + fixIt,
+          );
+        case 'unverifiable':
+          console.warn(`[tokens] creator-fee gate inconclusive for ${tokenAddress}: ${check.detail}`);
+          throw new ValidationError(
+            'Could not read this coin\'s PONS creator fees on-chain right now — try again in a minute.',
           );
       }
     } else {
-      // Auto-passed ($SCALE itself or an admin-verified mint) — still
+      // Auto-passed ($LOADED itself or an admin-verified address) — still
       // pull metadata best-effort so the listing isn't blank.
       try {
-        tokenInfo = await getJupToken(tokenAddress);
-        isBonded = !!tokenInfo?.graduatedPool || !!tokenInfo?.graduatedAt;
+        tokenInfo = await getTokenInfo(tokenAddress);
       } catch {
         // metadata is best-effort here — defaults apply
       }
@@ -410,8 +411,8 @@ router.post('/list', async (req, res) => {
     // ── Metadata + tier straight from the verification result ──
     const resolvedName: string | null = tokenInfo?.name || null;
     const resolvedSymbol: string | null = tokenInfo?.symbol || null;
-    const resolvedImage: string | null = tokenInfo?.icon ?? null;
-    const marketCapUsd = tokenInfo?.mcap ?? tokenInfo?.fdv ?? 0;
+    const resolvedImage: string | null = tokenInfo?.imageUri ?? null;
+    const marketCapUsd = tokenInfo?.marketCap ?? 0;
     const liquidityUsd = tokenInfo?.liquidity ?? 0;
 
     // Determine tier from market data
@@ -425,7 +426,9 @@ router.post('/list', async (req, res) => {
         name: resolvedName,
         symbol: resolvedSymbol,
         imageUri: resolvedImage,
-        creatorWallet: creatorWallet ?? poolWalletAddress(),
+        // PONS publishes no creator getter, so the wallet on record is the one
+        // the fees provably land in — the pool.
+        creatorWallet: poolWalletAddress(),
         tier: resolvedTier,
         isActive: true,
       },

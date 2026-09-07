@@ -4,10 +4,10 @@ import * as api from '../lib/api';
 import { blip } from '../lib/sfx';
 
 /* ═══════════════════════════════════════════════════════════════
-   SCREENER — live Solana market wall. Real GeckoTerminal trending data
+   SCREENER — live Robinhood Chain market wall. Real GeckoTerminal trending data
    through the protocol proxy, refreshed every 30s. Keyboard-first:
    j/k or ↑/↓ to move, enter to open the trade terminal, s to
-   cycle sort. LISTED = tradeable with leverage on SCALE.
+   cycle sort. LISTED = tradeable with leverage on LOADED.
    ═══════════════════════════════════════════════════════════════ */
 
 type SortKey = 'rank' | 'price' | 'priceChange24h' | 'volume24h' | 'marketCap' | 'liquidity';
@@ -70,7 +70,7 @@ export const Screener: FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Which of these are listed on SCALE (leveraged trading available)
+  // Which of these are listed on LOADED (leveraged trading available)
   useEffect(() => {
     api.getListedTokens(50)
       .then((toks) => setListed(new Set(toks.map((t) => t.address))))
@@ -135,7 +135,7 @@ export const Screener: FC = () => {
         <div>
           <h2>MARKET SCREENER</h2>
           <p className="scr-sub">
-            Trending pump.fun coins — live Solana feed · refreshes every 30s ·{' '}
+            Trending PONS coins — live Robinhood Chain feed · refreshes every 30s ·{' '}
             <span className="text-primary">j/k</span> move · <span className="text-primary">↵</span> trade ·{' '}
             <span className="text-primary">s</span> sort
           </p>

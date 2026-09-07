@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @scale/core build && pnpm --filter @scale/web build",
+  "buildCommand": "pnpm --filter @loaded/core build && pnpm --filter @loaded/web build",
   "outputDirectory": "apps/web/dist",
   "installCommand": "pnpm install",
   "framework": null,

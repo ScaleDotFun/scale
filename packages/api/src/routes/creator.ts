@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Creator Routes
+// LOADED PROTOCOL — Creator Routes
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@scale/database';
-import { LAMPORTS_PER_SOL, getTierConfig, type Tier } from '@scale/core';
-import { isValidSolanaAddress } from '@scale/solana';
+import { prisma } from '@loaded/database';
+import { WEI_PER_ETH, getTierConfig, type Tier } from '@loaded/core';
+import { isValidAddress, transferNative, getProtocolAccount, hasProtocolKey } from '@loaded/evm';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -13,8 +13,8 @@ import { ValidationError, NotFoundError, ForbiddenError, InsufficientFundsError 
 
 const router = Router();
 
-/** Minimum claimable amount: 0.05 SOL in lamports */
-const MIN_CLAIM_LAMPORTS = LAMPORTS_PER_SOL / 20n;
+/** Minimum claimable amount: 0.005 ETH in wei */
+const MIN_CLAIM_WEI = WEI_PER_ETH / 200n;
 
 /**
  * GET /creator/dashboard
@@ -172,8 +172,8 @@ router.get('/dashboard', verifyWalletSignature, async (req, res) => {
 router.get('/dashboard/:wallet', publicLimiter, async (req, res) => {
   try {
     const wallet = String(req.params.wallet);
-    if (!isValidSolanaAddress(wallet)) {
-      throw new ValidationError('Invalid wallet — must be a Solana (base58) address');
+    if (!isValidAddress(wallet)) {
+      throw new ValidationError('Invalid wallet — must be a Robinhood Chain address (0x…)');
     }
     sendSuccess(res, await buildCreatorDashboard(wallet));
   } catch (err) {
@@ -250,8 +250,8 @@ router.get('/payouts', verifyWalletSignature, async (req, res) => {
 router.get('/payouts/:wallet', publicLimiter, async (req, res) => {
   try {
     const wallet = String(req.params.wallet);
-    if (!isValidSolanaAddress(wallet)) {
-      throw new ValidationError('Invalid wallet — must be a Solana (base58) address');
+    if (!isValidAddress(wallet)) {
+      throw new ValidationError('Invalid wallet — must be a Robinhood Chain address (0x…)');
     }
     await respondCreatorPayouts(wallet, req, res);
   } catch (err) {
@@ -262,8 +262,8 @@ router.get('/payouts/:wallet', publicLimiter, async (req, res) => {
 /**
  * POST /creator/claim
  *
- * Claim accumulated earnings. Requires minimum 0.05 SOL accumulated.
- * This marks the payouts as claimed; the actual SOL transfer is handled by services.
+ * Claim accumulated earnings. Requires minimum 0.005 ETH accumulated.
+ * This marks the payouts as claimed; the actual ETH transfer is handled by services.
  */
 router.post('/claim', verifyWalletSignature, async (req, res) => {
   try {
@@ -286,60 +286,82 @@ router.post('/claim', verifyWalletSignature, async (req, res) => {
 
     const estimatedAmount = claimableAgg._sum.amount ?? 0n;
 
-    if (estimatedAmount < MIN_CLAIM_LAMPORTS) {
+    if (estimatedAmount < MIN_CLAIM_WEI) {
       throw new InsufficientFundsError(
-        `Minimum claim amount is 0.05 SOL. Current claimable: ${(Number(estimatedAmount) / 1e9).toFixed(6)} SOL`,
+        `Minimum claim amount is 0.005 ETH. Current claimable: ${(Number(estimatedAmount) / 1e18).toFixed(6)} ETH`,
       );
     }
 
-    // Atomically mark unclaimed payouts as claimed.
-    // The WHERE condition ensures concurrent requests cannot double-claim:
-    // only rows still in 'pending'/'claimable' status will be updated.
+    if (!hasProtocolKey()) {
+      throw new ValidationError('Payouts are temporarily paused — pool wallet not configured.');
+    }
+
+    // Phase 1 — atomically claim the batch into a transient 'claiming'
+    // status (concurrent requests get count=0). claimedAt marks the batch.
     const now = new Date();
-
-    const result = await prisma.$transaction(async (tx) => {
-      const updated = await tx.creatorPayout.updateMany({
-        where: {
-          creatorWallet: wallet,
-          status: { in: ['pending', 'claimable'] },
-        },
-        data: {
-          status: 'claimed',
-          claimedAt: now,
-        },
-      });
-
-      if (updated.count === 0) {
-        throw new ValidationError('Payouts were already claimed by a concurrent request');
-      }
-
-      // Sum the just-claimed payouts to get the exact amount
-      const claimedSum = await tx.creatorPayout.aggregate({
-        where: {
-          creatorWallet: wallet,
-          status: 'claimed',
-          claimedAt: now,
-        },
-        _sum: { amount: true },
-      });
-
-      const totalAmount = claimedSum._sum.amount ?? 0n;
-
-      // Record pool outflow
-      await tx.poolLedger.create({
-        data: {
-          type: 'creator_payout',
-          amount: -totalAmount,
-        },
-      });
-
-      return { totalAmount, count: updated.count };
+    const claimed = await prisma.creatorPayout.updateMany({
+      where: {
+        creatorWallet: wallet,
+        status: { in: ['pending', 'claimable'] },
+      },
+      data: { status: 'claiming', claimedAt: now },
     });
+    if (claimed.count === 0) {
+      throw new ValidationError('Payouts were already claimed by a concurrent request');
+    }
+    const claimedSum = await prisma.creatorPayout.aggregate({
+      where: { creatorWallet: wallet, status: 'claiming', claimedAt: now },
+      _sum: { amount: true },
+    });
+    const totalAmount = claimedSum._sum.amount ?? 0n;
+
+    // Phase 2 — actually move the ETH. (This transfer used to not exist:
+    // rows were flipped to 'claimed' and the money never left the pool.)
+    let claimTx: string;
+    try {
+      claimTx = await transferNative(getProtocolAccount(), wallet, totalAmount);
+    } catch (xferErr) {
+      // Transfer failed — release the batch so the creator can retry.
+      await prisma.creatorPayout.updateMany({
+        where: { creatorWallet: wallet, status: 'claiming', claimedAt: now },
+        data: { status: 'claimable', claimedAt: null },
+      });
+      console.error(`[creator] claim transfer failed for ${wallet}:`, xferErr);
+      throw new ValidationError(
+        `ETH transfer failed: ${xferErr instanceof Error ? xferErr.message : 'network error'}. Your payouts are still claimable — try again.`,
+      );
+    }
+
+    // Phase 3 — settle: mark claimed with the real tx + ledger the outflow.
+    // Retried; if every attempt fails the rows stay 'claiming' with the ETH
+    // already sent — logged CRITICAL for manual reconciliation (never
+    // released back to claimable, which would allow a double-claim).
+    let settled = false;
+    for (let i = 0; i < 5 && !settled; i++) {
+      try {
+        await prisma.$transaction([
+          prisma.creatorPayout.updateMany({
+            where: { creatorWallet: wallet, status: 'claiming', claimedAt: now },
+            data: { status: 'claimed', claimTx },
+          }),
+          prisma.poolLedger.create({
+            data: { type: 'creator_payout', amount: -totalAmount, txHash: claimTx },
+          }),
+        ]);
+        settled = true;
+      } catch {
+        await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+    if (!settled) {
+      console.error(`[creator] CRITICAL: claim ${claimTx} paid ${totalAmount} wei to ${wallet} but settlement failed — rows left 'claiming'`);
+    }
 
     sendSuccess(res, {
-      claimedAmount: String(result.totalAmount),
-      payoutCount: result.count,
-      message: 'Claim initiated. SOL will be transferred to your wallet shortly.',
+      claimedAmount: String(totalAmount),
+      payoutCount: claimed.count,
+      claimTx,
+      message: `${(Number(totalAmount) / 1e18).toFixed(4)} ETH sent to your wallet.`,
     });
   } catch (err) {
     sendError(res, err);

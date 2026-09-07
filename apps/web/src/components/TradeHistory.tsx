@@ -1,6 +1,6 @@
 import { type FC } from 'react';
 import type { PositionInfo } from '../lib/api';
-import { formatSol, formatTimeAgo } from '../lib/format';
+import { formatEth, formatTimeAgo, weiToEth } from '../lib/format';
 import { PnlCardGen } from './PnlCardGen';
 
 interface TradeHistoryProps {
@@ -53,15 +53,15 @@ export const TradeHistory: FC<TradeHistoryProps> = ({ trades, loading }) => {
         <tbody>
           {trades.map((trade) => {
             const st = statusLabel(trade.status);
-            const pnlSol = trade.pnlSol ? Number(trade.pnlSol) / 1e9 : null;
-            const pnlColor = pnlSol != null && pnlSol > 0 ? 'text-green' : pnlSol != null && pnlSol < 0 ? 'text-red' : 'text-secondary';
+            const pnlEth = trade.pnlWei ? weiToEth(trade.pnlWei) : null;
+            const pnlColor = pnlEth != null && pnlEth > 0 ? 'text-green' : pnlEth != null && pnlEth < 0 ? 'text-red' : 'text-secondary';
             return (
               <tr key={trade.id}>
                 <td className="cell-name">{trade.token?.symbol ?? '???'}</td>
                 <td className="mono">{trade.leverage}x</td>
-                <td className="mono">{formatSol(trade.userCapital, 2)}</td>
+                <td className="mono">{formatEth(trade.userCapital, 2)}</td>
                 <td className={pnlColor} style={{ fontWeight: 600 }}>
-                  {pnlSol != null ? `${pnlSol >= 0 ? '+' : ''}${pnlSol.toFixed(4)} SOL` : '—'}
+                  {pnlEth != null ? `${pnlEth >= 0 ? '+' : ''}${pnlEth.toFixed(4)} ETH` : '—'}
                 </td>
                 <td>
                   <span className={st.color} style={{ fontSize: '0.78rem', fontWeight: 600 }}>

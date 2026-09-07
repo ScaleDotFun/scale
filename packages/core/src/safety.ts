@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Safety & Risk Calculations
+// LOADED PROTOCOL — Safety & Risk Calculations
 // ──────────────────────────────────────────────
 //
 // Centralized safety logic to guarantee the protocol never loses money.
@@ -10,7 +10,7 @@
 //
 
 import {
-  LAMPORTS_PER_SOL,
+  WEI_PER_ETH,
   SAFETY_BUFFER_BPS,
   INSURANCE_FUND_TARGET_BPS,
   INSURANCE_DEPOSIT_RATE_BPS,
@@ -39,20 +39,20 @@ export function calculateSafeExitThreshold(tier: Tier): number {
  * Estimate slippage risk for a position based on liquidity depth.
  * Higher risk = more likely to have significant slippage on exit.
  *
- * @param positionSizeLamports - Total position size
+ * @param positionSizeWei - Total position size
  * @param liquidityUsd - Token's total liquidity in USD
- * @param solPriceUsd - Current SOL price in USD
+ * @param ethPriceUsd - Current ETH price in USD
  * @returns Risk score 0-100 (0 = no risk, 100 = extremely risky)
  */
 export function estimateSlippageRisk(
-  positionSizeLamports: bigint,
+  positionSizeWei: bigint,
   liquidityUsd: number,
-  solPriceUsd: number,
+  ethPriceUsd: number,
 ): number {
-  if (liquidityUsd <= 0 || solPriceUsd <= 0) return 100;
+  if (liquidityUsd <= 0 || ethPriceUsd <= 0) return 100;
 
-  const positionSol = Number(positionSizeLamports) / Number(LAMPORTS_PER_SOL);
-  const positionUsd = positionSol * solPriceUsd;
+  const positionEth = Number(positionSizeWei) / Number(WEI_PER_ETH);
+  const positionUsd = positionEth * ethPriceUsd;
 
   // Position as percentage of total liquidity
   const impactPct = (positionUsd / liquidityUsd) * 100;
@@ -74,21 +74,21 @@ export function estimateSlippageRisk(
  * excessive market impact on exit.
  *
  * @param liquidityUsd - Token's total liquidity in USD
- * @param solPriceUsd - Current SOL price in USD
+ * @param ethPriceUsd - Current ETH price in USD
  * @param tier - Risk tier
- * @returns Maximum position size in lamports
+ * @returns Maximum position size in wei
  */
 export function maxSafePositionSize(
   liquidityUsd: number,
-  solPriceUsd: number,
+  ethPriceUsd: number,
   tier: Tier,
 ): bigint {
-  if (liquidityUsd <= 0 || solPriceUsd <= 0) return 0n;
+  if (liquidityUsd <= 0 || ethPriceUsd <= 0) return 0n;
 
   // Max impact percentages by tier.
   // Note: the "position size" is the leveraged notional, but actual
   // on-chain buy is only the user's collateral (1/leverage of this).
-  // These limits are generous because pump.fun tokens have thin
+  // These limits are generous because PONS tokens have thin
   // liquidity and we don't want to block normal-sized trades.
   const maxImpactPct: Record<Tier, number> = {
     bonded: 25,  // bonded tokens have deepest liquidity
@@ -97,35 +97,35 @@ export function maxSafePositionSize(
   };
 
   const maxPositionUsd = liquidityUsd * (maxImpactPct[tier] / 100);
-  const maxpositionSol = maxPositionUsd / solPriceUsd;
-  return BigInt(Math.floor(maxpositionSol * Number(LAMPORTS_PER_SOL)));
+  const maxPositionEth = maxPositionUsd / ethPriceUsd;
+  return BigInt(Math.floor(maxPositionEth * Number(WEI_PER_ETH)));
 }
 
 /**
  * Calculate the target insurance fund size based on pool balance.
  */
-export function calculateInsuranceFundTarget(poolBalanceLamports: bigint): bigint {
-  return (poolBalanceLamports * BigInt(INSURANCE_FUND_TARGET_BPS)) / BigInt(BPS.FULL);
+export function calculateInsuranceFundTarget(poolBalanceWei: bigint): bigint {
+  return (poolBalanceWei * BigInt(INSURANCE_FUND_TARGET_BPS)) / BigInt(BPS.FULL);
 }
 
 /**
  * Calculate how much of a flat fee should go to the insurance fund.
  * Returns 0 if the fund has reached its target.
  *
- * @param flatFeeLamports - The flat fee collected
- * @param currentFundLamports - Current insurance fund balance
- * @param fundTargetLamports - Target insurance fund balance
+ * @param flatFeeWei - The flat fee collected
+ * @param currentFundWei - Current insurance fund balance
+ * @param fundTargetWei - Target insurance fund balance
  * @returns Amount to deposit into insurance fund
  */
 export function calculateInsuranceDeposit(
-  flatFeeLamports: bigint,
-  currentFundLamports: bigint,
-  fundTargetLamports: bigint,
+  flatFeeWei: bigint,
+  currentFundWei: bigint,
+  fundTargetWei: bigint,
 ): bigint {
-  if (currentFundLamports >= fundTargetLamports) return 0n;
+  if (currentFundWei >= fundTargetWei) return 0n;
 
-  const deposit = (flatFeeLamports * BigInt(INSURANCE_DEPOSIT_RATE_BPS)) / BigInt(BPS.FULL);
-  const needed = fundTargetLamports - currentFundLamports;
+  const deposit = (flatFeeWei * BigInt(INSURANCE_DEPOSIT_RATE_BPS)) / BigInt(BPS.FULL);
+  const needed = fundTargetWei - currentFundWei;
 
   return deposit < needed ? deposit : needed;
 }
@@ -136,18 +136,18 @@ export function calculateInsuranceDeposit(
  * @returns Object with `safe` boolean and `reason` if not safe
  */
 export function validatePositionSafety(
-  userCapitalLamports: bigint,
+  userCapitalWei: bigint,
   leverage: number,
-  poolBalanceLamports: bigint,
+  poolBalanceWei: bigint,
   liquidityUsd: number,
-  solPriceUsd: number,
+  ethPriceUsd: number,
   tier: Tier,
 ): { safe: boolean; reason?: string; slippageRisk?: number } {
-  const positionSizeLamports = userCapitalLamports * BigInt(leverage);
-  const protocolCapitalLamports = positionSizeLamports - userCapitalLamports;
+  const positionSizeWei = userCapitalWei * BigInt(leverage);
+  const protocolCapitalWei = positionSizeWei - userCapitalWei;
 
   // Check 1: Pool has enough capital
-  if (protocolCapitalLamports > poolBalanceLamports) {
+  if (protocolCapitalWei > poolBalanceWei) {
     return {
       safe: false,
       reason: 'Pool has insufficient capital for this position size',
@@ -155,7 +155,7 @@ export function validatePositionSafety(
   }
 
   // Check 2: Only the 3% supply cap matters (enforced in positions.ts).
-  // Liquidity-based limits removed — they were too restrictive for pump.fun tokens.
+  // Liquidity-based limits removed — they were too restrictive for PONS tokens.
 
   return { safe: true };
 }

@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────
-# SCALE — API Dockerfile (Railway)
+# LOADED — API Dockerfile (Railway)
 # ──────────────────────────────────────────────
 # Uses tsx to run TypeScript source directly,
 # avoiding ESM/CJS moduleResolution issues.
@@ -18,7 +18,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/database/package.json ./packages/database/
-COPY packages/solana/package.json ./packages/solana/
+COPY packages/evm/package.json ./packages/evm/
 COPY packages/services/package.json ./packages/services/
 COPY packages/api/package.json ./packages/api/
 
@@ -28,7 +28,7 @@ RUN pnpm install --frozen-lockfile
 # Copy all source
 COPY packages/core/ ./packages/core/
 COPY packages/database/ ./packages/database/
-COPY packages/solana/ ./packages/solana/
+COPY packages/evm/ ./packages/evm/
 COPY packages/services/ ./packages/services/
 COPY packages/api/ ./packages/api/
 

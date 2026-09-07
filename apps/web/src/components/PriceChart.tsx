@@ -38,7 +38,7 @@ interface PriceChartProps {
   onPrice?: (price: number) => void;
 }
 
-// Seconds frames come from the live Jupiter price feed
+// Seconds frames come from the live on-chain price feed
 // (memecoins trade on low frames); minute+ frames come from GeckoTerminal.
 const TIMEFRAMES = ['1S', '5S', '15S', '1', '5', '15', '60', '240', 'D'] as const;
 const TIMEFRAME_LABELS: Record<string, string> = {
@@ -469,7 +469,7 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
   }, [source, tokenAddress]);
 
   const embedUrl = embedPool
-    ? `https://www.geckoterminal.com/solana/pools/${embedPool}?embed=1&info=0&swaps=0&grayscale=0&light_chart=0`
+    ? `https://www.geckoterminal.com/robinhood/pools/${embedPool}?embed=1&info=0&swaps=0&grayscale=0&light_chart=0`
     : null;
 
   const showLiveChart = source === 'live';

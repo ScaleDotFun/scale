@@ -7,14 +7,15 @@ import { SfxToggle } from '../components/SfxToggle';
 import { HelpOverlay } from '../components/HelpOverlay';
 import { Logo } from '../components/Logo';
 import { chartPalette, onThemeChange } from '../lib/theme';
+import { weiToEth } from '../lib/format';
 import * as api from '../lib/api';
 
 /* ═══════════════════════════════════════════════════════════════
-   SCALE — PHOSPHOR landing experience
+   LOADED — PHOSPHOR landing experience
    POST boot · live market wall · risk computer · spec plates
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Market wall — real candles from the top Solana pool ──── */
+/* ── Market wall — real candles from the top Robinhood Chain pool ──── */
 interface WallCandle { o: number; c: number; h: number; l: number }
 
 const MarketWall: FC = () => {
@@ -188,7 +189,6 @@ const Typewriter: FC<{ text: string; delay?: number; className?: string }> = ({ 
 };
 
 /* ── Live protocol stat ─────────────────────────────────────── */
-const lam = (v?: string) => (v ? Number(v) / 1e9 : 0);
 
 const LiveStats: FC = () => {
   const [stats, setStats] = useState<api.ProtocolStatsResponse | null>(null);
@@ -201,11 +201,11 @@ const LiveStats: FC = () => {
     { k: 'MAX LEVERAGE', v: '10.0X' },
     {
       k: 'LENDING POOL',
-      v: stats ? `${lam(stats.poolSizeLamports).toFixed(2)}◎` : '—',
+      v: stats ? `${weiToEth(stats.poolSizeWei).toFixed(2)}Ξ` : '—',
     },
     {
-      k: 'SOL BURNED',
-      v: stats ? `${lam(stats.totalBurnedLamports).toFixed(2)}◎` : '—',
+      k: 'ETH BURNED',
+      v: stats ? `${weiToEth(stats.totalBurnedWei).toFixed(2)}Ξ` : '—',
     },
     {
       k: 'TRADES EXECUTED',
@@ -246,7 +246,7 @@ export const Landing: FC = () => {
   const [ca, setCa] = useState<string | null>(null);
   const [caCopied, setCaCopied] = useState(false);
   useEffect(() => {
-    api.getProtocolStats().then((s) => setCa(s.scaleToken ?? null)).catch(() => setCa(null));
+    api.getProtocolStats().then((s) => setCa(s.loadedToken ?? null)).catch(() => setCa(null));
   }, []);
   const copyCa = () => {
     if (!ca) return;
@@ -263,7 +263,7 @@ export const Landing: FC = () => {
       <nav className="lp-nav">
         <div className="lp-logo">
           <Logo size={22} />
-          <span className="lp-logo-text">SCALE<i className="logo-cursor" /></span>
+          <span className="lp-logo-text">LOADED<i className="logo-cursor" /></span>
         </div>
         <div className="lp-nav-links">
           <a href="#sim">SIMULATOR</a>
@@ -287,7 +287,7 @@ export const Landing: FC = () => {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="lp-badge"
           >
-            <span className="lp-badge-dot" /> LIVE ON SOLANA — TERMINAL v2.0
+            <span className="lp-badge-dot" /> LIVE ON ROBINHOOD CHAIN — TERMINAL v2.0
           </motion.div>
 
           <h1 className="lp-h1">
@@ -298,7 +298,7 @@ export const Landing: FC = () => {
           <Typewriter
             className="lp-sub"
             delay={1300}
-            text="Up to 10x on any pump.fun coin. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
+            text="Up to 10x on any PONS coin. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
           />
 
           <motion.div
@@ -321,9 +321,9 @@ export const Landing: FC = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 1.05 }}
-              title="Copy $SCALE contract address"
+              title="Copy $LOADED contract address"
             >
-              <span className="lp-ca-label">$SCALE CA</span>
+              <span className="lp-ca-label">$LOADED CA</span>
               <span className="lp-ca-addr">{ca}</span>
               <span className="lp-ca-copy">{caCopied ? 'COPIED ✓' : 'COPY'}</span>
             </motion.button>
@@ -345,7 +345,7 @@ export const Landing: FC = () => {
           {[0, 1].map((k) => (
             <div className="lp-marquee-seg" key={k} aria-hidden={k === 1}>
               <span>NO CEX</span><i>◆</i><span>PURE ON-CHAIN</span><i>◆</i><span>10X LEVERAGE</span><i>◆</i>
-              <span>Real Jupiter swaps</span><i>◆</i><span>CREATORS GET PAID</span><i>◆</i><span>THE POOL NEVER LOSES</span><i>◆</i>
+              <span>Real on-chain swaps</span><i>◆</i><span>CREATORS GET PAID</span><i>◆</i><span>THE POOL NEVER LOSES</span><i>◆</i>
             </div>
           ))}
         </div>
@@ -372,9 +372,9 @@ export const Landing: FC = () => {
         </Reveal>
         <div className="lp-steps">
           {[
-            { n: '01', t: 'DEPOSIT', d: 'Sign in with email. A custodial Solana wallet is generated — no extension, no seed-phrase anxiety. Fund it with SOL.' },
-            { n: '02', t: 'PICK & SIZE', d: 'Choose any listed pump.fun coin. Set collateral and dial leverage 2–10x. The lending pool fronts the rest — instantly.' },
-            { n: '03', t: 'RIDE OR DIE', d: 'Position executes as a real Jupiter swap. Take profit, stop loss, or 24h auto-close. Profits split 70/30 with $SCALE buybacks.' },
+            { n: '01', t: 'DEPOSIT', d: 'Sign in with email. A custodial Robinhood Chain wallet is generated — no extension, no seed-phrase anxiety. Fund it with ETH.' },
+            { n: '02', t: 'PICK & SIZE', d: 'Choose any listed PONS coin. Set collateral and dial leverage 2–10x. The lending pool fronts the rest — instantly.' },
+            { n: '03', t: 'RIDE OR DIE', d: 'Position executes as a real on-chain swap. Take profit, stop loss, or 24h auto-close. Profits split 70/30 with $LOADED buybacks.' },
           ].map((c, i) => (
             <Reveal delay={i * 0.1} key={c.n}>
               <div className="lp-step">
@@ -403,7 +403,7 @@ export const Landing: FC = () => {
               <span>CLASS</span><span>MAX LEV</span><span>LIQ. AT</span><span>DESCRIPTION</span>
             </div>
             {[
-              { name: 'BONDED', lev: '10X', liq: '-15%', desc: 'Graduated on pump.fun. Deep liquidity, maximum send.', cls: 'lp-tier-bonded' },
+              { name: 'BONDED', lev: '10X', liq: '-15%', desc: 'Graduated on PONS. Deep liquidity, maximum send.', cls: 'lp-tier-bonded' },
               { name: 'RISING', lev: '5X', liq: '-12%', desc: '$100K+ market cap and climbing. Balanced degen.', cls: 'lp-tier-rising' },
               { name: 'DEGEN', lev: '3X', liq: '-10%', desc: 'Fresh off the curve. Tight leash, pure adrenaline.', cls: 'lp-tier-degen' },
             ].map((t) => (
@@ -429,7 +429,7 @@ export const Landing: FC = () => {
             {[
               { k: '50%', v: 'OF FEES REFILL THE LENDING POOL', c: 'var(--green)' },
               { k: '30%', v: 'PAID TO THE TOKEN CREATOR', c: 'var(--primary)' },
-              { k: '20%', v: 'BUYS & BURNS $SCALE', c: 'var(--magenta)' },
+              { k: '20%', v: 'BUYS & BURNS $LOADED', c: 'var(--magenta)' },
             ].map((f) => (
               <div className="lp-fly-item" key={f.k}>
                 <span className="lp-fly-k mono" style={{ color: f.c }}>{f.k}</span>
@@ -453,7 +453,7 @@ export const Landing: FC = () => {
       <section className="lp-final">
         <Reveal>
           <h2 className="lp-final-h">
-            <Scramble text="READY TO SCALE?" hover speed={30} />
+            <Scramble text="READY TO LOADED?" hover speed={30} />
             <span className="lp-caret blink">▮</span>
           </h2>
           <Link to="/trade" className="lp-cta-main lp-cta-big">
@@ -465,12 +465,12 @@ export const Landing: FC = () => {
       {/* Footer */}
       <footer className="lp-footer">
         <div className="lp-footer-left">
-          <span className="lp-logo-text">SCALE_</span>
+          <span className="lp-logo-text">LOADED_</span>
           <span className="lp-footer-dim">BUILT FOR DEGENS. THE POOL NEVER LOSES.</span>
         </div>
         <div className="lp-footer-links">
-          <a href="https://x.com/ScaleDotFun" target="_blank" rel="noreferrer">TWITTER</a>
-          <a href="https://github.com/ScaleDotFun/scale" target="_blank" rel="noreferrer">GITHUB</a>
+          <a href="https://x.com/LoadedDotFun" target="_blank" rel="noreferrer">TWITTER</a>
+          <a href="https://github.com/LoadedDotFun/scale" target="_blank" rel="noreferrer">GITHUB</a>
           <Link to="/docs">MANUAL</Link>
         </div>
       </footer>

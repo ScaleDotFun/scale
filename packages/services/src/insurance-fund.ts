@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Insurance Fund Worker
+// LOADED PROTOCOL — Insurance Fund Worker
 // ──────────────────────────────────────────────
 //
 // Manages the insurance fund that covers edge-case protocol losses.
@@ -11,22 +11,22 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import {
-  formatSol,
+  formatEth,
   calculateInsuranceFundTarget,
   calculateInsuranceDeposit,
-} from '@scale/core';
+} from '@loaded/core';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[insurance-fund]';
 
 interface InsuranceFundJobData {
   type: 'deposit' | 'withdrawal' | 'check';
-  amountLamports?: string;
+  amountWei?: string;
   reason?: string;
   positionId?: number;
-  txSignature?: string;
+  txHash?: string;
 }
 
 /**
@@ -59,12 +59,12 @@ async function getPoolBalance(): Promise<bigint> {
  * Process an insurance fund job.
  */
 async function processInsuranceFundJob(job: Job<InsuranceFundJobData>): Promise<void> {
-  const { type, amountLamports, reason, positionId, txSignature } = job.data;
+  const { type, amountWei, reason, positionId, txHash } = job.data;
 
   try {
     switch (type) {
       case 'deposit': {
-        const amount = BigInt(amountLamports || '0');
+        const amount = BigInt(amountWei || '0');
         if (amount <= 0n) {
           console.log(`${PREFIX} Skipping zero deposit`);
           return;
@@ -77,7 +77,7 @@ async function processInsuranceFundJob(job: Job<InsuranceFundJobData>): Promise<
 
         if (currentBalance >= target) {
           console.log(
-            `${PREFIX} Fund at target (${formatSol(currentBalance)} / ${formatSol(target)} SOL), skipping deposit`,
+            `${PREFIX} Fund at target (${formatEth(currentBalance)} / ${formatEth(target)} ETH), skipping deposit`,
           );
           return;
         }
@@ -95,25 +95,25 @@ async function processInsuranceFundJob(job: Job<InsuranceFundJobData>): Promise<
             amount: actualDeposit,
             reason: reason || 'flat_fee_allocation',
             positionId,
-            txSignature,
+            txHash,
           },
         });
 
         console.log(
-          `${PREFIX} Deposited ${formatSol(actualDeposit)} SOL | ` +
-          `Balance: ${formatSol(currentBalance + actualDeposit)} / ${formatSol(target)} SOL`,
+          `${PREFIX} Deposited ${formatEth(actualDeposit)} ETH | ` +
+          `Balance: ${formatEth(currentBalance + actualDeposit)} / ${formatEth(target)} ETH`,
         );
         break;
       }
 
       case 'withdrawal': {
-        const amount = BigInt(amountLamports || '0');
+        const amount = BigInt(amountWei || '0');
         if (amount <= 0n) return;
 
         const currentBalance = await getInsuranceFundBalance();
         if (amount > currentBalance) {
           console.error(
-            `${PREFIX} ⚠️ Withdrawal exceeds balance! Requested: ${formatSol(amount)} SOL, Balance: ${formatSol(currentBalance)} SOL`,
+            `${PREFIX} ⚠️ Withdrawal exceeds balance! Requested: ${formatEth(amount)} ETH, Balance: ${formatEth(currentBalance)} ETH`,
           );
           // Still process but log the warning — this is a critical event
         }
@@ -125,13 +125,13 @@ async function processInsuranceFundJob(job: Job<InsuranceFundJobData>): Promise<
             amount: -amount,
             reason: reason || 'slippage_coverage',
             positionId,
-            txSignature,
+            txHash,
           },
         });
 
         console.log(
-          `${PREFIX} ⚠️ Withdrew ${formatSol(amount)} SOL for: ${reason || 'unknown'} | ` +
-          `Remaining: ${formatSol(currentBalance - amount)} SOL`,
+          `${PREFIX} ⚠️ Withdrew ${formatEth(amount)} ETH for: ${reason || 'unknown'} | ` +
+          `Remaining: ${formatEth(currentBalance - amount)} ETH`,
         );
         break;
       }
@@ -145,7 +145,7 @@ async function processInsuranceFundJob(job: Job<InsuranceFundJobData>): Promise<
           : 0;
 
         console.log(
-          `${PREFIX} Fund status: ${formatSol(currentBalance)} / ${formatSol(target)} SOL (${pct.toFixed(2)}% of pool)`,
+          `${PREFIX} Fund status: ${formatEth(currentBalance)} / ${formatEth(target)} ETH (${pct.toFixed(2)}% of pool)`,
         );
         break;
       }

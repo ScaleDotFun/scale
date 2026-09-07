@@ -1,12 +1,12 @@
 # ──────────────────────────────────────────────
-# SCALE PROTOCOL — Workers Dockerfile
+# LOADED PROTOCOL — Workers Dockerfile
 # ──────────────────────────────────────────────
 # Runs background services: price monitor (liquidations + TP/SL),
 # position closer, burn engine, lock engine, creator payouts,
 # listing scanner.
 #
 # Mirrors Dockerfile.api 1:1 — the workspace packages export their
-# TypeScript sources (@scale/database → src/index.ts), so
+# TypeScript sources (@loaded/database → src/index.ts), so
 # production runs under tsx exactly like the api service does.
 # Compiled-dist multi-stage variants break on pnpm symlinks and on
 # the .ts exports; this pattern is the one proven in production.
@@ -22,19 +22,19 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/database/package.json packages/database/
-COPY packages/solana/package.json packages/solana/
+COPY packages/evm/package.json packages/evm/
 COPY packages/services/package.json packages/services/
 
 RUN pnpm install --frozen-lockfile
 
 COPY packages/core/ packages/core/
 COPY packages/database/ packages/database/
-COPY packages/solana/ packages/solana/
+COPY packages/evm/ packages/evm/
 COPY packages/services/ packages/services/
 
 RUN cd packages/database && npx prisma generate
 
-# core/services export dist entrypoints (database + solana export src) — build them
+# core/services export dist entrypoints (database + evm export src) — build them
 # exactly like Dockerfile.api does so imports resolve under tsx
 RUN cd packages/core && pnpm build
 RUN cd packages/services && pnpm build

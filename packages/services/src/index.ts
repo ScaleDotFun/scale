@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Services Barrel Export
+// LOADED PROTOCOL — Services Barrel Export
 // ──────────────────────────────────────────────
 
 // Queues & Redis
@@ -23,7 +23,7 @@ export {
 export { feeClaimerWorker, scheduleFeeClaimer } from './fee-claimer.js';
 export { priceMonitorWorker, schedulePriceMonitor } from './price-monitor.js';
 export { positionCloserWorker } from './position-closer.js';
-export { burnEngineWorker, getPendingBurnLamports, resetPendingBurns } from './burn-engine.js';
+export { burnEngineWorker, getPendingBurnWei, resetPendingBurns } from './burn-engine.js';
 export { lockEngineWorker, scheduleLockUnlockChecker } from './lock-engine.js';
 export { creatorPayoutWorker } from './creator-payout.js';
 export { listingScannerWorker, checkAndListToken } from './listing-scanner.js';

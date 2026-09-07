@@ -1,5 +1,6 @@
 import { useApi } from './useApi';
 import * as api from '../lib/api';
+import { weiToEth } from '../lib/format';
 
 /** Hook for protocol-wide stats: pool size, total burned, etc. */
 export function useStats() {
@@ -10,19 +11,17 @@ export function useStats() {
 
   const stats = result.data;
 
-  const poolSizeSol = stats ? Number(stats.poolSizeLamports) / 1e9 : 0;
-  const totalBurnedSol = stats ? Number(stats.totalBurnedLamports) / 1e9 : 0;
-  const totalLockedSol = stats ? Number(stats.totalLockedLamports) / 1e9 : 0;
-  const totalCreatorPayoutsSol = stats
-    ? Number(stats.totalCreatorPayoutsLamports) / 1e9
-    : 0;
+  const poolSizeEth = weiToEth(stats?.poolSizeWei);
+  const totalBurnedEth = weiToEth(stats?.totalBurnedWei);
+  const totalLockedEth = weiToEth(stats?.totalLockedWei);
+  const totalCreatorPayoutsEth = weiToEth(stats?.totalCreatorPayoutsWei);
 
   return {
     stats,
-    poolSizeSol,
-    totalBurnedSol,
-    totalLockedSol,
-    totalCreatorPayoutsSol,
+    poolSizeEth,
+    totalBurnedEth,
+    totalLockedEth,
+    totalCreatorPayoutsEth,
     loading: result.loading,
     error: result.error,
     refetch: result.refetch,

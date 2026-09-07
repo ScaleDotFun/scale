@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Error Class Tests
+// LOADED PROTOCOL — Error Class Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
@@ -109,7 +109,7 @@ describe('InsufficientFundsError', () => {
   });
 
   it('accepts custom message', () => {
-    const err = new InsufficientFundsError('Not enough SOL');
-    expect(err.message).toBe('Not enough SOL');
+    const err = new InsufficientFundsError('Not enough ETH');
+    expect(err.message).toBe('Not enough ETH');
   });
 });

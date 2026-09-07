@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Locks Routes
+// LOADED PROTOCOL — Locks Routes
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -52,7 +52,7 @@ router.get('/', verifyWalletSignature, async (req, res) => {
 
     const data = locks.map((lock) => ({
       id: lock.id,
-      solAmount: String(lock.solAmount),
+      ethAmount: String(lock.ethAmount),
       tokenAmount: String(lock.tokenAmount),
       lockedAt: lock.lockedAt,
       unlocksAt: lock.unlocksAt,
@@ -125,7 +125,7 @@ router.get('/global', publicLimiter, async (req, res) => {
         where: { isUnlocked: false },
         _sum: {
           tokenAmount: true,
-          solAmount: true,
+          ethAmount: true,
         },
       }),
       // Total already unlocked
@@ -133,7 +133,7 @@ router.get('/global', publicLimiter, async (req, res) => {
         where: { isUnlocked: true },
         _sum: {
           tokenAmount: true,
-          solAmount: true,
+          ethAmount: true,
         },
       }),
       // Upcoming unlocks in the next 7 days
@@ -144,7 +144,7 @@ router.get('/global', publicLimiter, async (req, res) => {
         },
         _sum: {
           tokenAmount: true,
-          solAmount: true,
+          ethAmount: true,
         },
         _count: true,
       }),
@@ -161,7 +161,7 @@ router.get('/global', publicLimiter, async (req, res) => {
       select: {
         id: true,
         tokenAmount: true,
-        solAmount: true,
+        ethAmount: true,
         unlocksAt: true,
       },
       orderBy: { unlocksAt: 'asc' },
@@ -171,15 +171,15 @@ router.get('/global', publicLimiter, async (req, res) => {
     sendSuccess(res, {
       totalLocked: {
         tokenAmount: String(totalLockedAgg._sum.tokenAmount ?? 0n),
-        solAmount: String(totalLockedAgg._sum.solAmount ?? 0n),
+        ethAmount: String(totalLockedAgg._sum.ethAmount ?? 0n),
       },
       totalUnlocked: {
         tokenAmount: String(totalUnlockedAgg._sum.tokenAmount ?? 0n),
-        solAmount: String(totalUnlockedAgg._sum.solAmount ?? 0n),
+        ethAmount: String(totalUnlockedAgg._sum.ethAmount ?? 0n),
       },
       upcoming7d: {
         tokenAmount: String(upcomingUnlocksAgg._sum.tokenAmount ?? 0n),
-        solAmount: String(upcomingUnlocksAgg._sum.solAmount ?? 0n),
+        ethAmount: String(upcomingUnlocksAgg._sum.ethAmount ?? 0n),
         count: upcomingUnlocksAgg._count,
       },
       activeLockCount,
@@ -187,7 +187,7 @@ router.get('/global', publicLimiter, async (req, res) => {
       nextUnlocks: upcomingUnlocks.map((u) => ({
         id: u.id,
         tokenAmount: String(u.tokenAmount),
-        solAmount: String(u.solAmount),
+        ethAmount: String(u.ethAmount),
         unlocksAt: u.unlocksAt,
         timeRemainingMs: Math.max(0, u.unlocksAt.getTime() - now.getTime()),
       })),

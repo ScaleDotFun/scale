@@ -1,14 +1,14 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /wallet, /deposit, /withdraw, /balance
+// LOADED PROTOCOL — /wallet, /deposit, /withdraw, /balance
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
 import { InlineKeyboard } from 'grammy';
 import * as api from '../lib/api.js';
-import { bold, code, escapeMarkdown, formatAddress, formatSol, formatUsd } from '../lib/format.js';
+import { bold, code, escapeMarkdown, formatAddress, formatEth, formatUsd } from '../lib/format.js';
 
 /**
- * /wallet — show wallet address and SOL balance
+ * /wallet — show wallet address and ETH balance
  */
 export async function handleWallet(ctx: CommandContext<Context>): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
@@ -19,18 +19,18 @@ export async function handleWallet(ctx: CommandContext<Context>): Promise<void> 
     const balance = await api.getBalance(telegramId);
 
     const addr = escapeMarkdown(wallet.walletAddress);
-    const sol = escapeMarkdown(formatSol(BigInt(balance.solLamports)));
+    const eth = escapeMarkdown(formatEth(BigInt(balance.ethWei)));
     const ape = escapeMarkdown(balance.apeBalance.toLocaleString('en-US'));
 
     const msg = [
       `💰 ${bold('Your Wallet')}`,
       ``,
       `${bold('Address:')} ${code(addr)}`,
-      `${bold('SOL Balance:')} ${sol}`,
-      `${bold('\\$SCALE Balance:')} ${escapeMarkdown(ape)} \\$SCALE`,
+      `${bold('ETH Balance:')} ${eth}`,
+      `${bold('\\$LOADED Balance:')} ${escapeMarkdown(ape)} \\$LOADED`,
       ``,
       `Use /deposit to fund your wallet`,
-      `Use /withdraw to send SOL out`,
+      `Use /withdraw to send ETH out`,
     ].join('\n');
 
     await ctx.reply(msg, { parse_mode: 'MarkdownV2' });
@@ -54,15 +54,15 @@ export async function handleDeposit(ctx: CommandContext<Context>): Promise<void>
     const addr = escapeMarkdown(wallet.walletAddress);
 
     const msg = [
-      `📥 ${bold('Deposit SOL')}`,
+      `📥 ${bold('Deposit ETH')}`,
       ``,
-      `Send SOL to the address below:`,
+      `Send ETH to the address below:`,
       ``,
       code(addr),
       ``,
       `⚡ Deposits are detected automatically`,
       `⏱ Confirmation takes ~30 seconds`,
-      `💡 Min deposit: 0\\.001 SOL`,
+      `💡 Min deposit: 0\\.001 ETH`,
     ].join('\n');
 
     await ctx.reply(msg, { parse_mode: 'MarkdownV2' });
@@ -90,7 +90,7 @@ export async function handleWithdraw(ctx: CommandContext<Context>): Promise<void
         `⚠️ ${bold('Usage:')} /withdraw \\<amount\\> \\<address\\>`,
         ``,
         `Example: ${code('/withdraw 0.5 7xKs3fDabcdef...')}`,
-        `Amount is in SOL\\.`,
+        `Amount is in ETH\\.`,
       ].join('\n'),
       { parse_mode: 'MarkdownV2' },
     );
@@ -99,32 +99,32 @@ export async function handleWithdraw(ctx: CommandContext<Context>): Promise<void
 
   const amountStr = parts[0];
   const toAddress = parts[1];
-  const amountSol = parseFloat(amountStr);
+  const amountEth = parseFloat(amountStr);
 
-  if (isNaN(amountSol) || amountSol <= 0) {
-    await ctx.reply('⚠️ Invalid amount\\. Please enter a positive SOL value\\.', {
+  if (isNaN(amountEth) || amountEth <= 0) {
+    await ctx.reply('⚠️ Invalid amount\\. Please enter a positive ETH value\\.', {
       parse_mode: 'MarkdownV2',
     });
     return;
   }
 
   if (toAddress.length < 32 || toAddress.length > 44) {
-    await ctx.reply('⚠️ Invalid Solana address\\.', { parse_mode: 'MarkdownV2' });
+    await ctx.reply('⚠️ Invalid Robinhood Chain address\\.', { parse_mode: 'MarkdownV2' });
     return;
   }
 
-  const amountLamports = Math.round(amountSol * 1e9).toString();
-  const escapedAmt = escapeMarkdown(amountSol.toString());
+  const amountWei = Math.round(amountEth * 1e9).toString();
+  const escapedAmt = escapeMarkdown(amountEth.toString());
   const escapedAddr = escapeMarkdown(formatAddress(toAddress));
 
   const keyboard = new InlineKeyboard()
-    .text('✅ Confirm', `confirm_withdraw:${amountLamports}:${toAddress}`)
+    .text('✅ Confirm', `confirm_withdraw:${amountWei}:${toAddress}`)
     .text('❌ Cancel', 'cancel_withdraw');
 
   const msg = [
     `📤 ${bold('Confirm Withdrawal')}`,
     ``,
-    `${bold('Amount:')} ${escapedAmt} SOL`,
+    `${bold('Amount:')} ${escapedAmt} ETH`,
     `${bold('To:')} ${code(escapeMarkdown(toAddress))}`,
     ``,
     `⚠️ This action is irreversible\\.`,
@@ -134,7 +134,7 @@ export async function handleWithdraw(ctx: CommandContext<Context>): Promise<void
 }
 
 /**
- * /balance — show SOL + $SCALE balance
+ * /balance — show ETH + $LOADED balance
  */
 export async function handleBalance(ctx: CommandContext<Context>): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
@@ -142,14 +142,14 @@ export async function handleBalance(ctx: CommandContext<Context>): Promise<void>
 
   try {
     const balance = await api.getBalance(telegramId);
-    const sol = escapeMarkdown(formatSol(BigInt(balance.solLamports)));
+    const eth = escapeMarkdown(formatEth(BigInt(balance.ethWei)));
     const ape = escapeMarkdown(balance.apeBalance.toLocaleString('en-US'));
 
     const msg = [
       `💎 ${bold('Balances')}`,
       ``,
-      `${bold('SOL:')} ${sol}`,
-      `${bold('\\$SCALE:')} ${ape}`,
+      `${bold('ETH:')} ${eth}`,
+      `${bold('\\$LOADED:')} ${ape}`,
     ].join('\n');
 
     await ctx.reply(msg, { parse_mode: 'MarkdownV2' });

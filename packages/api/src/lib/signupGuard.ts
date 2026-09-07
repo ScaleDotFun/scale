@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Sybil resistance for account creation
+// LOADED PROTOCOL — Sybil resistance for account creation
 //
 // Stops one person from farming the protocol with many custodial
 // accounts (self-dealing to farm creator fees, botting a coin, etc.).
@@ -11,7 +11,7 @@
 // ──────────────────────────────────────────────
 
 import type { Request } from 'express';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import { ValidationError } from './errors';
 
 const MAX_PER_DEVICE = Number(process.env.SIGNUP_MAX_PER_DEVICE ?? 1);
@@ -30,13 +30,13 @@ export function getClientIp(req: Request): string {
 
 /**
  * Stable per-device id — sent by the client as a header (fetch calls)
- * or the `scale_did` cookie (top-level OAuth navigation). Validated to
+ * or the `loaded_did` cookie (top-level OAuth navigation). Validated to
  * an opaque token so it can't be used for injection.
  */
 export function getDeviceId(req: Request): string | null {
   const header = req.headers['x-device-id'];
   const fromHeader = Array.isArray(header) ? header[0] : header;
-  const fromCookie = (req.cookies?.scale_did as string | undefined) ?? '';
+  const fromCookie = (req.cookies?.loaded_did as string | undefined) ?? '';
   const id = String(fromHeader || fromCookie || '').trim();
   return /^[A-Za-z0-9_-]{8,64}$/.test(id) ? id : null;
 }

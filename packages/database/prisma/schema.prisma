@@ -14,9 +14,9 @@ model User {
   id             Int      @id @default(autoincrement())
   email          String   @unique @db.VarChar(255)
   passwordHash   String   @map("password_hash") @db.Text
-  walletAddress  String   @unique @map("wallet_address") @db.VarChar(44)
+  walletAddress  String   @unique @map("wallet_address") @db.VarChar(42)
   encryptedKey   String   @map("encrypted_key") @db.Text
-  legacyWalletAddress String? @map("legacy_wallet_address") @db.VarChar(44) // wallet from a previous chain era (kept for recovery)
+  legacyWalletAddress String? @map("legacy_wallet_address") @db.VarChar(42) // superseded wallet, kept so the old key stays recoverable
   legacyEncryptedKey  String? @map("legacy_encrypted_key") @db.Text
   registrationIp String?  @map("registration_ip") @db.VarChar(64)  // sybil resistance
   deviceId       String?  @map("device_id") @db.VarChar(64)         // sybil resistance
@@ -24,26 +24,33 @@ model User {
   referredById   Int?     @map("referred_by_id")
   referredBy     User?    @relation("Referrals", fields: [referredById], references: [id])
   referrals      User[]   @relation("Referrals")
+  // Twitter OAuth fields
+  twitterHandle      String?  @map("twitter_handle") @db.VarChar(50)
+  twitterVerified    Boolean  @default(false) @map("twitter_verified")
+  twitterAccessToken String?  @map("twitter_access_token") @db.Text
+  twitterRefreshToken String? @map("twitter_refresh_token") @db.Text
+  twitterTokenExpiry DateTime? @map("twitter_token_expiry")
   createdAt      DateTime @default(now()) @map("created_at")
 
   @@index([registrationIp])
   @@index([deviceId])
   @@index([referredById])
+  @@index([twitterHandle])
   @@map("users")
 }
 
 // ──────────────────────────────────────────────
 // Points — pre-token flywheel. Earned from REAL position volume only
-// (100 pts / 1 SOL notional) plus a 20% referral override. Never from
+// (100 pts / 1 ETH notional) plus a 20% referral override. Never from
 // posting or social actions.
 // ──────────────────────────────────────────────
 model PointsLedger {
   id            Int      @id @default(autoincrement())
-  userWallet    String   @map("user_wallet") @db.VarChar(44)
+  userWallet    String   @map("user_wallet") @db.VarChar(42)
   type          String   @db.VarChar(20) // 'trade_volume' | 'referral_bonus'
   points        BigInt
   positionId    Int?     @map("position_id")
-  refereeWallet String?  @map("referee_wallet") @db.VarChar(44) // set on referral_bonus rows
+  refereeWallet String?  @map("referee_wallet") @db.VarChar(42) // set on referral_bonus rows
   createdAt     DateTime @default(now()) @map("created_at")
 
   @@index([userWallet])
@@ -57,14 +64,13 @@ model PointsLedger {
 // ──────────────────────────────────────────────
 model Token {
   id                  Int       @id @default(autoincrement())
-  address             String    @unique @db.VarChar(44)
+  address             String    @unique @db.VarChar(42)
   name                String?   @db.VarChar(100)
   symbol              String?   @db.VarChar(20)
   imageUri            String?   @map("image_uri") @db.Text
-  creatorWallet       String    @map("creator_wallet") @db.VarChar(44)
+  creatorWallet       String    @map("creator_wallet") @db.VarChar(42)
   tier                String    @db.VarChar(10) // 'bonded', 'rising', 'degen'
-  feeWalletPda        String?   @map("fee_wallet_pda") @db.VarChar(44)
-  sharingConfigPda    String?   @map("sharing_config_pda") @db.VarChar(44)
+  feeWalletPda        String?   @map("fee_wallet_pda") @db.VarChar(42)
   listedAt            DateTime  @default(now()) @map("listed_at")
   isActive            Boolean   @default(true) @map("is_active")
   isAutoListed        Boolean   @default(false) @map("is_auto_listed")
@@ -84,13 +90,13 @@ model Token {
 // ──────────────────────────────────────────────
 model Position {
   id               Int       @id @default(autoincrement())
-  userWallet       String    @map("user_wallet") @db.VarChar(44)
+  userWallet       String    @map("user_wallet") @db.VarChar(42)
   tokenId          Int       @map("token_id")
-  status           String    @db.VarChar(20) // 'open', 'closed_profit', 'closed_loss', 'liquidated', 'timed_out'
-  userCapital      BigInt    @map("user_capital")      // lamports
-  protocolCapital  BigInt    @map("protocol_capital")  // lamports
+  status           String    @db.VarChar(20) // 'opening', 'open', 'closing', 'closed_profit', 'closed_loss', 'liquidated', 'timed_out', 'failed'
+  userCapital      BigInt    @map("user_capital")      // wei
+  protocolCapital  BigInt    @map("protocol_capital")  // wei
   leverage         Decimal   @db.Decimal(4, 2)
-  flatFee          BigInt    @map("flat_fee")          // lamports
+  flatFee          BigInt    @map("flat_fee")          // wei
   tier             String    @db.VarChar(10)
   entryPrice       Decimal?  @map("entry_price") @db.Decimal(20, 10)
   exitPrice        Decimal?  @map("exit_price") @db.Decimal(20, 10)
@@ -99,7 +105,7 @@ model Position {
   takeProfitPct    Decimal?  @map("take_profit_pct") @db.Decimal(7, 2) // price move % to auto-take-profit
   stopLossPct      Decimal?  @map("stop_loss_pct") @db.Decimal(5, 2)   // price move % to auto-stop-loss
   slippageRisk     Int?      @map("slippage_risk")     // 0-100 risk score
-  pnlSol           BigInt?   @map("pnl_sol")          // lamports (positive = profit)
+  pnlEth           BigInt?   @map("pnl_eth")          // wei (positive = profit)
   userProfit       BigInt?   @map("user_profit")       // user's 70% cash + 30% locked
   protocolRevenue  BigInt?   @map("protocol_revenue")  // flat fee only
   creatorPayout    BigInt?   @map("creator_payout")     // 30% of flat fee
@@ -108,8 +114,17 @@ model Position {
   lockAmount       BigInt?   @map("lock_amount")        // 30% of profit → buy $FRONT
   openedAt         DateTime  @default(now()) @map("opened_at")
   closedAt         DateTime? @map("closed_at")
-  closeTx          String?   @map("close_tx") @db.VarChar(88)
-  openTx           String?   @map("open_tx") @db.VarChar(88)
+  closeTx          String?   @map("close_tx") @db.VarChar(66)
+  openTx           String?   @map("open_tx") @db.VarChar(66)
+  // Recovery markers: each irreversible on-chain step records its tx hash the
+  // moment it lands, so a crash at ANY point leaves enough state for the
+  // reconciliation sweep to finish (or refund) the position instead of
+  // stranding funds. statusChangedAt bounds how long a transient state
+  // ('opening'/'closing') may live before the sweep intervenes.
+  collateralTx     String?   @map("collateral_tx") @db.VarChar(66)
+  userReturnTx     String?   @map("user_return_tx") @db.VarChar(66)
+  ethReceived      BigInt?   @map("eth_received")   // wei from the close sell
+  statusChangedAt  DateTime  @default(now()) @map("status_changed_at")
 
   token          Token          @relation(fields: [tokenId], references: [id])
   burns          Burn[]
@@ -127,9 +142,9 @@ model Position {
 // ──────────────────────────────────────────────
 model Burn {
   id          Int      @id @default(autoincrement())
-  solAmount   BigInt   @map("sol_amount")   // SOL spent
-  tokenAmount BigInt   @map("token_amount") // $FRONT burned
-  txSignature String   @map("tx_signature") @db.VarChar(88)
+  ethAmount   BigInt   @map("eth_amount")   // wei spent
+  tokenAmount BigInt   @map("token_amount") // $FRONT burned (raw units)
+  txHash String   @map("tx_hash") @db.VarChar(66)
   positionId  Int?     @map("position_id")
   burnedAt    DateTime @default(now()) @map("burned_at")
 
@@ -143,14 +158,14 @@ model Burn {
 // ──────────────────────────────────────────────
 model ProfitLock {
   id          Int       @id @default(autoincrement())
-  userWallet  String    @map("user_wallet") @db.VarChar(44)
-  solAmount   BigInt    @map("sol_amount")
-  tokenAmount BigInt    @map("token_amount") // $FRONT locked
+  userWallet  String    @map("user_wallet") @db.VarChar(42)
+  ethAmount   BigInt    @map("eth_amount")                 // wei
+  tokenAmount BigInt    @map("token_amount") // $FRONT locked (raw units)
   positionId  Int?      @map("position_id")
-  buyTx       String    @map("buy_tx") @db.VarChar(88)
-  lockTx      String?   @map("lock_tx") @db.VarChar(88)
-  unlockTx    String?   @map("unlock_tx") @db.VarChar(88)
-  claimTx     String?   @map("claim_tx") @db.VarChar(88)
+  buyTx       String    @map("buy_tx") @db.VarChar(66)
+  lockTx      String?   @map("lock_tx") @db.VarChar(66)
+  unlockTx    String?   @map("unlock_tx") @db.VarChar(66)
+  claimTx     String?   @map("claim_tx") @db.VarChar(66)
   lockedAt    DateTime  @default(now()) @map("locked_at")
   unlocksAt   DateTime  @map("unlocks_at")  // lockedAt + 7 days
   isUnlocked  Boolean   @default(false) @map("is_unlocked")
@@ -170,11 +185,11 @@ model ProfitLock {
 model CreatorPayout {
   id            Int       @id @default(autoincrement())
   tokenId       Int       @map("token_id")
-  creatorWallet String    @map("creator_wallet") @db.VarChar(44)
-  amount        BigInt                            // lamports
+  creatorWallet String    @map("creator_wallet") @db.VarChar(42)
+  amount        BigInt                            // wei
   positionId    Int?      @map("position_id")
   status        String    @db.VarChar(20)         // 'pending', 'claimable', 'claimed'
-  claimTx       String?   @map("claim_tx") @db.VarChar(88)
+  claimTx       String?   @map("claim_tx") @db.VarChar(66)
   createdAt     DateTime  @default(now()) @map("created_at")
   claimedAt     DateTime? @map("claimed_at")
 
@@ -187,13 +202,13 @@ model CreatorPayout {
 }
 
 // ──────────────────────────────────────────────
-// Fee claims from Pump.fun
+// Fee claims from PONS
 // ──────────────────────────────────────────────
 model FeeClaim {
   id          Int      @id @default(autoincrement())
   tokenId     Int      @map("token_id")
-  amount      BigInt                            // lamports
-  txSignature String   @map("tx_signature") @db.VarChar(88)
+  amount      BigInt                            // wei
+  txHash String   @map("tx_hash") @db.VarChar(66)
   claimedAt   DateTime @default(now()) @map("claimed_at")
 
   token Token @relation(fields: [tokenId], references: [id])
@@ -207,7 +222,7 @@ model FeeClaim {
 model TelegramUser {
   id            Int      @id @default(autoincrement())
   telegramId    BigInt   @unique @map("telegram_id")
-  walletAddress String   @map("wallet_address") @db.VarChar(44)
+  walletAddress String   @map("wallet_address") @db.VarChar(42)
   encryptedKey  String   @map("encrypted_key") @db.Text
   createdAt     DateTime @default(now()) @map("created_at")
   settings      Json     @default("{}")
@@ -221,9 +236,9 @@ model TelegramUser {
 model PoolLedger {
   id          Int      @id @default(autoincrement())
   type        String   @db.VarChar(30) // 'fee_claim', 'position_open', 'position_close', 'profit_recycle', 'creator_payout', 'burn', 'insurance_deposit', 'insurance_withdrawal'
-  amount      BigInt                   // lamports (+inflow, -outflow)
+  amount      BigInt                   // wei (+inflow, -outflow)
   referenceId Int?     @map("reference_id")
-  txSignature String?  @map("tx_signature") @db.VarChar(88)
+  txHash String?  @map("tx_hash") @db.VarChar(66)
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([type])
@@ -236,9 +251,9 @@ model PoolLedger {
 model InsuranceFund {
   id            Int      @id @default(autoincrement())
   type          String   @db.VarChar(20) // 'deposit', 'withdrawal'
-  amount        BigInt                   // lamports
+  amount        BigInt                   // wei
   reason        String?  @db.VarChar(200)
-  txSignature   String?  @map("tx_signature") @db.VarChar(88)
+  txHash   String?  @map("tx_hash") @db.VarChar(66)
   positionId    Int?     @map("position_id")
   createdAt     DateTime @default(now()) @map("created_at")
 

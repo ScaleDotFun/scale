@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Revenue Distribution
+// LOADED PROTOCOL — Revenue Distribution
 // ──────────────────────────────────────────────
 //
 // Protocol revenue comes from FLAT FEES only (not profit sharing).
@@ -10,7 +10,7 @@
 //
 // Separately, from the user's trade profit:
 //   30% of profit → Auto-buy & lock $FRONT for 7 days (given to user)
-//   70% of profit → SOL directly to user
+//   70% of profit → ETH directly to user
 //
 
 import {
@@ -19,6 +19,7 @@ import {
   PnLResult,
   BPS,
   REVENUE_SPLIT,
+  WEI_PER_ETH,
 } from './types.js';
 
 /**
@@ -28,20 +29,20 @@ import {
  *   20% → Buy & burn $FRONT
  *   50% → Capital Pool
  */
-export function splitRevenue(totalRevenueLamports: bigint): RevenueBreakdown {
-  const creatorPayoutLamports =
-    (totalRevenueLamports * BigInt(REVENUE_SPLIT.CREATOR)) / BigInt(BPS.FULL);
-  const burnAmountLamports =
-    (totalRevenueLamports * BigInt(REVENUE_SPLIT.BURN)) / BigInt(BPS.FULL);
+export function splitRevenue(totalRevenueWei: bigint): RevenueBreakdown {
+  const creatorPayoutWei =
+    (totalRevenueWei * BigInt(REVENUE_SPLIT.CREATOR)) / BigInt(BPS.FULL);
+  const burnAmountWei =
+    (totalRevenueWei * BigInt(REVENUE_SPLIT.BURN)) / BigInt(BPS.FULL);
   // Pool gets the remainder — absorbs any rounding dust from BigInt floor division
-  const poolReturnLamports =
-    totalRevenueLamports - creatorPayoutLamports - burnAmountLamports;
+  const poolReturnWei =
+    totalRevenueWei - creatorPayoutWei - burnAmountWei;
 
   return {
-    totalRevenueLamports,
-    creatorPayoutLamports,
-    burnAmountLamports,
-    poolReturnLamports,
+    totalRevenueWei,
+    creatorPayoutWei,
+    burnAmountWei,
+    poolReturnWei,
   };
 }
 
@@ -51,17 +52,17 @@ export function splitRevenue(totalRevenueLamports: bigint): RevenueBreakdown {
  */
 export function calculateFullDistribution(
   pnl: PnLResult,
-  userCapitalLamports: bigint,
-  protocolCapitalLamports: bigint,
+  userCapitalWei: bigint,
+  protocolCapitalWei: bigint,
 ): FullDistribution {
-  const revenue = splitRevenue(pnl.totalProtocolRevenueLamports);
+  const revenue = splitRevenue(pnl.totalProtocolRevenueWei);
 
   return {
     pnl,
     revenue,
     capitalReturn: {
-      userCapitalLamports: pnl.isProfitable ? userCapitalLamports : 0n,
-      protocolCapitalLamports: protocolCapitalLamports,
+      userCapitalWei: pnl.isProfitable ? userCapitalWei : 0n,
+      protocolCapitalWei: protocolCapitalWei,
     },
   };
 }
@@ -70,13 +71,13 @@ export function calculateFullDistribution(
  * Format a revenue breakdown for logging / display.
  */
 export function formatRevenueBreakdown(revenue: RevenueBreakdown): string {
-  const sol = (lamports: bigint) =>
-    (Number(lamports) / 1_000_000_000).toFixed(4);
+  const eth = (wei: bigint) =>
+    (Number(wei) / Number(WEI_PER_ETH)).toFixed(4);
 
   return [
-    `Total Revenue:   ${sol(revenue.totalRevenueLamports)} SOL`,
-    `Creator (30%):   ${sol(revenue.creatorPayoutLamports)} SOL`,
-    `Burn (20%):      ${sol(revenue.burnAmountLamports)} SOL`,
-    `Pool (50%):      ${sol(revenue.poolReturnLamports)} SOL`,
+    `Total Revenue:   ${eth(revenue.totalRevenueWei)} ETH`,
+    `Creator (30%):   ${eth(revenue.creatorPayoutWei)} ETH`,
+    `Burn (20%):      ${eth(revenue.burnAmountWei)} ETH`,
+    `Pool (50%):      ${eth(revenue.poolReturnWei)} ETH`,
   ].join('\n');
 }

@@ -44,7 +44,7 @@ const UtcClock: FC = () => {
   return (
     <span className="top-nav-clock">
       <span className="nav-live-dot" />
-      <span>SOLANA·MAINNET</span>
+      <span>ROBINHOOD·CHAIN</span>
       <b>{hh}:{mm}:{ss} UTC</b>
     </span>
   );
@@ -138,7 +138,7 @@ export const Layout: FC = () => {
       <nav className="top-nav">
         <NavLink to="/" className="top-nav-logo">
           <Logo size={20} />
-          <span>SCALE<i className="logo-cursor" /></span>
+          <span>LOADED<i className="logo-cursor" /></span>
         </NavLink>
 
         <div className="top-nav-tabs">

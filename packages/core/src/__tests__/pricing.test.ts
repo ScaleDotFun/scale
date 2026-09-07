@@ -8,7 +8,7 @@ import {
   TIER_CONFIGS,
   BLOCKED_LIQUIDITY_THRESHOLD_USD,
 } from '../pricing.js';
-import { LAMPORTS_PER_SOL } from '../types.js';
+import { WEI_PER_ETH } from '../types.js';
 
 // ──────────────────────────────────────────────
 // determineTier
@@ -98,23 +98,23 @@ describe('determineTier', () => {
 // ──────────────────────────────────────────────
 
 describe('calculateFlatFee', () => {
-  const ONE_SOL = LAMPORTS_PER_SOL;
+  const ONE_SOL = WEI_PER_ETH;
 
   it('calculates 2% fee for bonded tier', () => {
-    // 1 SOL position → 2% = 0.02 SOL = 20_000_000 lamports
+    // 1 ETH position → 2% = 0.02 ETH = 20_000_000_000_000_000 wei
     const fee = calculateFlatFee(ONE_SOL, 'bonded');
     expect(fee).toBe(ONE_SOL * 200n / 10_000n);
     expect(fee).toBe((ONE_SOL * 200n) / 10_000n);
   });
 
   it('calculates 3% fee for rising tier', () => {
-    // 1 SOL position → 3% = 0.03 SOL = 30_000_000 lamports
+    // 1 ETH position → 3% = 0.03 ETH = 30_000_000_000_000_000 wei
     const fee = calculateFlatFee(ONE_SOL, 'rising');
     expect(fee).toBe((ONE_SOL * 300n) / 10_000n);
   });
 
   it('calculates 5% fee for degen tier', () => {
-    // 1 SOL position → 5% = 0.05 SOL = 50_000_000 lamports
+    // 1 ETH position → 5% = 0.05 ETH = 50_000_000_000_000_000 wei
     const fee = calculateFlatFee(ONE_SOL, 'degen');
     expect(fee).toBe((ONE_SOL * 500n) / 10_000n);
   });
@@ -122,12 +122,12 @@ describe('calculateFlatFee', () => {
   it('scales correctly with larger position sizes', () => {
     const tenSol = ONE_SOL * 10n;
     const fee = calculateFlatFee(tenSol, 'bonded');
-    // 10 SOL * 2% = 0.2 SOL
+    // 10 ETH * 2% = 0.2 ETH
     expect(fee).toBe((ONE_SOL * 10n * 200n) / 10_000n);
   });
 
   it('handles very small amounts with BigInt floor division', () => {
-    // 100 lamports at 2% → 100 * 200 / 10000 = 2
+    // 100 wei at 2% → 100 * 200 / 10000 = 2
     const fee = calculateFlatFee(100n, 'bonded');
     expect(fee).toBe(2n);
   });
@@ -136,8 +136,8 @@ describe('calculateFlatFee', () => {
     expect(calculateFlatFee(0n, 'bonded')).toBe(0n);
   });
 
-  it('handles position sizes that produce fractional lamports (floor)', () => {
-    // 1 lamport at 2% → 1 * 200 / 10000 = 0 (floor)
+  it('handles position sizes that produce fractional wei (floor)', () => {
+    // 1 wei at 2% → 1 * 200 / 10000 = 0 (floor)
     const fee = calculateFlatFee(1n, 'bonded');
     expect(fee).toBe(0n);
   });
@@ -204,10 +204,10 @@ describe('isValidLeverage', () => {
 // ──────────────────────────────────────────────
 
 describe('calculateProtocolCapital', () => {
-  const ONE_SOL = LAMPORTS_PER_SOL;
+  const ONE_SOL = WEI_PER_ETH;
 
   it('calculates protocol capital at 3x leverage', () => {
-    // 1 SOL at 3x → protocol provides 2 SOL
+    // 1 ETH at 3x → protocol provides 2 ETH
     const result = calculateProtocolCapital(ONE_SOL, 3);
     expect(result).toBe(ONE_SOL * 2n);
   });
@@ -218,14 +218,14 @@ describe('calculateProtocolCapital', () => {
   });
 
   it('calculates correctly at max bonded leverage (7x)', () => {
-    // 1 SOL at 7x → protocol provides 6 SOL
+    // 1 ETH at 7x → protocol provides 6 ETH
     const result = calculateProtocolCapital(ONE_SOL, 7);
     expect(result).toBe(ONE_SOL * 6n);
   });
 
   it('handles large user capital values', () => {
     const tenSol = ONE_SOL * 10n;
-    // 10 SOL at 5x → protocol provides 40 SOL
+    // 10 ETH at 5x → protocol provides 40 ETH
     const result = calculateProtocolCapital(tenSol, 5);
     expect(result).toBe(tenSol * 4n);
   });
@@ -236,7 +236,7 @@ describe('calculateProtocolCapital', () => {
 // ──────────────────────────────────────────────
 
 describe('calculatePositionSize', () => {
-  const ONE_SOL = LAMPORTS_PER_SOL;
+  const ONE_SOL = WEI_PER_ETH;
 
   it('calculates total position size at 3x leverage', () => {
     const result = calculatePositionSize(ONE_SOL, 3);

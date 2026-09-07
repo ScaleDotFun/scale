@@ -5,9 +5,9 @@ export const Docs: FC = () => {
     <div className="docs-page fade-in">
       {/* Header */}
       <div className="docs-header">
-        <h1>Scale Protocol Documentation</h1>
+        <h1>Loaded Protocol Documentation</h1>
         <p className="docs-header-sub">
-          Leveraged memecoin trading on Solana. Built on pump.fun coins. Permissionless token listing.
+          Leveraged memecoin trading on Robinhood Chain. Built on PONS coins. Permissionless token listing.
         </p>
       </div>
 
@@ -20,7 +20,7 @@ export const Docs: FC = () => {
         <a href="#protocol-safety" className="docs-toc-link">Protocol Safety Model</a>
         <a href="#token-listing" className="docs-toc-link">Token Listing</a>
         <a href="#creator-revenue" className="docs-toc-link">Creator Revenue</a>
-        <a href="#profit-locks" className="docs-toc-link">Profit Locks &amp; $SCALE</a>
+        <a href="#profit-locks" className="docs-toc-link">Profit Locks &amp; $LOADED</a>
         <a href="#fee-structure" className="docs-toc-link">Fee Structure</a>
         <a href="#revenue-distribution" className="docs-toc-link">Revenue Distribution</a>
       </nav>
@@ -29,15 +29,15 @@ export const Docs: FC = () => {
       <section id="overview" className="docs-section">
         <h2>Overview</h2>
         <p>
-          Scale Protocol enables leveraged spot trading on pump.fun memecoins on Solana.
-          Traders deposit SOL as collateral, and the protocol supplies the remaining capital from a shared lending pool
-          to open a larger position. Trades are executed as real spot buys on-chain via Jupiter — not synthetic perpetuals.
+          Loaded Protocol enables leveraged spot trading on PONS memecoins on Robinhood Chain.
+          Traders deposit ETH as collateral, and the protocol supplies the remaining capital from a shared lending pool
+          to open a larger position. Trades are executed as real spot buys on-chain through a DEX aggregator — not synthetic perpetuals.
         </p>
         <p>
-          Any coin genuinely launched on pump.fun can be listed for leveraged trading — the launch is
-          verified on-chain, and the creator's 30% revenue share accrues to the on-chain dev wallet as claimable payouts (Creator dashboard).
+          Any coin genuinely launched on PONS can be listed for leveraged trading — the launch is
+          verified on-chain, and the creator's 30% revenue share accrues to the on-chain deployer wallet as claimable payouts (Creator dashboard).
           This creates a self-sustaining cycle: trade fees refill the pool, the pool enables leveraged trades,
-          and fees generate revenue for creators, the protocol, and $SCALE token holders.
+          and fees generate revenue for creators, the protocol, and $LOADED token holders.
         </p>
         <div className="docs-callout">
           <div className="docs-callout-title">Core Guarantee</div>
@@ -56,33 +56,33 @@ export const Docs: FC = () => {
         <h3>1. Select a Token</h3>
         <p>
           Browse listed tokens on the Explore page or the Pulse feed sidebar. Only coins verified as genuine
-          pump.fun launches are available for trading. This requirement guarantees every listed coin has a
+          PONS launches are available for trading. This requirement guarantees every listed coin has a
           verifiable on-chain creator and real liquidity.
         </p>
 
         <h3>2. Configure Your Position</h3>
         <p>
-          Set your collateral amount (SOL you put at risk) and leverage multiplier. The available leverage depends on
+          Set your collateral amount (ETH you put at risk) and leverage multiplier. The available leverage depends on
           the token's risk tier — bonded tokens allow up to 7x, rising tokens up to 5x, and degen-tier tokens up to 3x.
         </p>
         <div className="docs-example">
           <div className="docs-example-title">Example</div>
           <p>
-            You deposit <span className="mono">0.5 SOL</span> at <span className="mono">5x</span> leverage.
-            The protocol supplies <span className="mono">2.0 SOL</span> from the lending pool.
-            A real spot buy of <span className="mono">2.5 SOL</span> worth of tokens is executed on-chain via Jupiter.
-            You pay a flat fee of <span className="mono">0.5%</span> (0.0125 SOL) on the total position size.
+            You deposit <span className="mono">0.5 ETH</span> at <span className="mono">5x</span> leverage.
+            The protocol supplies <span className="mono">2.0 ETH</span> from the lending pool.
+            A real spot buy of <span className="mono">2.5 ETH</span> worth of tokens is executed on-chain.
+            You pay a flat fee of <span className="mono">0.5%</span> (0.0125 ETH) on the total position size.
           </p>
         </div>
 
         <h3>3. Profit Scenario</h3>
         <p>
           If the token price increases, you can close the position manually at any time or let it auto-close after 24 hours.
-          The tokens are sold back to SOL via Jupiter. The protocol recovers its capital (2.0 SOL) first. Of the remaining profit:
+          The tokens are sold back to ETH on-chain. The protocol recovers its capital (2.0 ETH) first. Of the remaining profit:
         </p>
         <ul className="docs-list">
-          <li><strong>70%</strong> is returned to you as SOL immediately</li>
-          <li><strong>30%</strong> is used to buy $SCALE tokens, which are locked for 7 days and then claimable on the Locks page</li>
+          <li><strong>70%</strong> is returned to you as ETH immediately</li>
+          <li><strong>30%</strong> is used to buy $LOADED tokens, which are locked for 7 days and then claimable on the Locks page</li>
         </ul>
 
         <h3>4. Loss Scenario</h3>
@@ -125,7 +125,7 @@ export const Docs: FC = () => {
                 <td className="mono">7x</td>
                 <td className="mono">2%</td>
                 <td className="mono">-15%</td>
-                <td>Graduated on pump.fun, $1M+ market cap, $50K+ liquidity</td>
+                <td>Graduated on PONS, $1M+ market cap, $50K+ liquidity</td>
               </tr>
               <tr>
                 <td><span className="badge badge-rising">Rising</span></td>
@@ -139,7 +139,7 @@ export const Docs: FC = () => {
                 <td className="mono">3x</td>
                 <td className="mono">5%</td>
                 <td className="mono">-10%</td>
-                <td>Any pump.fun coin with $5K+ liquidity</td>
+                <td>Any PONS coin with $5K+ liquidity</td>
               </tr>
             </tbody>
           </table>
@@ -154,13 +154,13 @@ export const Docs: FC = () => {
       <section id="protocol-safety" className="docs-section">
         <h2>Protocol Safety Model</h2>
         <p>
-          Scale Protocol is architecturally designed to protect its capital under all market conditions.
+          Loaded Protocol is architecturally designed to protect its capital under all market conditions.
           The following mechanisms work together to ensure the lending pool is never depleted:
         </p>
 
         <h3>Auto-Close Thresholds</h3>
         <p>
-          The price monitor service polls live prices every 5 seconds via the Jupiter Price API.
+          The price monitor service polls live Robinhood Chain prices every 5 seconds.
           When a position's unrealized loss reaches the tier-specific threshold, the system
           automatically sells the tokens and recovers the protocol's capital. A 5% safety buffer
           above the mathematical break-even point ensures full recovery even with swap slippage.
@@ -195,41 +195,46 @@ export const Docs: FC = () => {
         <h2>Token Listing</h2>
         <p>
           Listing is a two-way deal, enforced entirely on-chain — no account creation, no application
-          form, no manual approval. The coin's creator shares their pump.fun creator rewards with the
-          SCALE pool; in exchange the coin gets leverage trading and the creator earns 30% of every
+          form, no manual approval. The coin's creator routes their PONS creator fee to the
+          LOADED pool; in exchange the coin gets leverage trading and the creator earns 30% of every
           flat fee traded on it.
+        </p>
+        <p>
+          PONS charges <span className="mono">1%</span> on every bonding-curve trade and splits it{' '}
+          <strong>70% creator / 30% protocol</strong>. The 70% creator slice is paid to the curve's
+          creator fee recipient — that address is the entire listing deal.
         </p>
 
         <div className="docs-steps">
           <div className="docs-step">
             <div className="docs-step-num">1</div>
             <div>
-              <h4>Launch on pump.fun</h4>
+              <h4>Launch on PONS</h4>
               <p>
-                A genuine pump.fun launch is the foundation — bonding curve or graduated.
-                The wallet that launched the coin is the creator's on-chain dev wallet.
+                A genuine PONS launch is the foundation — bonding curve or graduated to
+                Uniswap V4. The wallet that deployed the coin is the creator's on-chain wallet.
               </p>
             </div>
           </div>
           <div className="docs-step">
             <div className="docs-step-num">2</div>
             <div>
-              <h4>Share Creator Rewards 100%</h4>
+              <h4>Route the Creator Fee to the Pool</h4>
               <p>
-                Enable “Share creator rewards” on the coin (at creation, or later from the
-                creator settings) and add the SCALE pool wallet as the shareholder at 100%.
-                This is pump.fun's own on-chain fee-sharing program — not a promise, a config.
+                From the deploying wallet, set the curve's creator fee recipient to the LOADED
+                pool address — <span className="mono">setCreatorFeeRecipient</span>, callable
+                from PONS's creator settings or the explorer. It's a contract write, not a promise.
               </p>
             </div>
           </div>
           <div className="docs-step">
             <div className="docs-step-num">3</div>
             <div>
-              <h4>Paste the Mint — Verified &amp; Listed</h4>
+              <h4>Paste the Contract — Verified &amp; Listed</h4>
               <p>
-                Submit the mint on the List page. SCALE reads the sharing config straight from
-                the chain; if the pool holds 100%, the coin lists instantly. The scanner
-                re-verifies every listing continuously — re-routing rewards away delists the coin.
+                Submit the token address on the List page. LOADED reads the fee recipient straight
+                from the chain; if it's the pool, the coin lists instantly. The scanner re-verifies
+                every listing continuously — re-routing the fee away delists the coin.
               </p>
             </div>
           </div>
@@ -238,10 +243,10 @@ export const Docs: FC = () => {
         <div className="docs-callout">
           <div className="docs-callout-title">Why This Deal?</div>
           <p>
-            Creator rewards flowing into the pool deepen the capital that fronts every leveraged
-            position — the shared rewards literally fund the leverage on your own coin. In return
+            Creator fees flowing into the pool deepen the capital that fronts every leveraged
+            position — the routed fee literally funds the leverage on your own coin. In return
             creators keep earning: 30% of every flat fee on their coin, claimable from the Creator
-            dashboard, typically worth far more than the rewards shared in.
+            dashboard, typically worth far more than the fee routed in.
           </p>
         </div>
       </section>
@@ -254,9 +259,9 @@ export const Docs: FC = () => {
           Every time a trader opens a leveraged position on your token, the flat fee is collected and distributed:
         </p>
         <ul className="docs-list">
-          <li><strong>30%</strong> of the flat fee goes to the coin's creator — the pump.fun launch (dev) wallet</li>
-          <li>Creator earnings accrue to the launch (dev) wallet — claimable from the Creator dashboard</li>
-          <li>No claiming required — payouts land directly in your launch wallet</li>
+          <li><strong>30%</strong> of the flat fee goes to the coin's creator — the wallet that deployed it on PONS</li>
+          <li>Creator earnings accrue to that deployer wallet — claimable from the Creator dashboard</li>
+          <li>Payouts are sent as ETH to your deployer wallet when you claim</li>
         </ul>
         <p>
           The Creator Dashboard provides a full breakdown of trading volume, fees generated, and unclaimed
@@ -266,20 +271,20 @@ export const Docs: FC = () => {
 
       {/* Profit Locks */}
       <section id="profit-locks" className="docs-section">
-        <h2>Profit Locks &amp; $SCALE</h2>
+        <h2>Profit Locks &amp; $LOADED</h2>
         <p>
           When a trader closes a profitable position, 30% of the profit is automatically used to purchase
-          $SCALE tokens on the open market. These tokens are locked for 7 days in a time-locked contract.
+          $LOADED tokens on the open market. These tokens are locked for 7 days in a time-locked contract.
         </p>
         <ul className="docs-list">
-          <li>After 7 days, the locked $SCALE tokens become claimable on the Locks page</li>
+          <li>After 7 days, the locked $LOADED tokens become claimable on the Locks page</li>
           <li>Lock status and countdown timers are visible in the Locks dashboard</li>
-          <li>This mechanism creates consistent buy pressure on $SCALE and aligns trader incentives with the protocol</li>
+          <li>This mechanism creates consistent buy pressure on $LOADED and aligns trader incentives with the protocol</li>
         </ul>
 
         <h3>Buy &amp; Burn</h3>
         <p>
-          20% of all flat fee revenue is used to buy $SCALE on the open market and permanently burn the tokens.
+          20% of all flat fee revenue is used to buy $LOADED on the open market and permanently burn the tokens.
           This creates persistent deflationary pressure and is tracked on the Stats page.
         </p>
       </section>
@@ -288,7 +293,7 @@ export const Docs: FC = () => {
       <section id="fee-structure" className="docs-section">
         <h2>Fee Structure</h2>
         <p>
-          Scale Protocol charges a single flat fee on the total position size when a position is opened.
+          Loaded Protocol charges a single flat fee on the total position size when a position is opened.
           There are no funding rates, no borrowing fees, and no hidden charges.
         </p>
         <div className="docs-table-wrap">
@@ -340,13 +345,13 @@ export const Docs: FC = () => {
           <div className="docs-revenue-card">
             <div className="docs-revenue-pct" style={{ color: 'var(--yellow)' }}>20%</div>
             <div className="docs-revenue-label">Buy &amp; Burn</div>
-            <p>Used to purchase and permanently burn $SCALE tokens</p>
+            <p>Used to purchase and permanently burn $LOADED tokens</p>
           </div>
         </div>
 
         <p>
           Profit from successful trades is split separately:
-          70% goes to the trader as SOL, and 30% auto-buys $SCALE (locked 7 days).
+          70% goes to the trader as ETH, and 30% auto-buys $LOADED (locked 7 days).
         </p>
       </section>
     </div>

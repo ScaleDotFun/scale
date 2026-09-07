@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Rate Limiting Middleware
+// LOADED PROTOCOL — Rate Limiting Middleware
 // ──────────────────────────────────────────────
 
 import rateLimit from 'express-rate-limit';
@@ -22,7 +22,7 @@ const skipTrustProxyValidation = { validate: { trustProxy: false, xForwardedForH
  */
 export const defaultLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 600, // the terminal legitimately polls several endpoints per second
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -60,7 +60,7 @@ export const tradingLimiter = rateLimit({
  */
 export const publicLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: 1200, // 1s chart polling + prices + stats: ~5 req/s per active tab is normal
   standardHeaders: true,
   legacyHeaders: false,
   message: {

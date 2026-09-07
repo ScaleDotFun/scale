@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /start Command
+// LOADED PROTOCOL — /start Command
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -24,12 +24,12 @@ export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
     const shortAddr = escapeMarkdown(formatAddress(wallet.walletAddress));
 
     const msg = [
-      `🦍 ${bold('Welcome to SCALE\\!')}`,
+      `🦍 ${bold('Welcome to LOADED\\!')}`,
       ``,
-      `The degen\\-grade leveraged trading protocol for Pump\\.fun memecoins on Solana\\.`,
+      `The degen\\-grade leveraged trading protocol for PONS memecoins on Robinhood Chain\\.`,
       ``,
       `${bold('Your Wallet:')} ${code(walletAddr)}`,
-      `Deposit SOL to start aping with leverage\\!`,
+      `Deposit ETH to start aping with leverage\\!`,
       ``,
       `━━━━━━━━━━━━━━━━━━━━━━`,
       `${bold('📋 Commands')}`,
@@ -37,11 +37,11 @@ export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
       `${bold('💰 Wallet')}`,
       `/wallet — View your wallet \\& balance`,
       `/deposit — Get your deposit address`,
-      `/withdraw — Withdraw SOL`,
+      `/withdraw — Withdraw ETH`,
       `/balance — Check balances`,
       ``,
       `${bold('🦍 Trading')}`,
-      `/ape \\<token\\> \\<sol\\> \\<leverage\\> — Open position`,
+      `/ape \\<token\\> \\<eth\\> \\<leverage\\> — Open position`,
       `/positions — View open positions`,
       `/close \\<id\\> — Close a position`,
       `/closeall — Close all positions`,
@@ -49,7 +49,7 @@ export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
       `${bold('📊 Stats')}`,
       `/history — Trade history`,
       `/pnl — Profit \\& loss summary`,
-      `/locks — View locked \\$SCALE`,
+      `/locks — View locked \\$LOADED`,
       ``,
       `${bold('🔎 Discovery')}`,
       `/trending — Trending tokens`,
@@ -58,7 +58,7 @@ export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
       `/listed — All listed tokens`,
       ``,
       `${bold('🔥 Protocol')}`,
-      `/burns — Recent \\$SCALE burns`,
+      `/burns — Recent \\$LOADED burns`,
       `/stats — Protocol statistics`,
       `/pool — Capital pool info`,
       ``,
@@ -72,7 +72,7 @@ export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
       `/slippage — Set max slippage`,
       ``,
       `━━━━━━━━━━━━━━━━━━━━━━`,
-      `LFG 🚀 Start by depositing SOL to ${code(shortAddr)}`,
+      `LFG 🚀 Start by depositing ETH to ${code(shortAddr)}`,
     ].join('\n');
 
     await ctx.reply(msg, { parse_mode: 'MarkdownV2' });

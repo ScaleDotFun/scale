@@ -830,7 +830,7 @@
   .rs-result { margin: 16px; }
 }
 
-/* ── $SCALE contract-address bar (hero) ─────────────────────── */
+/* ── $LOADED contract-address bar (hero) ─────────────────────── */
 .lp-ca {
   display: inline-flex;
   align-items: center;

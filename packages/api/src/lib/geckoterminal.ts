@@ -1,16 +1,16 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Solana market data (GeckoTerminal)
+// LOADED PROTOCOL — Robinhood Chain market data (GeckoTerminal)
 //
-// Solana is covered by GeckoTerminal's `solana` network — real pools,
+// Robinhood Chain is covered by GeckoTerminal's `robinhood` network — real pools,
 // prices and OHLCV, no API key. This is the honest market-data source
 // for the screener, token pages and charts now that the protocol
-// targets Solana and pump.fun launches.
+// targets Robinhood Chain and PONS launches.
 //
-// NOTE: Solana mints are base58 and CASE-SENSITIVE — never lowercase
-// an address before handing it to a GT endpoint or comparing it.
+// NOTE: addresses are hex and checksum case is NOT significant — always
+// compare them case-insensitively against GT responses, which are lowercased.
 // ──────────────────────────────────────────────
 
-import { getSolUsd, getTrendingTokens, getJupToken, isPumpFunToken, WSOL_MINT, type JupTokenInfo } from '@scale/solana';
+import { getEthUsd, getTrendingTokens, getTokenInfo, isLaunchpadToken, NATIVE_TOKEN, type TokenInfo } from '@loaded/evm';
 
 // With a paid CoinGecko key the same GeckoTerminal endpoints are served
 // from the Pro API at ~500 req/min (vs ~30 free) — identical paths and
@@ -26,7 +26,7 @@ function gtHeaders(): Record<string, string> {
     ? { Accept: 'application/json', 'x-cg-pro-api-key': key }
     : { Accept: 'application/json' };
 }
-export const GT_NETWORK = 'solana';
+export const GT_NETWORK = 'robinhood';
 
 export interface MarketToken {
   address: string;
@@ -61,50 +61,50 @@ const num = (v: unknown): number => {
 };
 
 /**
- * SOL/USD via Jupiter's price feed (60s cache + stale-if-error lives
- * inside getSolUsd). Returns 0 when no price is available so callers
+ * ETH/USD via LI.FI's price feed (60s cache + stale-if-error lives
+ * inside getEthUsd). Returns 0 when no price is available so callers
  * degrade honestly instead of charting a wrong number.
  */
-export async function fetchSolUsd(): Promise<number> {
+export async function fetchEthUsd(): Promise<number> {
   try {
-    return await getSolUsd();
+    return await getEthUsd();
   } catch {
     return 0;
   }
 }
 
-/** Map a Jupiter token-registry entry onto the MarketToken shape. */
-function jupToMarketToken(t: JupTokenInfo): MarketToken {
+/** Map an EVM-layer TokenInfo onto the MarketToken shape. */
+function toMarketToken(t: TokenInfo): MarketToken {
   return {
-    address: t.id,
+    address: t.address,
     name: t.name ?? 'Unknown',
     symbol: t.symbol ?? '???',
-    price: t.usdPrice ?? 0,
-    priceChange24h: t.stats24h?.priceChange ?? 0,
-    volume24h: (t.stats24h?.buyVolume ?? 0) + (t.stats24h?.sellVolume ?? 0),
-    marketCap: t.mcap ?? t.fdv ?? 0,
+    price: t.priceUsd ?? 0,
+    priceChange24h: t.priceChange24h ?? 0,
+    volume24h: t.volume24h ?? 0,
+    marketCap: t.marketCap ?? 0,
     liquidity: t.liquidity ?? 0,
-    logoURI: t.icon ?? null,
+    logoURI: t.imageUri ?? null,
   };
 }
 
 /**
- * Trending on Solana → one MarketToken per base token, pump.fun coins
- * ONLY (SCALE lists nothing else, so the screener shows nothing else).
- * GeckoTerminal first; Jupiter's trending feed as fallback (GT's free
- * tier rate-limits aggressively and Jupiter carries the same fields).
+ * Trending on Robinhood Chain → one MarketToken per base token, PONS coins
+ * ONLY (LOADED lists nothing else, so the screener shows nothing else).
+ * GeckoTerminal's trending pools, with the EVM layer's trending feed as a
+ * fallback when GT rate-limits.
  */
 export async function fetchTrending(): Promise<MarketToken[]> {
   let json: any;
   try {
     json = await gtFetch(`/networks/${GT_NETWORK}/trending_pools?include=base_token&page=1`);
   } catch (gtErr) {
-    const jup = await getTrendingTokens('24h');
-    const out = jup
-      .filter((t) => isPumpFunToken(t.id, t.launchpad))
-      .filter((t) => (t.usdPrice ?? 0) > 0 && (t.liquidity ?? 0) >= 5_000)
+    const fallback = await getTrendingTokens(50);
+    const out = fallback
+      .filter((t) => isLaunchpadToken(t.address, t.launchpad))
+      .filter((t) => (t.priceUsd ?? 0) > 0 && (t.liquidity ?? 0) >= 5_000)
       .slice(0, 20)
-      .map(jupToMarketToken);
+      .map(toMarketToken);
     if (out.length === 0) throw gtErr; // both sources dry — surface the original error
     return out;
   }
@@ -118,9 +118,14 @@ export async function fetchTrending(): Promise<MarketToken[]> {
     const btId = pool.relationships?.base_token?.data?.id;
     const bt = btId ? included[btId] : null;
     const address = bt?.address ?? '';
-    if (!address || seen.has(address)) continue;
-    seen.add(address);
-    if (!isPumpFunToken(address)) continue; // pump.fun coins only
+    // GT returns lowercased addresses; the top-up feed returns checksummed
+    // ones. Dedupe on a single casing or the same coin lands in the list twice.
+    if (!address || seen.has(address.toLowerCase())) continue;
+    seen.add(address.toLowerCase());
+    // The venue identifies a launchpad coin — isLaunchpadToken is false for a
+    // missing dex, so omitting it here would empty the whole screener.
+    const dex = pool.relationships?.dex?.data?.id ?? null;
+    if (!isLaunchpadToken(address, dex)) continue; // launchpad coins only
 
     const price = num(a.base_token_price_usd);
     const liquidity = num(a.reserve_in_usd);
@@ -140,17 +145,19 @@ export async function fetchTrending(): Promise<MarketToken[]> {
     if (out.length >= 20) break;
   }
 
-  // GT trending skews to majors; after the pump.fun filter it can run
-  // thin. Top up from Jupiter's trending feed so the screener stays full.
+  // GT trending skews to majors; after the launchpad filter it can run
+  // thin. Top up from the EVM layer's feed so the screener stays full.
   if (out.length < 12) {
     try {
-      const jup = await getTrendingTokens('24h');
-      for (const t of jup) {
+      const fallback = await getTrendingTokens(50);
+      for (const t of fallback) {
         if (out.length >= 20) break;
-        if (seen.has(t.id) || out.some((m) => m.address === t.id)) continue;
-        if (!isPumpFunToken(t.id, t.launchpad)) continue;
-        if (!((t.usdPrice ?? 0) > 0) || (t.liquidity ?? 0) < 5_000) continue;
-        out.push(jupToMarketToken(t));
+        if (seen.has(t.address.toLowerCase()) ||
+            out.some((m) => m.address.toLowerCase() === t.address.toLowerCase())) continue;
+        if (!isLaunchpadToken(t.address, t.launchpad)) continue;
+        if (!((t.priceUsd ?? 0) > 0) || (t.liquidity ?? 0) < 5_000) continue;
+        seen.add(t.address.toLowerCase());
+        out.push(toMarketToken(t));
       }
     } catch {
       // top-up is best-effort — GT results alone are still valid
@@ -160,20 +167,20 @@ export async function fetchTrending(): Promise<MarketToken[]> {
 }
 
 /**
- * Single token overview on Solana.
- * GeckoTerminal first; Jupiter's registry as fallback when GT is
- * rate-limited or doesn't know the token yet (fresh pump.fun launches).
+ * Single token overview on Robinhood Chain.
+ * GeckoTerminal first; the EVM layer's token lookup as fallback when GT is
+ * rate-limited or doesn't know the token yet (fresh PONS launches).
  */
 export async function fetchToken(address: string): Promise<MarketToken & { supply: number }> {
   let json: any;
   try {
     json = await gtFetch(`/networks/${GT_NETWORK}/tokens/${address}?include=top_pools`);
   } catch (gtErr) {
-    const jup = await getJupToken(address).catch(() => null);
-    if (!jup) throw gtErr;
+    const fallback = await getTokenInfo(address).catch(() => null);
+    if (!fallback) throw gtErr;
     return {
-      ...jupToMarketToken(jup),
-      supply: jup.circSupply ?? jup.totalSupply ?? 0,
+      ...toMarketToken(fallback),
+      supply: 0, // total supply is not part of the market feed; read on-chain when needed
     };
   }
   const a = json.data?.attributes ?? {};
@@ -188,8 +195,8 @@ export async function fetchToken(address: string): Promise<MarketToken & { suppl
     marketCap: num(a.market_cap_usd) || num(a.fdv_usd),
     liquidity: num(a.total_reserve_in_usd) || num(topPool.reserve_in_usd),
     logoURI: a.image_url && a.image_url !== 'missing.png' ? a.image_url : null,
-    // pump.fun mints default to 6 decimals
-    supply: num(a.total_supply) / Math.pow(10, num(a.decimals) || 6),
+    // ERC-20s on Robinhood Chain are 18 decimals unless stated otherwise
+    supply: num(a.total_supply) / Math.pow(10, num(a.decimals) || 18),
   };
 }
 
@@ -263,8 +270,12 @@ export async function fetchTrades(address: string, limit = 30): Promise<PoolTrad
       const a = t.attributes ?? {};
       const isBuy = a.kind === 'buy';
       // amount + price: whichever side of the swap is OUR token —
-      // the other side is SOL/USDC and would show the quote price instead
-      const ourTokenIsTo = (a.to_token_address ?? '') === address;
+      // the other side is ETH/USDC and would show the quote price instead
+      // GT returns lowercased addresses while route params are often
+      // checksummed — a case-sensitive compare picks the WRONG side and
+      // charts the quote asset instead of the token.
+      const ourTokenIsTo =
+        (a.to_token_address ?? '').toLowerCase() === address.toLowerCase();
       const tokenAmount = ourTokenIsTo ? num(a.to_token_amount) : num(a.from_token_amount);
       const priceUsd = ourTokenIsTo ? num(a.price_to_in_usd) : num(a.price_from_in_usd);
       return {
@@ -282,27 +293,27 @@ export async function fetchTrades(address: string, limit = 30): Promise<PoolTrad
 }
 
 export interface ReferenceFeed {
-  /** Human label for what the candles actually are, e.g. "SOL/USD" */
+  /** Human label for what the candles actually are, e.g. "ETH/USD" */
   label: string;
   candles: OHLCVCandle[];
 }
 
 /**
- * OHLCV for the hero "market wall" — wrapped SOL's deepest pool on
- * Solana (always a real, liquid market to draw), newest ascending.
- * GT OHLCV closes are quoted in USD, so the feed reads as SOL/USD.
+ * OHLCV for the hero "market wall" — wrapped ETH's deepest pool on
+ * Robinhood Chain (always a real, liquid market to draw), newest ascending.
+ * GT OHLCV closes are quoted in USD, so the feed reads as ETH/USD.
  */
 /**
- * Top WSOL pool where WSOL is the BASE token — GT pool OHLCV is quoted
- * in base-token USD, so a pool with WSOL as quote would chart the other
- * asset's price under a "SOL/USD" label.
+ * Top WETH pool where WETH is the BASE token — GT pool OHLCV is quoted
+ * in base-token USD, so a pool with WETH as quote would chart the other
+ * asset's price under a "ETH/USD" label.
  */
 let _refPool: { pool: string; at: number } | null = null;
 async function referencePoolFor(): Promise<string | null> {
   if (_refPool && Date.now() - _refPool.at < 300_000) return _refPool.pool;
-  const json = await gtFetch(`/networks/${GT_NETWORK}/tokens/${WSOL_MINT}/pools?page=1`);
+  const json = await gtFetch(`/networks/${GT_NETWORK}/tokens/${NATIVE_TOKEN}/pools?page=1`);
   const pools = (json.data ?? [])
-    .filter((p: any) => (p.relationships?.base_token?.data?.id ?? '').endsWith(`_${WSOL_MINT}`))
+    .filter((p: any) => (p.relationships?.base_token?.data?.id ?? '').endsWith(`_${NATIVE_TOKEN}`))
     .map((p: any) => ({ addr: p.attributes?.address, liq: num(p.attributes?.reserve_in_usd) }))
     .filter((p: any) => p.addr)
     .sort((x: any, y: any) => y.liq - x.liq);
@@ -322,18 +333,18 @@ export async function fetchReferenceOHLCV(type: string, limit = 96): Promise<Ref
     .filter((c) => c.timestamp > 0 && c.close > 0)
     .sort((a, b) => a.timestamp - b.timestamp);
 
-  // Sanity: the feed must actually track SOL/USD. If the last close is
-  // >25% off Jupiter's spot, the pool is mis-oriented — serve nothing
+  // Sanity: the feed must actually track ETH/USD. If the last close is
+  // >25% off LI.FI's spot, the pool is mis-oriented — serve nothing
   // rather than a wrong chart (the UI shows an honest NO FEED state).
   const last = candles[candles.length - 1]?.close ?? 0;
-  const solUsd = await fetchSolUsd();
-  if (last > 0 && solUsd > 0 && Math.abs(last - solUsd) / solUsd > 0.25) {
+  const ethUsd = await fetchEthUsd();
+  if (last > 0 && ethUsd > 0 && Math.abs(last - ethUsd) / ethUsd > 0.25) {
     return { label: '', candles: [] };
   }
-  return { label: 'SOL/USD', candles };
+  return { label: 'ETH/USD', candles };
 }
 
-/** Search Solana pools by symbol/name (best-effort via pools search). */
+/** Search Robinhood Chain pools by symbol/name (best-effort via pools search). */
 export async function searchTokens(query: string): Promise<MarketToken[]> {
   const json = await gtFetch(`/search/pools?query=${encodeURIComponent(query)}&network=${GT_NETWORK}&include=base_token`);
   const included: Record<string, any> = {};
@@ -344,9 +355,14 @@ export async function searchTokens(query: string): Promise<MarketToken[]> {
     const a = pool.attributes ?? {};
     const bt = included[pool.relationships?.base_token?.data?.id ?? ''] ?? null;
     const address = bt?.address ?? '';
-    if (!address || seen.has(address)) continue;
-    seen.add(address);
-    if (!isPumpFunToken(address)) continue; // pump.fun coins only
+    // GT returns lowercased addresses; the top-up feed returns checksummed
+    // ones. Dedupe on a single casing or the same coin lands in the list twice.
+    if (!address || seen.has(address.toLowerCase())) continue;
+    seen.add(address.toLowerCase());
+    // The venue identifies a launchpad coin — isLaunchpadToken is false for a
+    // missing dex, so omitting it here would empty the whole screener.
+    const dex = pool.relationships?.dex?.data?.id ?? null;
+    if (!isLaunchpadToken(address, dex)) continue; // launchpad coins only
     out.push({
       address,
       name: bt?.name ?? 'Unknown',

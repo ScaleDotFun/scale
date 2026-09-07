@@ -11,7 +11,7 @@ import { ExecutionSettings } from '../components/ExecutionSettings';
 import { LiquidationBar } from '../components/LiquidationBar';
 import { TradesFeed } from '../components/TradesFeed';
 import { VibeCommandBar, type ParsedCommand } from '../components/VibeCommandBar';
-import { formatSol, formatPrice, formatCountdown, formatTimeAgo, solscanTxUrl } from '../lib/format';
+import { formatEth, formatPrice, formatCountdown, formatTimeAgo, explorerTxUrl, weiToEth, ethToWei } from '../lib/format';
 import * as api from '../lib/api';
 
 export const Trade: FC = () => {
@@ -44,7 +44,7 @@ export const Trade: FC = () => {
   useEffect(() => {
     if (!isAuthenticated) { setWalletBalance(null); return; }
     api.getWalletBalance()
-      .then((b) => setWalletBalance(b.balanceSol))
+      .then((b) => setWalletBalance(b.balanceEth))
       .catch(() => setWalletBalance(null));
   }, [isAuthenticated]);
 
@@ -56,7 +56,25 @@ export const Trade: FC = () => {
   const [, startTransition] = useTransition();
   const [optimisticState, setOptimisticState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [closeError, setCloseError] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // Close a position and surface any failure to the user — a silent
+  // SELL that just resets the button reads as "the button is broken".
+  const handleClose = useCallback(async (positionId: string) => {
+    setCloseError('');
+    try {
+      await closePosition(positionId);
+    } catch (err: unknown) {
+      let msg = 'Could not close the position. Please try again.';
+      const body = (err as { body?: { details?: string[]; error?: string } })?.body;
+      if (body?.details?.length) msg = body.details[0];
+      else if (body?.error) msg = body.error;
+      else if (err instanceof Error && err.message) msg = err.message;
+      setCloseError(msg);
+      setTimeout(() => setCloseError(''), 8000);
+    }
+  }, [closePosition]);
   const [expandedPosition, setExpandedPosition] = useState<number | null>(null);
 
   // ── Listing check state ──
@@ -65,8 +83,8 @@ export const Trade: FC = () => {
   const tokenAddrFromUrl = searchParams.get('token');
   const lastLoadedAddr = useRef<string | null>(null);
 
-  // ── Auto-select token: URL ?token= param, else the featured $SCALE
-  // token, else the hottest listed coin, else the top trending pump.fun
+  // ── Auto-select token: URL ?token= param, else the featured $LOADED
+  // token, else the hottest listed coin, else the top trending PONS
   // coin (spot view) — the terminal never opens dead.
   const [featuredToken, setFeaturedToken] = useState<string | null>(null);
   useEffect(() => {
@@ -74,7 +92,7 @@ export const Trade: FC = () => {
     (async () => {
       try {
         const s = await api.getProtocolStats();
-        if (s.scaleToken) return setFeaturedToken(s.scaleToken);
+        if (s.loadedToken) return setFeaturedToken(s.loadedToken);
       } catch { /* fall through */ }
       try {
         const listed = await api.getListedTokens(1);
@@ -102,14 +120,14 @@ export const Trade: FC = () => {
         // Not in our DB yet — minimal token so the live chart still renders
         selectToken({
           address: addr,
-          name: searchParams.get('name') || 'SCALE',
+          name: searchParams.get('name') || 'LOADED',
           symbol: searchParams.get('symbol') || addr.slice(0, 6),
           tier: '',
         });
       });
   }, [tokenAddrFromUrl, featuredToken, selectToken, searchParams]);
 
-  // ── Check if token is listed on SCALE ──
+  // ── Check if token is listed on LOADED ──
   useEffect(() => {
     if (!selectedToken?.address) {
       setIsTokenListed(null);
@@ -120,8 +138,12 @@ export const Trade: FC = () => {
       .then((info) => {
         setIsTokenListed(info.isActive === true);
       })
-      .catch(() => {
-        setIsTokenListed(false);
+      .catch((err: unknown) => {
+        // Only a definitive 404 means "not listed". Transient failures
+        // (429 rate limit, 5xx, network) must NOT flip the UI to the
+        // unlisted banner — that disables trading on a listed coin.
+        const status = (err as { status?: number })?.status;
+        setIsTokenListed(status === 404 ? false : null);
       });
   }, [selectedToken?.address]);
 
@@ -150,7 +172,7 @@ export const Trade: FC = () => {
   const livePnLFor = useCallback((pos: api.PositionInfo): number | null => {
     if (pos.token?.address !== selectedToken?.address) return pos.livePnLPercent ?? null;
     // entryPriceUsd comes converted from the API (positions book prices
-    // in lamports-per-raw-unit, the chart streams token-USD)
+    // in wei-per-raw-unit, the chart streams token-USD)
     const entry = pos.entryPriceUsd ?? 0;
     const price = livePrice ?? tokenOverview?.price ?? 0;
     if (!(entry > 0) || !(price > 0)) return pos.livePnLPercent ?? null;
@@ -158,9 +180,9 @@ export const Trade: FC = () => {
   }, [selectedToken?.address, livePrice, tokenOverview?.price]);
 
   // Computed values — use real tier data from token API when available
-  const collateralSol = parseFloat(collateral) || 0;
-  const positionSize = collateralSol * leverage;
-  const protocolCapital = collateralSol * (leverage - 1);
+  const collateralEth = parseFloat(collateral) || 0;
+  const positionSize = collateralEth * leverage;
+  const protocolCapital = collateralEth * (leverage - 1);
   // Use tier-specific fee from API, fallback to 0.5% for display before token loads
   const flatFeePct = selectedToken?.flatFeePct ?? 0.5;
   const flatFee = positionSize * (flatFeePct / 100);
@@ -193,7 +215,7 @@ export const Trade: FC = () => {
     });
 
   // Also show preview lines when configuring a trade
-  const previewPositions: ChartPosition[] = (markPrice > 0 && collateralSol > 0) ? [{
+  const previewPositions: ChartPosition[] = (markPrice > 0 && collateralEth > 0) ? [{
     entryPrice: markPrice,
     liquidationPrice: liqPrice,
     takeProfitPrice: tpPrice || undefined,
@@ -206,7 +228,7 @@ export const Trade: FC = () => {
 
   // Vibe Command Bar
   const handleParsedCommand = useCallback((parsed: ParsedCommand) => {
-    if (parsed.capitalSol != null) setCollateral(String(parsed.capitalSol));
+    if (parsed.capitalEth != null) setCollateral(String(parsed.capitalEth));
     if (parsed.leverage != null) setLeverage(parsed.leverage);
     if (parsed.tokenQuery) {
       const match = trending.find(
@@ -217,16 +239,14 @@ export const Trade: FC = () => {
   }, [trending, selectToken, startTransition]);
 
   const executePosition = useCallback(async () => {
-    if (!selectedToken || collateralSol <= 0 || isOpening) return;
+    if (!selectedToken || collateralEth <= 0 || isOpening) return;
     setShowConfirmModal(false);
     setOptimisticState('submitting');
     setErrorMessage('');
     try {
-      // SOL → lamports (integer-safe well past 2^53 for the 10 SOL cap)
-      const capitalLamports = String(BigInt(Math.round(collateralSol * 1e9)));
       await openPosition(
         selectedToken.address,
-        capitalLamports,
+        ethToWei(collateralEth),
         leverage,
         tpPct > 0 ? tpPct : undefined,
         slPct > 0 ? slPct : undefined,
@@ -249,12 +269,12 @@ export const Trade: FC = () => {
       setOptimisticState('error');
       setTimeout(() => setOptimisticState('idle'), 6000);
     }
-  }, [selectedToken, collateralSol, leverage, isOpening, openPosition, tpPct, slPct]);
+  }, [selectedToken, collateralEth, leverage, isOpening, openPosition, tpPct, slPct]);
 
   const handleBuyClick = useCallback(() => {
-    if (!selectedToken || collateralSol <= 0) return;
+    if (!selectedToken || collateralEth <= 0) return;
     setShowConfirmModal(true);
-  }, [selectedToken, collateralSol]);
+  }, [selectedToken, collateralEth]);
 
   // Keyboard shortcut for confirm
   useEffect(() => {
@@ -275,7 +295,7 @@ export const Trade: FC = () => {
     if (optimisticState === 'submitting' || isOpening) return 'Opening...';
     if (optimisticState === 'success') return 'Position Opened ✓';
     if (optimisticState === 'error') return 'Failed — Retry';
-    return `Buy ${positionSize > 0 ? positionSize.toFixed(3) + ' SOL' : ''}`;
+    return `Buy ${positionSize > 0 ? positionSize.toFixed(3) + ' ETH' : ''}`;
   };
 
   // Time remaining — counts down live between position polls
@@ -337,6 +357,15 @@ export const Trade: FC = () => {
             </div>
 
             <div className="bento-table-body">
+              {closeError && activeTab === 'positions' && (
+                <div style={{
+                  margin: '0 0 10px', padding: '10px 14px', borderRadius: 0,
+                  background: 'rgba(255,77,77,0.08)', border: '1px solid #ff4d4d',
+                  color: '#ff4d4d', fontSize: '0.82rem',
+                }}>
+                  {closeError}
+                </div>
+              )}
               {activeTab === 'positions' ? (
                 activePositions.length === 0 ? (
                   <div className="bento-table-empty">No open positions</div>
@@ -360,7 +389,7 @@ export const Trade: FC = () => {
                         const livePnl = livePnLFor(pos);
                         const pnl = livePnl ?? 0;
                         const hasPnl = livePnl != null;
-                        const pnlSol = (pnl / 100) * Number(pos.userCapital || 0) / 1e9;
+                        const pnlEth = (pnl / 100) * weiToEth(pos.userCapital);
                         const timeLeft = getTimeLeft(pos);
                         const isExpanded = expandedPosition === pos.id;
                         const entryNum = pos.entryPriceUsd ?? 0;
@@ -377,7 +406,7 @@ export const Trade: FC = () => {
                             <td className="cell-token">
                               {pos.token?.symbol ?? '???'}
                             </td>
-                            <td className="mono">{formatSol(pos.userCapital)}</td>
+                            <td className="mono">{formatEth(pos.userCapital)}</td>
                             <td className="mono">{pos.leverage}x</td>
                             <td className="mono">{pos.entryPriceUsd ? `$${formatPrice(pos.entryPriceUsd)}` : '--'}</td>
                             <td className="mono" style={{ color: 'var(--primary)' }}>
@@ -398,7 +427,7 @@ export const Trade: FC = () => {
                                     className="mono"
                                     style={{ color: pnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 10, opacity: 0.7 }}
                                   >
-                                    {pnlSol >= 0 ? '+' : ''}{pnlSol.toFixed(4)} SOL
+                                    {pnlEth >= 0 ? '+' : ''}{pnlEth.toFixed(4)} ETH
                                   </span>
                                 </div>
                               ) : (
@@ -422,7 +451,7 @@ export const Trade: FC = () => {
                                 className="btn-close-pos"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  closePosition(String(pos.id));
+                                  handleClose(String(pos.id));
                                 }}
                                 disabled={isClosing === String(pos.id)}
                               >
@@ -451,7 +480,7 @@ export const Trade: FC = () => {
                     </thead>
                     <tbody>
                       {tradeHistory.map((pos) => {
-                        const profit = parseFloat(pos.pnlSol ?? '0');
+                        const profit = weiToEth(pos.pnlWei);
                         return (
                           <tr key={pos.id}>
                             <td className="cell-token">{pos.token?.symbol ?? '???'}</td>
@@ -460,7 +489,7 @@ export const Trade: FC = () => {
                                 className="mono"
                                 style={{ color: profit >= 0 ? 'var(--green)' : 'var(--red)' }}
                               >
-                                {profit >= 0 ? '+' : ''}{profit.toFixed(4)} SOL
+                                {profit >= 0 ? '+' : ''}{profit.toFixed(4)} ETH
                               </span>
                             </td>
                             <td>
@@ -471,7 +500,7 @@ export const Trade: FC = () => {
                             <td className="text-right text-dim">{pos.closedAt ? formatTimeAgo(pos.closedAt) : '--'}</td>
                             <td className="text-right">
                               {pos.closeTx && (
-                                <a href={solscanTxUrl(pos.closeTx)} target="_blank" rel="noreferrer" className="link-dim">Tx</a>
+                                <a href={explorerTxUrl(pos.closeTx)} target="_blank" rel="noreferrer" className="link-dim">Tx</a>
                               )}
                             </td>
                           </tr>
@@ -535,7 +564,7 @@ export const Trade: FC = () => {
                     marginBottom: 4,
                   }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#eaff7a', marginBottom: 4 }}>
-                      This token is not listed on SCALE.
+                      This token is not listed on LOADED.
                     </div>
                     <div style={{ fontSize: 12, color: '#a3ad8d' }}>
                       Trading is not available for unlisted tokens.
@@ -554,7 +583,7 @@ export const Trade: FC = () => {
                     <label className="exec-label">Collateral</label>
                     {walletBalance && (
                       <span style={{ fontSize: 11, color: '#a3ad8d', fontFamily: 'var(--font-mono)' }}>
-                        Balance: <span style={{ color: 'var(--primary)' }}>{parseFloat(walletBalance).toFixed(4)}</span> SOL
+                        Balance: <span style={{ color: 'var(--primary)' }}>{parseFloat(walletBalance).toFixed(4)}</span> ETH
                       </span>
                     )}
                   </div>
@@ -568,7 +597,7 @@ export const Trade: FC = () => {
                       value={collateral}
                       onChange={(e) => setCollateral(e.target.value)}
                     />
-                    <span className="exec-input-unit">SOL</span>
+                    <span className="exec-input-unit">ETH</span>
                   </div>
                   <div className="exec-presets">
                     {['0.1', '0.25', '0.5', '1.0'].map((amt) => (
@@ -669,7 +698,7 @@ export const Trade: FC = () => {
                   <div className="exec-row">
                     <span>Position Size</span>
                     <div style={{ textAlign: 'right' }}>
-                      <span className="mono">{positionSize.toFixed(4)} SOL</span>
+                      <span className="mono">{positionSize.toFixed(4)} ETH</span>
                       {positionSizeUsd > 0 && (
                         <span className="mono" style={{ color: '#67704f', fontSize: 10, marginLeft: 4 }}>
                           (${positionSizeUsd.toFixed(2)})
@@ -679,11 +708,11 @@ export const Trade: FC = () => {
                   </div>
                   <div className="exec-row">
                     <span>Protocol Fills</span>
-                    <span className="mono" style={{ color: 'var(--primary)' }}>{protocolCapital.toFixed(4)} SOL</span>
+                    <span className="mono" style={{ color: 'var(--primary)' }}>{protocolCapital.toFixed(4)} ETH</span>
                   </div>
                   <div className="exec-row">
                     <span>Fee (0.5%)</span>
-                    <span className="mono">{flatFee.toFixed(5)} SOL</span>
+                    <span className="mono">{flatFee.toFixed(5)} ETH</span>
                   </div>
                   <div className="exec-row">
                     <span>Liquidation</span>
@@ -702,7 +731,7 @@ export const Trade: FC = () => {
                   </div>
                   <div className="exec-row">
                     <span>Profit Lock</span>
-                    <span className="mono" style={{ color: 'var(--yellow)' }}>30% &rarr; $SCALE</span>
+                    <span className="mono" style={{ color: 'var(--yellow)' }}>30% &rarr; $LOADED</span>
                   </div>
                 </div>
 
@@ -724,7 +753,7 @@ export const Trade: FC = () => {
                       optimisticState === 'error' ? 'exec-btn-error' : ''
                     }`}
                     onClick={handleBuyClick}
-                    disabled={tradingDisabled || optimisticState === 'submitting' || isOpening || collateralSol <= 0}
+                    disabled={tradingDisabled || optimisticState === 'submitting' || isOpening || collateralEth <= 0}
                     whileHover={tradingDisabled ? {} : { scale: 1.01 }}
                     whileTap={tradingDisabled ? {} : { scale: 0.99 }}
                   >
@@ -773,7 +802,7 @@ export const Trade: FC = () => {
                   </div>
                   {tokenPositions.map((pos) => {
                     const pnl = pos.livePnLPercent ?? 0;
-                    const pnlSol = (pnl / 100) * Number(pos.userCapital || 0) / 1e9;
+                    const pnlEth = (pnl / 100) * weiToEth(pos.userCapital);
                     const entryNum = pos.entryPriceUsd ?? 0;
                     const timeMs = pos.timeRemainingMs ?? 0;
                     const timeStr = timeMs <= 0 ? 'Expired' : formatCountdown(timeMs);
@@ -805,17 +834,17 @@ export const Trade: FC = () => {
                             <span className="mono" style={{
                               fontSize: 10, color: pnl >= 0 ? 'var(--green)' : 'var(--red)', opacity: 0.7
                             }}>
-                              ({pnlSol >= 0 ? '+' : ''}{pnlSol.toFixed(4)} SOL)
+                              ({pnlEth >= 0 ? '+' : ''}{pnlEth.toFixed(4)} ETH)
                             </span>
                           </div>
                           <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#67704f' }}>
                             <span>Entry: <span className="mono" style={{ color: '#a3ad8d' }}>${formatPrice(entryNum)}</span></span>
-                            <span>Size: <span className="mono" style={{ color: '#a3ad8d' }}>{formatSol(pos.userCapital)}</span></span>
+                            <span>Size: <span className="mono" style={{ color: '#a3ad8d' }}>{formatEth(pos.userCapital)}</span></span>
                             <span style={{ color: timeColor }}>{timeStr}</span>
                           </div>
                         </div>
                         <motion.button
-                          onClick={() => closePosition(String(pos.id))}
+                          onClick={() => handleClose(String(pos.id))}
                           disabled={isClosing === String(pos.id)}
                           whileHover={{ scale: 1.04 }}
                           whileTap={{ scale: 0.96 }}
@@ -882,11 +911,11 @@ export const Trade: FC = () => {
               <div className="confirm-body">
                 <div className="confirm-row">
                   <span>Collateral</span>
-                  <span className="mono">{collateralSol} SOL</span>
+                  <span className="mono">{collateralEth} ETH</span>
                 </div>
                 <div className="confirm-row">
                   <span>Position Size</span>
-                  <span className="mono">{positionSize.toFixed(4)} SOL {positionSizeUsd > 0 && `($${positionSizeUsd.toFixed(2)})`}</span>
+                  <span className="mono">{positionSize.toFixed(4)} ETH {positionSizeUsd > 0 && `($${positionSizeUsd.toFixed(2)})`}</span>
                 </div>
                 <div className="confirm-row">
                   <span>Leverage</span>
@@ -916,7 +945,7 @@ export const Trade: FC = () => {
                 <div className="confirm-divider" />
                 <div className="confirm-row">
                   <span>Fee (0.5%)</span>
-                  <span className="mono">{flatFee.toFixed(5)} SOL</span>
+                  <span className="mono">{flatFee.toFixed(5)} ETH</span>
                 </div>
                 <div className="confirm-row">
                   <span>Max Duration</span>
@@ -924,7 +953,7 @@ export const Trade: FC = () => {
                 </div>
                 <div className="confirm-row">
                   <span>Profit Lock</span>
-                  <span className="mono" style={{ color: 'var(--primary)' }}>30% → $SCALE</span>
+                  <span className="mono" style={{ color: 'var(--primary)' }}>30% → $LOADED</span>
                 </div>
               </div>
 
@@ -938,7 +967,7 @@ export const Trade: FC = () => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  Confirm Long {positionSize.toFixed(3)} SOL
+                  Confirm Long {positionSize.toFixed(3)} ETH
                 </motion.button>
               </div>
 

@@ -2,7 +2,7 @@
 // mirrors it to a cookie so it also rides the top-level Google OAuth
 // navigation (which can't carry custom state). Read at signup time.
 
-const REF_KEY = 'scale_ref';
+const REF_KEY = 'loaded_ref';
 
 /** Call once on app load. Captures ?ref= from the URL if present. */
 export function captureReferral(): void {

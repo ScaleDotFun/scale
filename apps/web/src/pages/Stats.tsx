@@ -1,14 +1,14 @@
 import { type FC } from 'react';
 import { useStats } from '../hooks/useStats';
-import { formatNumber, formatSol } from '../lib/format';
+import { formatNumber, formatEth, explorerAddressUrl } from '../lib/format';
 
 export const Stats: FC = () => {
   const {
     stats,
-    poolSizeSol,
-    totalBurnedSol,
-    totalLockedSol,
-    totalCreatorPayoutsSol,
+    poolSizeEth,
+    totalBurnedEth,
+    totalLockedEth,
+    totalCreatorPayoutsEth,
     loading,
     error,
   } = useStats();
@@ -27,7 +27,7 @@ export const Stats: FC = () => {
       <div>
         <h2 style={{ marginBottom: 4 }}>Protocol Stats</h2>
         <p style={{ fontSize: '0.86rem' }}>
-          Real-time overview of the Scale Protocol
+          Real-time overview of the Loaded Protocol
         </p>
       </div>
 
@@ -45,17 +45,17 @@ export const Stats: FC = () => {
             Capital Pool {stats?.poolSourceOnchain && <span style={{ color: 'var(--green)' }}>· on-chain</span>}
           </div>
           <div className="stat-card-value" style={{ color: 'var(--primary)' }}>
-            {formatNumber(poolSizeSol)} <span style={{ fontSize: '0.79rem' }}>SOL</span>
+            {formatNumber(poolSizeEth)} <span style={{ fontSize: '0.79rem' }}>ETH</span>
           </div>
           <div className="stat-card-sub">
             {stats?.poolWalletAddress ? (
               <a
                 className="link-dim"
-                href={`https://solscan.io/account/${stats.poolWalletAddress}`}
+                href={explorerAddressUrl(stats.poolWalletAddress)}
                 target="_blank"
                 rel="noreferrer"
               >
-                Live wallet balance — verify on Solscan ↗
+                Live wallet balance — verify on the explorer ↗
               </a>
             ) : (
               'Available for lending'
@@ -65,22 +65,22 @@ export const Stats: FC = () => {
 
         <div className="stat-card">
           <div className="stat-card-label">
-            $SCALE Locked Supply {stats?.frontLockedPct != null && <span style={{ color: 'var(--green)' }}>· on-chain</span>}
+            $LOADED Locked Supply {stats?.frontLockedPct != null && <span style={{ color: 'var(--green)' }}>· on-chain</span>}
           </div>
           <div className="stat-card-value" style={{ color: 'var(--primary)' }}>
             {stats?.frontLockedPct != null ? `${stats.frontLockedPct.toFixed(2)}%` : '—'}
           </div>
           <div className="stat-card-sub">
             {stats?.frontLockedTokens != null
-              ? `${formatNumber(stats.frontLockedTokens)} of ${formatNumber(stats.frontTotalSupply ?? 0)} $SCALE`
+              ? `${formatNumber(stats.frontLockedTokens)} of ${formatNumber(stats.frontTotalSupply ?? 0)} $LOADED`
               : 'Awaiting on-chain read'}
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-card-label">$SCALE Burned</div>
+          <div className="stat-card-label">$LOADED Burned</div>
           <div className="stat-card-value" style={{ color: 'var(--yellow)' }}>
-            {formatNumber(totalBurnedSol)} <span style={{ fontSize: '0.79rem' }}>SOL</span>
+            {formatNumber(totalBurnedEth)} <span style={{ fontSize: '0.79rem' }}>ETH</span>
           </div>
           <div className="stat-card-sub">20% of fee revenue</div>
         </div>
@@ -88,7 +88,7 @@ export const Stats: FC = () => {
         <div className="stat-card">
           <div className="stat-card-label">Profit Locks</div>
           <div className="stat-card-value">
-            {formatNumber(totalLockedSol)} <span style={{ fontSize: '0.79rem' }}>SOL</span>
+            {formatNumber(totalLockedEth)} <span style={{ fontSize: '0.79rem' }}>ETH</span>
           </div>
           <div className="stat-card-sub">30% of trade profits auto-locked 7d</div>
         </div>
@@ -114,7 +114,7 @@ export const Stats: FC = () => {
         <div className="stat-card">
           <div className="stat-card-label">Creator Payouts</div>
           <div className="stat-card-value">
-            {formatNumber(totalCreatorPayoutsSol)} <span style={{ fontSize: '0.79rem' }}>SOL</span>
+            {formatNumber(totalCreatorPayoutsEth)} <span style={{ fontSize: '0.79rem' }}>ETH</span>
           </div>
           <div className="stat-card-sub">30% of fees, claimed by creators</div>
         </div>
@@ -130,11 +130,11 @@ export const Stats: FC = () => {
             </h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.86rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span className="text-secondary">User gets (SOL)</span>
+                <span className="text-secondary">User gets (ETH)</span>
                 <span className="mono text-green">70%</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span className="text-secondary">Auto-buy $SCALE (locked 7d)</span>
+                <span className="text-secondary">Auto-buy $LOADED (locked 7d)</span>
                 <span className="mono" style={{ color: 'var(--primary)' }}>30%</span>
               </div>
             </div>
@@ -154,7 +154,7 @@ export const Stats: FC = () => {
                 <span className="mono">30%</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span className="text-secondary">Buy & burn $SCALE</span>
+                <span className="text-secondary">Buy & burn $LOADED</span>
                 <span className="mono text-yellow">20%</span>
               </div>
             </div>

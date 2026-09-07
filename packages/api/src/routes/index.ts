@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Route Barrel
+// LOADED PROTOCOL — Route Barrel
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';

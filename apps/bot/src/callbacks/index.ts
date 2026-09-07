@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Callback Query Router
+// LOADED PROTOCOL — Callback Query Router
 // ──────────────────────────────────────────────
 
 import type { Context } from 'grammy';
@@ -8,7 +8,7 @@ import {
   bold,
   code,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatPercent,
   formatAddress,
 } from '../lib/format.js';
@@ -123,21 +123,21 @@ async function handleConfirmApe(ctx: Context, telegramId: string, payload: strin
   }
 
   const [tokenAddress, amountStr, leverageStr] = parts;
-  const amountSol = parseFloat(amountStr);
+  const amountEth = parseFloat(amountStr);
   const leverage = parseInt(leverageStr, 10);
 
   await ctx.answerCallbackQuery({ text: '🦍 Opening position...' });
   await ctx.editMessageText('⏳ Opening position\\.\\.\\. 🦍', { parse_mode: 'MarkdownV2' });
 
   try {
-    const result = await api.openPosition(telegramId, tokenAddress, amountSol, leverage);
+    const result = await api.openPosition(telegramId, tokenAddress, amountEth, leverage);
 
     const pos = result.position;
     const sym = escapeMarkdown(pos.tokenSymbol);
     const lev = escapeMarkdown(`${pos.leverage}x`);
-    const size = escapeMarkdown(formatSol(BigInt(pos.positionSizeLamports)));
+    const size = escapeMarkdown(formatEth(BigInt(pos.positionSizeWei)));
     const entry = escapeMarkdown(pos.entryPriceSol.toFixed(8));
-    const txShort = escapeMarkdown(formatAddress(result.txSignature));
+    const txShort = escapeMarkdown(formatAddress(result.txHash));
 
     const msg = [
       `🦍 ${bold('Position Opened\\!')}`,
@@ -145,7 +145,7 @@ async function handleConfirmApe(ctx: Context, telegramId: string, payload: strin
       `${bold('Token:')} ${sym}`,
       `${bold('Leverage:')} ${lev}`,
       `${bold('Position Size:')} ${size}`,
-      `${bold('Entry Price:')} ${entry} SOL`,
+      `${bold('Entry Price:')} ${entry} ETH`,
       ``,
       `${bold('ID:')} ${code(escapeMarkdown(result.positionId))}`,
       `${bold('tx:')} ${code(txShort)}`,
@@ -179,12 +179,12 @@ async function handleConfirmClose(
   try {
     const result = await api.closePosition(telegramId, positionId);
 
-    const pnlLamports = BigInt(result.pnlLamports);
+    const pnlWei = BigInt(result.pnlWei);
     const emoji = result.isProfitable ? '🟢' : '🔴';
     const sign = result.isProfitable ? '\\+' : '';
-    const pnl = escapeMarkdown(formatSol(pnlLamports < 0n ? -pnlLamports : pnlLamports));
-    const cashout = escapeMarkdown(formatSol(BigInt(result.cashoutLamports)));
-    const txShort = escapeMarkdown(formatAddress(result.txSignature));
+    const pnl = escapeMarkdown(formatEth(pnlWei < 0n ? -pnlWei : pnlWei));
+    const cashout = escapeMarkdown(formatEth(BigInt(result.cashoutWei)));
+    const txShort = escapeMarkdown(formatAddress(result.txHash));
 
     const lines = [
       `📦 ${bold('Position Closed')}`,
@@ -193,9 +193,9 @@ async function handleConfirmClose(
       `${bold('Cashout:')} ${cashout}`,
     ];
 
-    if (result.lockLamports) {
-      const lockAmt = escapeMarkdown(formatSol(BigInt(result.lockLamports)));
-      lines.push(`${bold('🔒 Locked:')} ${lockAmt} → \\$SCALE \\(7d\\)`);
+    if (result.lockWei) {
+      const lockAmt = escapeMarkdown(formatEth(BigInt(result.lockWei)));
+      lines.push(`${bold('🔒 Locked:')} ${lockAmt} → \\$LOADED \\(7d\\)`);
     }
 
     lines.push(``);
@@ -233,10 +233,10 @@ async function handleConfirmCloseAll(ctx: Context, telegramId: string): Promise<
     for (const pos of positions) {
       try {
         const result = await api.closePosition(telegramId, pos.id);
-        const pnlLamports = BigInt(result.pnlLamports);
-        totalPnl += pnlLamports;
+        const pnlWei = BigInt(result.pnlWei);
+        totalPnl += pnlWei;
         const emoji = result.isProfitable ? '🟢' : '🔴';
-        const pnl = escapeMarkdown(formatSol(pnlLamports < 0n ? -pnlLamports : pnlLamports));
+        const pnl = escapeMarkdown(formatEth(pnlWei < 0n ? -pnlWei : pnlWei));
         const sign = result.isProfitable ? '\\+' : '\\-';
         results.push(`${emoji} ${escapeMarkdown(pos.tokenSymbol)} → ${sign}${pnl}`);
       } catch {
@@ -246,7 +246,7 @@ async function handleConfirmCloseAll(ctx: Context, telegramId: string): Promise<
 
     const netEmoji = totalPnl >= 0n ? '🟢' : '🔴';
     const netSign = totalPnl >= 0n ? '\\+' : '\\-';
-    const netPnl = escapeMarkdown(formatSol(totalPnl < 0n ? -totalPnl : totalPnl));
+    const netPnl = escapeMarkdown(formatEth(totalPnl < 0n ? -totalPnl : totalPnl));
 
     const lines = [
       `📦 ${bold('All Positions Closed')}`,
@@ -275,24 +275,24 @@ async function handleConfirmWithdraw(
   telegramId: string,
   payload: string,
 ): Promise<void> {
-  // payload = amountLamports:toAddress
+  // payload = amountWei:toAddress
   const colonIdx = payload.indexOf(':');
   if (colonIdx < 0) {
     await ctx.answerCallbackQuery({ text: 'Invalid withdrawal data' });
     return;
   }
-  const amountLamports = payload.slice(0, colonIdx);
+  const amountWei = payload.slice(0, colonIdx);
   const toAddress = payload.slice(colonIdx + 1);
 
   await ctx.answerCallbackQuery({ text: 'Processing withdrawal...' });
   await ctx.editMessageText('⏳ Processing withdrawal\\.\\.\\. 📤', { parse_mode: 'MarkdownV2' });
 
   try {
-    const result = await api.withdrawSol(telegramId, amountLamports, toAddress);
+    const result = await api.withdrawEth(telegramId, amountWei, toAddress);
 
-    const amt = escapeMarkdown(formatSol(BigInt(result.amountLamports)));
+    const amt = escapeMarkdown(formatEth(BigInt(result.amountWei)));
     const addr = escapeMarkdown(formatAddress(result.toAddress));
-    const txShort = escapeMarkdown(formatAddress(result.txSignature));
+    const txShort = escapeMarkdown(formatAddress(result.txHash));
 
     const msg = [
       `✅ ${bold('Withdrawal Complete')}`,
@@ -323,8 +323,8 @@ async function handleConfirmClaim(ctx: Context, telegramId: string): Promise<voi
   try {
     const result = await api.claimCreatorEarnings(telegramId);
 
-    const amt = escapeMarkdown(formatSol(BigInt(result.amountLamports)));
-    const txShort = escapeMarkdown(formatAddress(result.txSignature));
+    const amt = escapeMarkdown(formatEth(BigInt(result.amountWei)));
+    const txShort = escapeMarkdown(formatAddress(result.txHash));
     const count = escapeMarkdown(result.payoutIds.length.toString());
 
     const msg = [

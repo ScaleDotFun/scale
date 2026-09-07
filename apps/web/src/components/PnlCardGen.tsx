@@ -1,5 +1,6 @@
 import { type FC, useRef, useState, useCallback } from 'react';
 import type { PositionInfo } from '../lib/api';
+import { weiToEth } from '../lib/format';
 
 interface PnlCardGenProps {
   trade: PositionInfo;
@@ -14,8 +15,8 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
   const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const pnlSol = trade.pnlSol ? Number(trade.pnlSol) / 1e9 : 0;
-  const isProfit = pnlSol >= 0;
+  const pnlEth = trade.pnlWei ? weiToEth(trade.pnlWei) : 0;
+  const isProfit = pnlEth >= 0;
   // ROI from the raw booked prices — both sides share the same unit,
   // so the ratio is exact regardless of denomination
   const entryRaw = trade.entryPrice ? Number(trade.entryPrice) : 0;
@@ -24,7 +25,7 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
   // Display prices in token-USD when the API converted them
   const entryPrice = (trade as any).entryPriceUsd ?? 0;
   const exitPrice = (trade as any).exitPriceUsd ?? 0;
-  const capitalSol = Number(trade.userCapital || 0) / 1e9;
+  const capitalEth = weiToEth(trade.userCapital);
 
   const generateCard = useCallback(() => {
     const canvas = canvasRef.current;
@@ -65,7 +66,7 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
     // Protocol branding — top left
     ctx.font = 'bold 16px "Inter", system-ui, sans-serif';
     ctx.fillStyle = '#f0f4e4';
-    ctx.fillText('SCALE', 28, 42);
+    ctx.fillText('LOADED', 28, 42);
     ctx.font = '12px "Inter", system-ui, sans-serif';
     ctx.fillStyle = '#66786a';
     ctx.fillText('PROTOCOL', 82, 42);
@@ -74,7 +75,7 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
     ctx.font = '11px "Inter", system-ui, sans-serif';
     ctx.fillStyle = '#4a5236';
     ctx.textAlign = 'right';
-    ctx.fillText('scale.fun', W - 28, 42);
+    ctx.fillText('loaded.fun', W - 28, 42);
     ctx.textAlign = 'left';
 
     // Divider line
@@ -107,11 +108,11 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
     ctx.fillStyle = isProfit ? '#c8ff00' : '#ff4d4d';
     ctx.fillText(roiStr, 28, 168);
 
-    // PnL in SOL
+    // PnL in ETH
     ctx.font = '18px "Inter", system-ui, sans-serif';
     ctx.fillStyle = '#a3ad8d';
     ctx.fillText(
-      `${pnlSol >= 0 ? '+' : ''}${pnlSol.toFixed(4)} SOL`,
+      `${pnlEth >= 0 ? '+' : ''}${pnlEth.toFixed(4)} ETH`,
       28,
       198,
     );
@@ -127,7 +128,7 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
 
     ctx.font = '14px "Inter", system-ui, sans-serif';
     ctx.fillStyle = '#b3bd97';
-    ctx.fillText(`${capitalSol.toFixed(4)} SOL`, 28, statY + 20);
+    ctx.fillText(`${capitalEth.toFixed(4)} ETH`, 28, statY + 20);
     ctx.fillText(entryPrice > 0 ? `$${entryPrice.toPrecision(6)}` : '—', 160, statY + 20);
     ctx.fillText(exitPrice > 0 ? `$${exitPrice.toPrecision(6)}` : '—', 292, statY + 20);
     ctx.fillText((trade.tier || 'degen').toUpperCase(), 424, statY + 20);
@@ -143,7 +144,7 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
     // Footer
     ctx.font = '10px "Inter", system-ui, sans-serif';
     ctx.fillStyle = '#37421c';
-    ctx.fillText('Leveraged memecoin trading on Solana', 28, 308);
+    ctx.fillText('Leveraged memecoin trading on Robinhood Chain', 28, 308);
     ctx.textAlign = 'right';
     ctx.fillText(new Date().toISOString().split('T')[0], W - 28, 308);
     ctx.textAlign = 'left';
@@ -152,7 +153,7 @@ export const PnlCardGen: FC<PnlCardGenProps> = ({ trade }) => {
     const url = canvas.toDataURL('image/png');
     setPreviewUrl(url);
     setGenerating(false);
-  }, [trade, isProfit, pnlSol, roi, capitalSol, entryPrice, exitPrice]);
+  }, [trade, isProfit, pnlEth, roi, capitalEth, entryPrice, exitPrice]);
 
   const downloadCard = useCallback(() => {
     if (!previewUrl) return;

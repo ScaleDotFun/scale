@@ -18,11 +18,11 @@ export function useBurns() {
   const lockStats = lockStatsResult.data;
 
   const totalBurned = burns.reduce(
-    (sum, b) => sum + Number(b.solAmount || 0),
+    (sum, b) => sum + Number(b.ethAmount || 0),
     0,
   );
 
-  const totalLocked = Number(lockStats?.totalLocked?.solAmount || 0);
+  const totalLocked = Number(lockStats?.totalLocked?.ethAmount || 0);
 
   return {
     burns,

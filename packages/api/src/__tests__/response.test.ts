@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Response Helper Tests
+// LOADED PROTOCOL — Response Helper Tests
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi } from 'vitest';

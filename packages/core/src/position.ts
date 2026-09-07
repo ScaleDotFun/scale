@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Position Management Logic
+// LOADED PROTOCOL — Position Management Logic
 // ──────────────────────────────────────────────
 
 import {
@@ -7,7 +7,7 @@ import {
   PositionPreview,
   PositionOpenParams,
   MAX_POSITION_DURATION_MS,
-  LAMPORTS_PER_SOL,
+  WEI_PER_ETH,
   SAFETY_BUFFER_BPS,
   BPS,
 } from './types.js';
@@ -32,11 +32,11 @@ export interface ValidationResult {
   errors: string[];
 }
 
-/** Minimum user capital: 0.01 SOL (~a dollar) */
-const MIN_USER_CAPITAL_LAMPORTS = LAMPORTS_PER_SOL / 100n;
+/** Minimum user capital: 0.001 ETH (~a couple of dollars) */
+const MIN_USER_CAPITAL_WEI = WEI_PER_ETH / 1_000n;
 
-/** Maximum user capital: 10 SOL per position */
-const MAX_USER_CAPITAL_LAMPORTS = 10n * LAMPORTS_PER_SOL;
+/** Maximum user capital: 1 ETH per position */
+const MAX_USER_CAPITAL_WEI = WEI_PER_ETH;
 
 /**
  * Validate parameters for opening a new position.
@@ -44,16 +44,16 @@ const MAX_USER_CAPITAL_LAMPORTS = 10n * LAMPORTS_PER_SOL;
 export function validatePositionOpen(
   params: PositionOpenParams,
   tier: Tier,
-  poolBalanceLamports: bigint,
+  poolBalanceWei: bigint,
 ): ValidationResult {
   const errors: string[] = [];
 
   // Validate capital bounds
-  if (params.userCapitalLamports < MIN_USER_CAPITAL_LAMPORTS) {
-    errors.push(`Minimum collateral is 0.01 SOL. Please increase your amount.`);
+  if (params.userCapitalWei < MIN_USER_CAPITAL_WEI) {
+    errors.push(`Minimum collateral is 0.001 ETH. Please increase your amount.`);
   }
-  if (params.userCapitalLamports > MAX_USER_CAPITAL_LAMPORTS) {
-    errors.push(`Maximum collateral is 10 SOL per position. Please reduce your amount.`);
+  if (params.userCapitalWei > MAX_USER_CAPITAL_WEI) {
+    errors.push(`Maximum collateral is 1 ETH per position. Please reduce your amount.`);
   }
 
   // Validate leverage
@@ -64,13 +64,13 @@ export function validatePositionOpen(
 
   // Validate pool has enough capital
   const protocolCapital = calculateProtocolCapital(
-    params.userCapitalLamports,
+    params.userCapitalWei,
     params.leverage,
   );
-  if (protocolCapital > poolBalanceLamports) {
+  if (protocolCapital > poolBalanceWei) {
     errors.push(
       `The protocol pool doesn't have enough capital right now. ` +
-      `Your position needs ${formatSol(protocolCapital)} SOL from the pool, but only ${formatSol(poolBalanceLamports)} SOL is available. ` +
+      `Your position needs ${formatEth(protocolCapital)} ETH from the pool, but only ${formatEth(poolBalanceWei)} ETH is available. ` +
       `Try a smaller position size, lower leverage, or wait for other positions to close.`,
     );
   }
@@ -91,25 +91,25 @@ export function validatePositionOpen(
  * Generate a full position preview for the UI.
  */
 export function generatePositionPreview(
-  userCapitalLamports: bigint,
+  userCapitalWei: bigint,
   leverage: number,
   tier: Tier,
 ): PositionPreview {
   const config = TIER_CONFIGS[tier];
-  const positionSize = calculatePositionSize(userCapitalLamports, leverage);
-  const protocolCapital = calculateProtocolCapital(userCapitalLamports, leverage);
+  const positionSize = calculatePositionSize(userCapitalWei, leverage);
+  const protocolCapital = calculateProtocolCapital(userCapitalWei, leverage);
   const flatFee = calculateFlatFee(positionSize, tier);
-  const scenarios = generateScenarios(userCapitalLamports, protocolCapital, tier);
+  const scenarios = generateScenarios(userCapitalWei, protocolCapital, tier);
 
   return {
     tokenAddress: '',  // filled by caller
     tier,
     tierEmoji: config.emoji,
-    userCapitalLamports,
+    userCapitalWei,
     leverage,
-    positionSizeLamports: positionSize,
-    protocolCapitalLamports: protocolCapital,
-    flatFeeLamports: flatFee,
+    positionSizeWei: positionSize,
+    protocolCapitalWei: protocolCapital,
+    flatFeeWei: flatFee,
     flatFeePct: getFlatFeePercent(tier),
     exitThresholdPct: getExitThresholdPercent(tier),
     maxDurationHours: 24,
@@ -117,29 +117,29 @@ export function generatePositionPreview(
     scenarioIf2x: {
       label: 'If 2x',
       priceMovePercent: 100,
-      totalValueLamports: positionSize * 2n,
-      profitLamports: positionSize,
-      userCashoutLamports: scenarios.if2x.userCashout,
-      userLockLamports: scenarios.if2x.userLock,
-      maxLossLamports: 0n,
+      totalValueWei: positionSize * 2n,
+      profitWei: positionSize,
+      userCashoutWei: scenarios.if2x.userCashout,
+      userLockWei: scenarios.if2x.userLock,
+      maxLossWei: 0n,
     },
     scenarioIf3x: {
       label: 'If 3x',
       priceMovePercent: 200,
-      totalValueLamports: positionSize * 3n,
-      profitLamports: positionSize * 2n,
-      userCashoutLamports: scenarios.if3x.userCashout,
-      userLockLamports: scenarios.if3x.userLock,
-      maxLossLamports: 0n,
+      totalValueWei: positionSize * 3n,
+      profitWei: positionSize * 2n,
+      userCashoutWei: scenarios.if3x.userCashout,
+      userLockWei: scenarios.if3x.userLock,
+      maxLossWei: 0n,
     },
     scenarioIfDump: {
       label: 'If dump',
       priceMovePercent: getExitThresholdPercent(tier),
-      totalValueLamports: 0n,
-      profitLamports: 0n,
-      userCashoutLamports: 0n,
-      userLockLamports: 0n,
-      maxLossLamports: scenarios.ifDump.maxLoss,
+      totalValueWei: 0n,
+      profitWei: 0n,
+      userCashoutWei: 0n,
+      userLockWei: 0n,
+      maxLossWei: scenarios.ifDump.maxLoss,
     },
   };
 }
@@ -217,6 +217,6 @@ export function timeRemainingMs(openedAtMs: number, nowMs: number = Date.now()):
 // Helpers
 // ──────────────────────────────────────────────
 
-function formatSol(lamports: bigint): string {
-  return (Number(lamports) / 1_000_000_000).toFixed(4);
+function formatEth(wei: bigint): string {
+  return (Number(wei) / Number(WEI_PER_ETH)).toFixed(4);
 }

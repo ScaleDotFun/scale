@@ -1,6 +1,6 @@
 import { type FC, useState } from 'react';
 import * as api from '../lib/api';
-import { formatSol, formatNumber, formatTimeAgo, solscanTxUrl, formatAddress } from '../lib/format';
+import { formatEth, formatNumber, formatTimeAgo, explorerTxUrl, formatAddress, isValidAddress } from '../lib/format';
 
 export const Creator: FC = () => {
   const [walletAddress, setWalletAddress] = useState('');
@@ -12,7 +12,7 @@ export const Creator: FC = () => {
 
   const handleSearch = async () => {
     const addr = walletAddress.trim();
-    if (!addr || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)) return;
+    if (!isValidAddress(addr)) return;
 
     setLoading(true);
     setError(null);
@@ -62,7 +62,7 @@ export const Creator: FC = () => {
             </svg>
             <input
               className="search-input"
-              placeholder="Enter creator wallet address..."
+              placeholder="Enter creator wallet address (0x…)"
               value={walletAddress}
               onChange={(e) => setWalletAddress(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -109,8 +109,8 @@ export const Creator: FC = () => {
             No listed tokens found
           </div>
           <div style={{ fontSize: '0.82rem', color: 'var(--text-2)', maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
-            This wallet has no tokens listed on Scale Protocol.
-            To list a coin you launched on pump.fun, paste its mint address at /list.
+            This wallet has no tokens listed on Loaded Protocol.
+            To list a coin you launched on PONS, paste its contract address at /list.
           </div>
         </div>
       )}
@@ -136,7 +136,7 @@ export const Creator: FC = () => {
                   </div>
                   {Number(token.unclaimedEarnings) > 0 && (
                     <span className="badge badge-bonded" style={{ fontSize: 12 }}>
-                      {formatSol(BigInt(token.unclaimedEarnings), 4)} SOL unclaimed
+                      {formatEth(BigInt(token.unclaimedEarnings), 4)} ETH unclaimed
                     </span>
                   )}
                 </div>
@@ -184,7 +184,7 @@ export const Creator: FC = () => {
                     {payouts.map((payout) => (
                       <tr key={payout.id}>
                         <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{payout.token.symbol ?? formatAddress(payout.token.address, 4)}</td>
-                        <td className="mono" style={{ textAlign: 'right', color: 'var(--green)' }}>{formatSol(BigInt(payout.amount), 4)} SOL</td>
+                        <td className="mono" style={{ textAlign: 'right', color: 'var(--green)' }}>{formatEth(BigInt(payout.amount), 4)} ETH</td>
                         <td>
                           <span className={`badge ${payout.status === 'claimed' ? 'badge-bonded' : 'badge-rising'}`}>
                             {payout.status}
@@ -193,7 +193,7 @@ export const Creator: FC = () => {
                         <td style={{ textAlign: 'right', color: 'var(--text-2)' }}>{formatTimeAgo(payout.createdAt)}</td>
                         <td style={{ textAlign: 'right' }}>
                           {payout.claimTx && (
-                            <a href={solscanTxUrl(payout.claimTx)} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontSize: 12 }}>
+                            <a href={explorerTxUrl(payout.claimTx)} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', fontSize: 12 }}>
                               View
                             </a>
                           )}

@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Service Scheduler (Main Entry Point)
+// LOADED PROTOCOL — Service Scheduler (Main Entry Point)
 // ──────────────────────────────────────────────
 //
 // Boots all BullMQ workers and schedules recurring jobs.
-// Run with: pnpm --filter @scale/services dev
+// Run with: pnpm --filter @loaded/services dev
 //
 
 import './sentry.js'; // must init before anything else
@@ -107,7 +107,7 @@ process.on('unhandledRejection', (reason) => {
 
 async function main(): Promise<void> {
   console.log(`${PREFIX} ──────────────────────────────────────`);
-  console.log(`${PREFIX}   SCALE PROTOCOL — Background Services`);
+  console.log(`${PREFIX}   LOADED PROTOCOL — Background Services`);
   console.log(`${PREFIX} ──────────────────────────────────────`);
 
   const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';

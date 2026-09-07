@@ -6,7 +6,7 @@ async function seed() {
   console.log('Seeding database (production-ready)...');
 
   // No fake tokens -- tokens are listed through the /api/tokens/list endpoint
-  // when creators redirect their pump.fun fees to the protocol wallet.
+  // when creators redirect their PONS fees to the protocol wallet.
 
   const tokenCount = await prisma.token.count();
   const userCount = await prisma.user.count();
@@ -15,8 +15,8 @@ async function seed() {
 
   console.log(`  ${tokenCount} tokens listed`);
   console.log(`  ${userCount} users registered`);
-  console.log(`  Pool balance: ${poolBalance._sum.amount ?? 0n} lamports`);
-  console.log(`  Insurance fund balance: ${insuranceFundBalance._sum.amount ?? 0n} lamports`);
+  console.log(`  Pool balance: ${poolBalance._sum.amount ?? 0n} wei`);
+  console.log(`  Insurance fund balance: ${insuranceFundBalance._sum.amount ?? 0n} wei`);
   console.log('Done.');
 }
 

@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Telegram Message Formatting
+// LOADED PROTOCOL — Telegram Message Formatting
 // ──────────────────────────────────────────────
 
-import { LAMPORTS_PER_SOL } from '@scale/core';
+import { WEI_PER_ETH } from '@loaded/core';
 
 /**
  * Characters that must be escaped for Telegram MarkdownV2.
@@ -34,16 +34,16 @@ export function mono(text: string): string {
 }
 
 /**
- * Format lamports (bigint or number) into a human-readable SOL string.
- * Example: `1_500_000_000n` → `"1.500 SOL"`
+ * Format wei (bigint or number) into a human-readable ETH string.
+ * Example: `1_500_000_000n` → `"1.500 ETH"`
  */
-export function formatSol(lamports: bigint | number): string {
-  const lamps = typeof lamports === 'number' ? BigInt(Math.round(lamports)) : lamports;
-  const whole = lamps / LAMPORTS_PER_SOL;
-  const frac = lamps % LAMPORTS_PER_SOL;
+export function formatEth(wei: bigint | number): string {
+  const lamps = typeof wei === 'number' ? BigInt(Math.round(wei)) : wei;
+  const whole = lamps / WEI_PER_ETH;
+  const frac = lamps % WEI_PER_ETH;
   // Pad fraction to 9 digits then take the first 3 for display
   const fracStr = frac.toString().padStart(9, '0').slice(0, 3);
-  return `${whole}.${fracStr} SOL`;
+  return `${whole}.${fracStr} ETH`;
 }
 
 /**
@@ -65,7 +65,7 @@ export function formatPercent(pct: number): string {
 }
 
 /**
- * Truncate a Solana address for display.
+ * Truncate a Robinhood Chain address for display.
  * Example: `"7xKs3fDab..."` → `"7xKs...3fDa"`
  */
 export function formatAddress(addr: string): string {

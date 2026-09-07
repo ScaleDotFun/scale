@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Express App Factory
+// LOADED PROTOCOL — Express App Factory
 // ──────────────────────────────────────────────
 // Extracted from server.ts so tests can import the app without starting the server.
 
@@ -31,7 +31,7 @@ export function createApp(): express.Express {
     cors({
       origin: process.env.NODE_ENV === 'production'
         ? process.env.CORS_ORIGIN?.split(',') || [
-            'https://www.scale.fun', 'https://scale.fun',
+            'https://www.loaded.fun', 'https://loaded.fun',
             
           ]
         : true,

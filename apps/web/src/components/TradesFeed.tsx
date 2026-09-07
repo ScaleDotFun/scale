@@ -1,5 +1,6 @@
 import { type FC, useState, useEffect, useRef } from 'react';
 import { fetchRecentTrades, type TradeItem } from '../lib/marketdata';
+import { explorerTxUrl } from '../lib/format';
 
 interface TradesFeedProps {
   tokenAddress?: string;
@@ -16,7 +17,7 @@ function truncateWallet(w: string): string {
 }
 
 /**
- * Trades feed for a token — real Jupiter swaps from GeckoTerminal
+ * Trades feed for a token — real on-chain swaps from GeckoTerminal
  * via our API. Auto-refreshes every 6s (server-side 5s cache).
  */
 export const TradesFeed: FC<TradesFeedProps> = ({ tokenAddress }) => {
@@ -83,7 +84,7 @@ export const TradesFeed: FC<TradesFeedProps> = ({ tokenAddress }) => {
             <td>
               {trade.txHash && (
                 <a
-                  href={`https://solscan.io/tx/${trade.txHash}`}
+                  href={explorerTxUrl(trade.txHash)}
                   target="_blank"
                   rel="noreferrer"
                   className="link-dim"

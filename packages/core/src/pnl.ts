@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — P&L Calculation
+// LOADED PROTOCOL — P&L Calculation
 // ──────────────────────────────────────────────
 
 import {
@@ -14,7 +14,7 @@ import type { Tier } from './types.js';
  * Calculate full P&L for a closed position.
  *
  * Profit distribution:
- *   70% of profit → SOL directly to user
+ *   70% of profit → ETH directly to user
  *   30% of profit → auto-buy $FRONT, locked 7 days, then claimable by user
  *
  * The protocol does NOT take a percentage of profit.
@@ -26,73 +26,73 @@ import type { Tier } from './types.js';
  *
  * @param entryPrice - Price at which tokens were bought
  * @param exitPrice - Price at which tokens were sold
- * @param userCapitalLamports - User's original collateral
- * @param protocolCapitalLamports - Protocol's co-invested capital
+ * @param userCapitalWei - User's original collateral
+ * @param protocolCapitalWei - Protocol's co-invested capital
  * @param tier - Risk tier (for fee calculation)
  */
 export function calculatePnL(
   entryPrice: number,
   exitPrice: number,
-  userCapitalLamports: bigint,
-  protocolCapitalLamports: bigint,
+  userCapitalWei: bigint,
+  protocolCapitalWei: bigint,
   tier: Tier,
 ): PnLResult {
-  const totalCapitalLamports = userCapitalLamports + protocolCapitalLamports;
+  const totalCapitalWei = userCapitalWei + protocolCapitalWei;
 
   // Calculate what the tokens are worth now relative to entry.
   // Use fixed-point BigInt math with 1e18 scaling to avoid Number(bigint) precision loss.
-  const SCALE = 1_000_000_000_000_000_000n; // 1e18
+  const PRECISION = 1_000_000_000_000_000_000n; // 1e18 fixed-point scale
   const scaledExitPrice = BigInt(Math.round(exitPrice * 1e18));
   const scaledEntryPrice = BigInt(Math.round(entryPrice * 1e18));
-  const totalValueLamports =
-    (totalCapitalLamports * scaledExitPrice) / scaledEntryPrice;
+  const totalValueWei =
+    (totalCapitalWei * scaledExitPrice) / scaledEntryPrice;
 
   // Total profit (can be negative)
-  const totalProfitLamports = totalValueLamports - totalCapitalLamports;
-  const isProfitable = totalProfitLamports > 0n;
+  const totalProfitWei = totalValueWei - totalCapitalWei;
+  const isProfitable = totalProfitWei > 0n;
 
   // Calculate flat fee (already collected at open, but included in revenue)
-  const positionSize = userCapitalLamports + protocolCapitalLamports;
-  const flatFeeLamports = calculateFlatFee(positionSize, tier);
+  const positionSize = userCapitalWei + protocolCapitalWei;
+  const flatFeeWei = calculateFlatFee(positionSize, tier);
 
   if (!isProfitable) {
     // Loss: user loses their collateral, protocol recovers theirs first.
     // No profit split, no lock. Flat fee was already collected at open.
     return {
-      totalValueLamports,
-      totalProfitLamports,
+      totalValueWei,
+      totalProfitWei,
       isProfitable: false,
-      userGrossProfitLamports: 0n,
-      userLockLamports: 0n,
-      userCashoutLamports: 0n,
-      protocolProfitShareLamports: 0n,
-      flatFeeLamports,
-      totalProtocolRevenueLamports: flatFeeLamports,
+      userGrossProfitWei: 0n,
+      userLockWei: 0n,
+      userCashoutWei: 0n,
+      protocolProfitShareWei: 0n,
+      flatFeeWei,
+      totalProtocolRevenueWei: flatFeeWei,
     };
   }
 
   // Profit split:
-  //   70% → user gets as SOL immediately
+  //   70% → user gets as ETH immediately
   //   30% → auto-buy $FRONT & lock for 7 days, user claims after unlock
-  const userCashoutLamports =
-    (totalProfitLamports * BigInt(PROFIT_SPLIT.USER_CASH)) / BigInt(BPS.FULL);
-  const userLockLamports =
-    (totalProfitLamports * BigInt(PROFIT_SPLIT.USER_LOCK)) / BigInt(BPS.FULL);
+  const userCashoutWei =
+    (totalProfitWei * BigInt(PROFIT_SPLIT.USER_CASH)) / BigInt(BPS.FULL);
+  const userLockWei =
+    (totalProfitWei * BigInt(PROFIT_SPLIT.USER_LOCK)) / BigInt(BPS.FULL);
 
   // Protocol gets no share of the profit — only flat fee
-  const protocolProfitShareLamports = 0n;
-  const totalProtocolRevenueLamports = flatFeeLamports;
+  const protocolProfitShareWei = 0n;
+  const totalProtocolRevenueWei = flatFeeWei;
 
   return {
-    totalValueLamports,
-    totalProfitLamports,
+    totalValueWei,
+    totalProfitWei,
     isProfitable: true,
-    userGrossProfitLamports: totalProfitLamports,
-    userLockLamports,
-    userCashoutLamports,
-    protocolProfitShareLamports,
-    flatFeeLamports,
-    totalProtocolRevenueLamports,
+    userGrossProfitWei: totalProfitWei,
+    userLockWei,
+    userCashoutWei,
+    protocolProfitShareWei,
+    flatFeeWei,
+    totalProtocolRevenueWei,
   };
 }
 
@@ -112,25 +112,25 @@ export function calculateLivePnLPercent(
  * Calculate the maximum loss for a position (user's collateral + fee).
  */
 export function calculateMaxLoss(
-  userCapitalLamports: bigint,
-  flatFeeLamports: bigint,
+  userCapitalWei: bigint,
+  flatFeeWei: bigint,
 ): bigint {
-  return userCapitalLamports + flatFeeLamports;
+  return userCapitalWei + flatFeeWei;
 }
 
 /**
  * Generate scenario projections for the position preview.
  */
 export function generateScenarios(
-  userCapitalLamports: bigint,
-  protocolCapitalLamports: bigint,
+  userCapitalWei: bigint,
+  protocolCapitalWei: bigint,
   tier: Tier,
 ): {
   if2x: { userCashout: bigint; userLock: bigint };
   if3x: { userCashout: bigint; userLock: bigint };
   ifDump: { maxLoss: bigint };
 } {
-  const totalCapital = userCapitalLamports + protocolCapitalLamports;
+  const totalCapital = userCapitalWei + protocolCapitalWei;
   const flatFee = calculateFlatFee(totalCapital, tier);
 
   // 2x scenario
@@ -150,6 +150,6 @@ export function generateScenarios(
   return {
     if2x: { userCashout: cash2x, userLock: lock2x },
     if3x: { userCashout: cash3x, userLock: lock3x },
-    ifDump: { maxLoss: userCapitalLamports + flatFee },
+    ifDump: { maxLoss: userCapitalWei + flatFee },
   };
 }

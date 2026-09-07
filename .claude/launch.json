@@ -4,13 +4,13 @@
     {
       "name": "api",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@scale/api", "dev"],
+      "runtimeArgs": ["--filter", "@loaded/api", "dev"],
       "port": 4001
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@scale/web", "dev"],
+      "runtimeArgs": ["--filter", "@loaded/web", "dev"],
       "port": 3000
     }
   ]

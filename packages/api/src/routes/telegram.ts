@@ -1,17 +1,18 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Telegram Routes (Solana)
+// LOADED PROTOCOL — Telegram Routes (Robinhood Chain)
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
+import { WEI_PER_ETH } from '@loaded/core';
 import { verifyTelegramAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, NotFoundError, InsufficientFundsError } from '../lib/errors';
 
 const router = Router();
 
-import { generateCustodialWallet, isValidSolanaAddress } from '@scale/solana';
+import { generateCustodialWallet, isValidAddress } from '@loaded/evm';
 
 function generateTelegramBotWallet(): { address: string; encryptedKey: string } {
   const wallet = generateCustodialWallet();
@@ -76,7 +77,7 @@ router.post('/wallet', verifyTelegramAuth, async (req, res) => {
 /**
  * POST /telegram/withdraw
  *
- * Withdraw SOL from the bot wallet to an external address.
+ * Withdraw ETH from the bot wallet to an external address.
  * Requires Telegram auth. The actual transfer is handled by services.
  */
 router.post('/withdraw', verifyTelegramAuth, async (req, res) => {
@@ -89,23 +90,23 @@ router.post('/withdraw', verifyTelegramAuth, async (req, res) => {
       throw new ValidationError('Invalid Telegram ID — must be a numeric string');
     }
 
-    const { destinationAddress, amountLamports } = req.body;
+    const { destinationAddress, amountWei } = req.body;
 
-    if (!destinationAddress || amountLamports === undefined) {
+    if (!destinationAddress || amountWei === undefined) {
       throw new ValidationError('Missing required fields', [
         ...(!destinationAddress ? ['destinationAddress is required'] : []),
-        ...(amountLamports === undefined ? ['amountLamports is required'] : []),
+        ...(amountWei === undefined ? ['amountWei is required'] : []),
       ]);
     }
 
     // Validate destination address format
-    if (typeof destinationAddress !== 'string' || !isValidSolanaAddress(destinationAddress)) {
-      throw new ValidationError('Invalid destination address — must be a Solana (base58) address');
+    if (typeof destinationAddress !== 'string' || !isValidAddress(destinationAddress)) {
+      throw new ValidationError('Invalid destination address — must be a Robinhood Chain address (0x…)');
     }
 
     let amount: bigint;
     try {
-      amount = BigInt(amountLamports);
+      amount = BigInt(amountWei);
     } catch {
       throw new ValidationError('Invalid amount — must be a numeric string');
     }
@@ -113,10 +114,10 @@ router.post('/withdraw', verifyTelegramAuth, async (req, res) => {
       throw new ValidationError('Amount must be positive');
     }
 
-    // Minimum withdrawal: 0.01 SOL (to cover tx fees)
-    const MIN_WITHDRAWAL = 10_000_000n;
+    // Minimum withdrawal: 0.01 ETH (to cover tx fees)
+    const MIN_WITHDRAWAL = WEI_PER_ETH / 1_000n; // 0.001 ETH
     if (amount < MIN_WITHDRAWAL) {
-      throw new ValidationError('Minimum withdrawal is 0.01 SOL');
+      throw new ValidationError('Minimum withdrawal is 0.01 ETH');
     }
 
     // Find user
@@ -138,7 +139,7 @@ router.post('/withdraw', verifyTelegramAuth, async (req, res) => {
       status: 'pending',
       from: user.walletAddress,
       to: destinationAddress,
-      amountLamports: amount,
+      amountWei: amount,
       message: 'Withdrawal initiated. Transaction will be processed shortly.',
     });
   } catch (err) {
@@ -169,14 +170,14 @@ router.get('/balance/:telegramId', verifyTelegramAuth, async (req, res) => {
       throw new NotFoundError('Telegram user', req.params.telegramId as string);
     }
 
-    // Balance is read from Solana client-side or by services
+    // Balance is read from Robinhood Chain client-side or by services
 
     sendSuccess(res, {
       telegramId: user.telegramId.toString(),
       walletAddress: user.walletAddress,
       createdAt: user.createdAt,
-      // balanceLamports would come from on-chain query in production
-      balanceLamports: null as bigint | null,
+      // balanceWei would come from on-chain query in production
+      balanceWei: null as bigint | null,
     });
   } catch (err) {
     sendError(res, err);

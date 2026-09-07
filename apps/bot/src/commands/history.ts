@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /history, /pnl Commands
+// LOADED PROTOCOL — /history, /pnl Commands
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -7,7 +7,7 @@ import * as api from '../lib/api.js';
 import {
   bold,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatPercent,
   formatTimestamp,
 } from '../lib/format.js';
@@ -45,7 +45,7 @@ export async function handleHistory(ctx: CommandContext<Context>): Promise<void>
     for (const trade of recent) {
       const sym = escapeMarkdown(trade.tokenSymbol);
       const pnl = escapeMarkdown(formatPercent(trade.pnlPercent));
-      const pnlSol = escapeMarkdown(formatSol(BigInt(trade.pnlLamports)));
+      const pnlEth = escapeMarkdown(formatEth(BigInt(trade.pnlWei)));
       const lev = escapeMarkdown(`${trade.leverage}x`);
       const closedAt = trade.closedAt
         ? escapeMarkdown(formatTimestamp(new Date(trade.closedAt)))
@@ -53,7 +53,7 @@ export async function handleHistory(ctx: CommandContext<Context>): Promise<void>
 
       // Status badge
       let statusBadge: string;
-      const pnlNum = parseFloat(trade.pnlLamports);
+      const pnlNum = parseFloat(trade.pnlWei);
       switch (trade.status) {
         case 'closed_profit':
           statusBadge = '🟢 WON';
@@ -72,11 +72,11 @@ export async function handleHistory(ctx: CommandContext<Context>): Promise<void>
       }
 
       const lockLine = trade.profitLocked && trade.lockAmount
-        ? ` 🔒 ${escapeMarkdown(formatSol(BigInt(trade.lockAmount)))}`
+        ? ` 🔒 ${escapeMarkdown(formatEth(BigInt(trade.lockAmount)))}`
         : '';
 
       lines.push(
-        `${escapeMarkdown(statusBadge)} ${bold(sym)} ${lev} → ${pnl} \\(${pnlSol}\\)${lockLine}`,
+        `${escapeMarkdown(statusBadge)} ${bold(sym)} ${lev} → ${pnl} \\(${pnlEth}\\)${lockLine}`,
       );
       lines.push(`   ${closedAt}`);
     }
@@ -91,7 +91,7 @@ export async function handleHistory(ctx: CommandContext<Context>): Promise<void>
 }
 
 /**
- * /pnl — show overall profit/loss, win rate, total $SCALE accumulated
+ * /pnl — show overall profit/loss, win rate, total $LOADED accumulated
  */
 export async function handlePnL(ctx: CommandContext<Context>): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
@@ -100,14 +100,14 @@ export async function handlePnL(ctx: CommandContext<Context>): Promise<void> {
   try {
     const pnl = await api.getPnL(telegramId);
 
-    const netLamports = BigInt(pnl.netPnlLamports);
-    const isProfit = netLamports >= 0n;
+    const netWei = BigInt(pnl.netPnlWei);
+    const isProfit = netWei >= 0n;
     const emoji = isProfit ? '🟢' : '🔴';
     const sign = isProfit ? '\\+' : '';
 
-    const totalProfit = escapeMarkdown(formatSol(BigInt(pnl.totalProfitLamports)));
-    const totalLoss = escapeMarkdown(formatSol(BigInt(pnl.totalLossLamports)));
-    const net = escapeMarkdown(formatSol(netLamports < 0n ? -netLamports : netLamports));
+    const totalProfit = escapeMarkdown(formatEth(BigInt(pnl.totalProfitWei)));
+    const totalLoss = escapeMarkdown(formatEth(BigInt(pnl.totalLossWei)));
+    const net = escapeMarkdown(formatEth(netWei < 0n ? -netWei : netWei));
     const winRate = escapeMarkdown(pnl.winRate.toFixed(1));
     const ape = escapeMarkdown(parseFloat(pnl.totalApeAccumulated).toLocaleString('en-US'));
 
@@ -123,7 +123,7 @@ export async function handlePnL(ctx: CommandContext<Context>): Promise<void> {
       `${bold('Losses:')} ${escapeMarkdown(pnl.lossCount.toString())}`,
       `${bold('Win Rate:')} ${winRate}%`,
       ``,
-      `🔒 ${bold('Total \\$SCALE Accumulated:')} ${ape}`,
+      `🔒 ${bold('Total \\$LOADED Accumulated:')} ${ape}`,
     ].join('\n');
 
     await ctx.reply(msg, { parse_mode: 'MarkdownV2' });

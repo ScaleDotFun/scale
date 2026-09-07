@@ -16,7 +16,7 @@ export const THEME_LABELS: Record<ThemeName, string> = {
   violet: 'VIOLET — X',
 };
 
-const KEY = 'scale_theme';
+const KEY = 'loaded_theme';
 const EVT = 'scale-theme-change';
 
 export function getTheme(): ThemeName {

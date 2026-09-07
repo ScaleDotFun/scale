@@ -1,7 +1,7 @@
 import { type FC, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../lib/api';
-import { formatUsd, formatSol } from '../lib/format';
+import { formatUsd, formatEth, isValidAddress } from '../lib/format';
 
 
 export const Explore: FC = () => {
@@ -14,7 +14,9 @@ export const Explore: FC = () => {
 
   // Load listed tokens on mount
   useEffect(() => {
-    api.getListedTokens()
+    // includeDelisted: dead coins stay visible here (dimmed + DELISTED badge)
+    // so the full listing history is browsable; trading stays gated elsewhere.
+    api.getListedTokens(undefined, true)
       .then((data) => setListedTokens(data))
       .catch(() => setListedTokens([]))
       .finally(() => setLoading(false));
@@ -27,9 +29,9 @@ export const Explore: FC = () => {
       return;
     }
 
-    // If input looks like a Solana mint address (base58)
+    // If input looks like a token contract address
     const trimmed = search.trim();
-    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) {
+    if (isValidAddress(trimmed)) {
       // Navigate directly to trade page — listing check is done there
       navigate(`/trade?token=${trimmed}`);
       return;
@@ -87,7 +89,7 @@ export const Explore: FC = () => {
         <div>
           <h2 style={{ marginBottom: 4 }}>Explore Tokens</h2>
           <p style={{ fontSize: '0.86rem', color: '#66786a' }}>
-            Tokens listed on Scale Protocol — click any token to trade with leverage
+            Tokens listed on Loaded Protocol — click any token to trade with leverage
           </p>
         </div>
       </div>
@@ -127,7 +129,7 @@ export const Explore: FC = () => {
           <div style={{ fontSize: 12, color: '#67704f' }}>
             {search
               ? 'Try a different search term or paste a token address'
-              : 'Creators: share your pump.fun creator rewards with the pool and get listed in minutes — guide at /list. Browse trending coins on the Screener meanwhile.'}
+              : 'Creators: share your PONS creator rewards with the pool and get listed in minutes — guide at /list. Browse trending coins on the Screener meanwhile.'}
           </div>
         </div>
       ) : (
@@ -144,6 +146,7 @@ export const Explore: FC = () => {
                 padding: '20px',
                 cursor: 'pointer',
                 transition: 'all 0.25s ease',
+                opacity: token.isActive === false ? 0.55 : 1,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'rgba(var(--primary-rgb),0.25)';
@@ -162,7 +165,7 @@ export const Explore: FC = () => {
                   src={
                     token.imageUri
                       ? token.imageUri.replace('https://ipfs.io/ipfs/', 'https://cf-ipfs.com/ipfs/')
-                      : `https://dd.dexscreener.com/ds-data/tokens/solana/${token.address}.png`
+                      : `https://dd.dexscreener.com/ds-data/tokens/robinhood/${token.address}.png`
                   }
                   alt={token.symbol}
                   style={{
@@ -175,10 +178,7 @@ export const Explore: FC = () => {
                     const step = img.dataset.fallback || '0';
                     if (step === '0') {
                       img.dataset.fallback = '1';
-                      img.src = `https://dd.dexscreener.com/ds-data/tokens/solana/${token.address}.png`;
-                    } else if (step === '1') {
-                      img.dataset.fallback = '2';
-                      img.src = `https://tokens.jup.ag/token/${token.address}/logo`;
+                      img.src = `https://dd.dexscreener.com/ds-data/tokens/robinhood/${token.address}.png`;
                     } else {
                       img.style.display = 'none';
                       if (img.nextElementSibling) (img.nextElementSibling as HTMLElement).style.display = 'flex';
@@ -201,7 +201,17 @@ export const Explore: FC = () => {
                     <span style={{ fontSize: 16, fontWeight: 700, color: '#f0f4e4' }}>
                       {token.symbol || 'Unknown'}
                     </span>
-                    {token.tier && tierBadge(token.tier)}
+                    {token.isActive === false ? (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+                        color: '#ff4d4d', border: '1px solid rgba(255,77,77,0.45)',
+                        padding: '2px 6px', whiteSpace: 'nowrap',
+                      }}>
+                        DELISTED
+                      </span>
+                    ) : (
+                      token.tier && tierBadge(token.tier)
+                    )}
                   </div>
                   <div style={{
                     fontSize: 12, color: '#66786a', marginTop: 2,
@@ -235,7 +245,7 @@ export const Explore: FC = () => {
                   <div style={{ fontSize: 10, color: '#67704f', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Volume</div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#b3bd97', fontFamily: "'JetBrains Mono', monospace" }}>
                     {token.totalTradingVolume && token.totalTradingVolume !== '0'
-                      ? `${formatSol(token.totalTradingVolume)} SOL`
+                      ? `${formatEth(token.totalTradingVolume)} ETH`
                       : '—'}
                   </div>
                 </div>

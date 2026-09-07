@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Response Helpers
+// LOADED PROTOCOL — Response Helpers
 // ──────────────────────────────────────────────
 
 import type { Response } from 'express';

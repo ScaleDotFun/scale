@@ -1,13 +1,13 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Listing Scanner Worker (Solana)
+// LOADED PROTOCOL — Listing Scanner Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// Enforces the listing deal ON-CHAIN via pump.fun's fee-sharing
+// Enforces the listing deal ON-CHAIN via PONS's fee-sharing
 // program (same gate the API /tokens/list uses):
 //   • checkAndListToken(mint): lists a coin when its creator shares
-//     ≥ SCALE_MIN_FEE_SHARE_PCT (default 100%) of creator rewards
-//     with the SCALE pool wallet (or the coin is on the
-//     SCALE_VERIFIED_TOKENS admin allowlist).
+//     ≥ LOADED_MIN_FEE_SHARE_PCT (default 100%) of creator rewards
+//     with the LOADED pool wallet (or the coin is on the
+//     LOADED_VERIFIED_TOKENS admin allowlist).
 //   • Periodic scan: RE-VERIFIES every active listing and deactivates
 //     any whose creator later re-routed rewards away from the pool —
 //     nobody keeps a leverage listing without paying for it. Dead
@@ -15,29 +15,29 @@
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@scale/database';
-import { determineTier } from '@scale/core';
+import { prisma } from '@loaded/database';
+import { determineTier } from '@loaded/core';
 import {
-  verifyPumpRewardShare,
-  getJupToken,
+  verifyCreatorFeeShare,
+  getTokenInfo,
   protocolPublicKey,
-  isValidSolanaAddress,
-} from '@scale/solana';
+  isValidAddress,
+} from '@loaded/evm';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[listing-scanner]';
 
 function minFeeSharePct(): number {
-  const raw = Number(process.env.SCALE_MIN_FEE_SHARE_PCT);
+  const raw = Number(process.env.LOADED_MIN_FEE_SHARE_PCT);
   return Number.isFinite(raw) ? Math.min(100, Math.max(1, raw)) : 100;
 }
 
 /** Admin allowlist of extra mints that may list without the share gate. */
 function verifiedTokens(): string[] {
-  return (process.env.SCALE_VERIFIED_TOKENS ?? '')
+  return (process.env.LOADED_VERIFIED_TOKENS ?? '')
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => isValidSolanaAddress(s));
+    .filter((s) => isValidAddress(s));
 }
 
 interface ListingScanJobData {
@@ -51,8 +51,8 @@ interface ListingScanJobData {
  * the same verification lookup.
  */
 async function checkAndListToken(mint: string): Promise<boolean> {
-  if (!isValidSolanaAddress(mint)) {
-    console.warn(`${PREFIX} Skipping ${mint} — not a Solana (base58) mint`);
+  if (!isValidAddress(mint)) {
+    console.warn(`${PREFIX} Skipping ${mint} — not a Robinhood Chain (hex) mint`);
     return false;
   }
 
@@ -69,17 +69,17 @@ async function checkAndListToken(mint: string): Promise<boolean> {
   let graduated = false;
 
   try {
-    const check = await verifyPumpRewardShare(mint, pool ?? '', minFeeSharePct());
+    const check = await verifyCreatorFeeShare(mint, pool ?? '');
     if (check.status !== 'verified' && !allowlisted) {
       // quiet skip — discovery sweeps hundreds of unonboarded coins
       return false;
     }
     if (check.token) {
-      creator = check.creator ?? null;
+      creator = null;
       name = check.token.name ?? null;
       symbol = check.token.symbol ?? null;
-      imageUri = check.token.icon ?? null;
-      marketCapUsd = check.token.mcap ?? check.token.fdv ?? 0;
+      imageUri = check.token.imageUri ?? null;
+      marketCapUsd = check.token.marketCap ?? 0;
       liquidityUsd = check.token.liquidity ?? 0;
       graduated = check.graduated ?? false;
     }
@@ -88,18 +88,22 @@ async function checkAndListToken(mint: string): Promise<boolean> {
     return false;
   }
 
+  // Reactivation and fresh listing both require a live market — a coin with
+  // a verified reward share but collapsed liquidity must stay delisted, or
+  // it flaps: self-heal reactivates it, the liquidity check strikes it out,
+  // repeat forever.
+  const tierConfig = determineTier(marketCapUsd, liquidityUsd, graduated);
+
   const existing = await prisma.token.findUnique({ where: { address: mint } });
   if (existing) {
-    if (!existing.isActive) {
-      // verification above already passed — safe to reactivate
+    if (!existing.isActive && tierConfig) {
       await prisma.token.update({ where: { id: existing.id }, data: { isActive: true } });
-      console.log(`${PREFIX} Reactivated ${existing.symbol ?? mint} (reward share re-verified)`);
+      console.log(`${PREFIX} Reactivated ${existing.symbol ?? mint} (reward share re-verified, liq $${liquidityUsd.toFixed(0)})`);
       return true;
     }
-    return false; // already listed and active
+    return false; // active already, or still too illiquid to bring back
   }
 
-  const tierConfig = determineTier(marketCapUsd, liquidityUsd, graduated);
   if (!tierConfig) {
     console.warn(`${PREFIX} ${mint} liquidity too low to list safely ($${liquidityUsd.toFixed(0)}) — skipping`);
     return false;
@@ -111,7 +115,7 @@ async function checkAndListToken(mint: string): Promise<boolean> {
       name,
       symbol,
       imageUri,
-      creatorWallet: creator ?? pool ?? mint, // real pump.fun dev when verified
+      creatorWallet: creator ?? pool ?? mint, // real PONS dev when verified
       tier: tierConfig.tier,
       isActive: true,
       isAutoListed: true,
@@ -153,40 +157,80 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
   const pool = protocolPublicKey();
   if (!pool) return;
   const allow = new Set(verifiedTokens());
-  const SCALE_MINT = (process.env.SCALE_TOKEN_MINT || '').trim();
+  const LOADED_MINT = (process.env.LOADED_TOKEN_MINT || '').trim();
   const minPct = minFeeSharePct();
   const active = await prisma.token.findMany({ where: { isActive: true } });
 
   for (const token of active) {
-    if (token.address === SCALE_MINT || allow.has(token.address)) continue; // exempt
+    if (token.address === LOADED_MINT || allow.has(token.address)) continue; // exempt
     try {
-      const check = await verifyPumpRewardShare(token.address, pool, minPct);
+      const check = await verifyCreatorFeeShare(token.address, pool);
       if (check.status !== 'verified') {
+        // Hysteresis: one bad read is not proof — bonding-curve graduation
+        // and RPC lag both produce transient non-verified reads (LOADED
+        // itself got wrongly delisted mid-graduation). Three consecutive
+        // failing sweeps before we pull a listing.
+        if (recordStrike(token.address) < DEACTIVATE_STRIKES) continue;
         await prisma.token.update({ where: { id: token.id }, data: { isActive: false } });
         console.warn(
           `${PREFIX} ⛔ Deactivated ${token.symbol ?? token.address} — reward share now ${check.status} ` +
-          `(${check.walletPct}% to pool)`,
+          `(${DEACTIVATE_STRIKES} consecutive sweeps)`,
         );
         continue;
       }
       // still paying — also delist if liquidity has fully collapsed
-      const info = check.token ?? (await getJupToken(token.address).catch(() => null));
+      const info = check.token ?? (await getTokenInfo(token.address).catch(() => null));
       if (info) {
-        const mcap = info.mcap ?? info.fdv ?? 0;
+        const mcap = info.marketCap ?? 0;
         const liq = info.liquidity ?? 0;
-        const graduated = !!info.graduatedPool || !!info.graduatedAt;
+        const graduated = check.graduated;
         if (determineTier(mcap, liq, graduated) === null) {
+          if (recordStrike(token.address) < DEACTIVATE_STRIKES) continue;
           await prisma.token.update({ where: { id: token.id }, data: { isActive: false } });
           console.warn(
-            `${PREFIX} ⛔ Deactivated ${token.symbol ?? token.address} — liquidity collapsed ($${liq.toFixed(0)})`,
+            `${PREFIX} ⛔ Deactivated ${token.symbol ?? token.address} — liquidity collapsed ($${liq.toFixed(0)}, ${DEACTIVATE_STRIKES} consecutive sweeps)`,
           );
+          continue;
         }
       }
+      clearStrikes(token.address); // healthy sweep resets the streak
     } catch (err) {
       // chain read hiccup — keep the listing, retry next sweep
       console.warn(`${PREFIX} re-verify failed for ${token.address}:`, err instanceof Error ? err.message : err);
     }
   }
+
+  // 3. self-healing: re-check recently deactivated coins for recovery.
+  //    A coin wrongly delisted (graduation window, RPC lag) or whose creator
+  //    re-enabled the reward share comes back automatically —
+  //    checkAndListToken reactivates existing rows on a verified read.
+  //    Newest first, capped per sweep to bound RPC load.
+  const inactive = await prisma.token.findMany({
+    where: { isActive: false, address: { endsWith: 'pump' } },
+    orderBy: { id: 'desc' },
+    take: 10,
+    select: { address: true },
+  });
+  for (const t of inactive) {
+    try {
+      await checkAndListToken(t.address);
+    } catch {
+      /* quiet — next sweep retries */
+    }
+  }
+}
+
+// Deactivation hysteresis — in-memory strike counter per mint. Resets on
+// process restart, which only makes delisting slower, never wrong.
+const DEACTIVATE_STRIKES = 3;
+const strikeCounts = new Map<string, number>();
+function recordStrike(mint: string): number {
+  const n = (strikeCounts.get(mint) ?? 0) + 1;
+  strikeCounts.set(mint, n);
+  return n;
+}
+function clearStrikes(mint: string): void {
+  strikeCounts.delete(mint);
 }
 
 // ──────────────────────────────────────────────

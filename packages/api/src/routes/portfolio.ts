@@ -1,10 +1,10 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Portfolio Routes (Solana)
+// LOADED PROTOCOL — Portfolio Routes (Robinhood Chain)
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@scale/database';
-import { getSolBalance, isValidSolanaAddress } from '@scale/solana';
+import { prisma } from '@loaded/database';
+import { getNativeBalance, isValidAddress } from '@loaded/evm';
 import { positionPriceToUsd } from '../lib/priceUnits';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
@@ -15,7 +15,7 @@ const router = Router();
  * GET /portfolio
  *
  * Return the authenticated user's complete portfolio:
- * - SOL balance (from Solana)
+ * - ETH balance (from Robinhood Chain)
  * - Open positions summary
  * - Total P&L
  * - Trade count
@@ -26,11 +26,11 @@ router.get('/', verifyWalletSignature, async (req, res) => {
     const userId = authReq.userId!;
     const wallet = authReq.wallet!;
 
-    // Fetch SOL balance from Solana
-    let balanceLamports = 0n;
+    // Fetch ETH balance from Robinhood Chain
+    let balanceWei = 0n;
     try {
-      if (isValidSolanaAddress(wallet)) {
-        balanceLamports = await getSolBalance(wallet);
+      if (isValidAddress(wallet)) {
+        balanceWei = await getNativeBalance(wallet);
       }
     } catch {
       // RPC error — return 0 balance
@@ -49,7 +49,7 @@ router.get('/', verifyWalletSignature, async (req, res) => {
     // Get closed positions stats
     const closedStats = await prisma.position.aggregate({
       where: { userWallet: wallet, status: { not: 'open' } },
-      _sum: { pnlSol: true, userProfit: true },
+      _sum: { pnlEth: true, userProfit: true },
       _count: true,
     });
 
@@ -62,15 +62,15 @@ router.get('/', verifyWalletSignature, async (req, res) => {
     // Get profit locks
     const locks = await prisma.profitLock.aggregate({
       where: { userWallet: wallet, isUnlocked: false },
-      _sum: { solAmount: true },
+      _sum: { ethAmount: true },
       _count: true,
     });
 
     sendSuccess(res, {
       wallet: {
         address: wallet,
-        balanceLamports: String(balanceLamports),
-        balanceSol: (Number(balanceLamports) / 1e9).toFixed(6),
+        balanceWei: String(balanceWei),
+        balanceEth: (Number(balanceWei) / 1e18).toFixed(6),
       },
       positions: {
         open: openPositions.length,
@@ -86,12 +86,12 @@ router.get('/', verifyWalletSignature, async (req, res) => {
       },
       history: {
         totalTrades: closedStats._count,
-        totalPnlLamports: String(closedStats._sum.pnlSol ?? 0),
-        totalProfitLamports: String(closedStats._sum.userProfit ?? 0),
+        totalPnlWei: String(closedStats._sum.pnlEth ?? 0),
+        totalProfitWei: String(closedStats._sum.userProfit ?? 0),
       },
       locks: {
         activeLocks: locks._count,
-        totalLockedLamports: String(locks._sum.solAmount ?? 0),
+        totalLockedWei: String(locks._sum.ethAmount ?? 0),
       },
     });
   } catch (err) {
@@ -138,7 +138,7 @@ router.get('/history', verifyWalletSignature, async (req, res) => {
       entryPriceUsd: await positionPriceToUsd(t.entryPrice ? Number(t.entryPrice) : null, t.token.address),
       exitPrice: t.exitPrice ? String(t.exitPrice) : null,
       exitPriceUsd: await positionPriceToUsd(t.exitPrice ? Number(t.exitPrice) : null, t.token.address),
-      pnlSol: t.pnlSol ? String(t.pnlSol) : null,
+      pnlEth: t.pnlEth ? String(t.pnlEth) : null,
       userProfit: t.userProfit ? String(t.userProfit) : null,
       openedAt: t.openedAt,
       closedAt: t.closedAt,

@@ -1,26 +1,52 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateTable
 CREATE TABLE "users" (
     "id" SERIAL NOT NULL,
     "email" VARCHAR(255) NOT NULL,
     "password_hash" TEXT NOT NULL,
-    "wallet_address" VARCHAR(44) NOT NULL,
+    "wallet_address" VARCHAR(42) NOT NULL,
     "encrypted_key" TEXT NOT NULL,
+    "legacy_wallet_address" VARCHAR(42),
+    "legacy_encrypted_key" TEXT,
+    "registration_ip" VARCHAR(64),
+    "device_id" VARCHAR(64),
+    "referral_code" VARCHAR(12),
+    "referred_by_id" INTEGER,
+    "twitter_handle" VARCHAR(50),
+    "twitter_verified" BOOLEAN NOT NULL DEFAULT false,
+    "twitter_access_token" TEXT,
+    "twitter_refresh_token" TEXT,
+    "twitter_token_expiry" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
+CREATE TABLE "points_ledger" (
+    "id" SERIAL NOT NULL,
+    "user_wallet" VARCHAR(42) NOT NULL,
+    "type" VARCHAR(20) NOT NULL,
+    "points" BIGINT NOT NULL,
+    "position_id" INTEGER,
+    "referee_wallet" VARCHAR(42),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "points_ledger_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "tokens" (
     "id" SERIAL NOT NULL,
-    "address" VARCHAR(44) NOT NULL,
+    "address" VARCHAR(42) NOT NULL,
     "name" VARCHAR(100),
     "symbol" VARCHAR(20),
     "image_uri" TEXT,
-    "creator_wallet" VARCHAR(44) NOT NULL,
+    "creator_wallet" VARCHAR(42) NOT NULL,
     "tier" VARCHAR(10) NOT NULL,
-    "fee_wallet_pda" VARCHAR(44),
-    "sharing_config_pda" VARCHAR(44),
+    "fee_wallet_pda" VARCHAR(42),
     "listed_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "is_auto_listed" BOOLEAN NOT NULL DEFAULT false,
@@ -34,7 +60,7 @@ CREATE TABLE "tokens" (
 -- CreateTable
 CREATE TABLE "positions" (
     "id" SERIAL NOT NULL,
-    "user_wallet" VARCHAR(44) NOT NULL,
+    "user_wallet" VARCHAR(42) NOT NULL,
     "token_id" INTEGER NOT NULL,
     "status" VARCHAR(20) NOT NULL,
     "user_capital" BIGINT NOT NULL,
@@ -46,8 +72,10 @@ CREATE TABLE "positions" (
     "exit_price" DECIMAL(20,10),
     "tokens_bought" BIGINT,
     "exit_threshold" DECIMAL(5,2) NOT NULL,
+    "take_profit_pct" DECIMAL(7,2),
+    "stop_loss_pct" DECIMAL(5,2),
     "slippage_risk" INTEGER,
-    "pnl_sol" BIGINT,
+    "pnl_eth" BIGINT,
     "user_profit" BIGINT,
     "protocol_revenue" BIGINT,
     "creator_payout" BIGINT,
@@ -56,8 +84,12 @@ CREATE TABLE "positions" (
     "lock_amount" BIGINT,
     "opened_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "closed_at" TIMESTAMP(3),
-    "close_tx" VARCHAR(88),
-    "open_tx" VARCHAR(88),
+    "close_tx" VARCHAR(66),
+    "open_tx" VARCHAR(66),
+    "collateral_tx" VARCHAR(66),
+    "user_return_tx" VARCHAR(66),
+    "eth_received" BIGINT,
+    "status_changed_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "positions_pkey" PRIMARY KEY ("id")
 );
@@ -65,9 +97,9 @@ CREATE TABLE "positions" (
 -- CreateTable
 CREATE TABLE "burns" (
     "id" SERIAL NOT NULL,
-    "sol_amount" BIGINT NOT NULL,
+    "eth_amount" BIGINT NOT NULL,
     "token_amount" BIGINT NOT NULL,
-    "tx_signature" VARCHAR(88) NOT NULL,
+    "tx_hash" VARCHAR(66) NOT NULL,
     "position_id" INTEGER,
     "burned_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -77,14 +109,14 @@ CREATE TABLE "burns" (
 -- CreateTable
 CREATE TABLE "profit_locks" (
     "id" SERIAL NOT NULL,
-    "user_wallet" VARCHAR(44) NOT NULL,
-    "sol_amount" BIGINT NOT NULL,
+    "user_wallet" VARCHAR(42) NOT NULL,
+    "eth_amount" BIGINT NOT NULL,
     "token_amount" BIGINT NOT NULL,
     "position_id" INTEGER,
-    "buy_tx" VARCHAR(88) NOT NULL,
-    "lock_tx" VARCHAR(88),
-    "unlock_tx" VARCHAR(88),
-    "claim_tx" VARCHAR(88),
+    "buy_tx" VARCHAR(66) NOT NULL,
+    "lock_tx" VARCHAR(66),
+    "unlock_tx" VARCHAR(66),
+    "claim_tx" VARCHAR(66),
     "locked_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "unlocks_at" TIMESTAMP(3) NOT NULL,
     "is_unlocked" BOOLEAN NOT NULL DEFAULT false,
@@ -97,11 +129,11 @@ CREATE TABLE "profit_locks" (
 CREATE TABLE "creator_payouts" (
     "id" SERIAL NOT NULL,
     "token_id" INTEGER NOT NULL,
-    "creator_wallet" VARCHAR(44) NOT NULL,
+    "creator_wallet" VARCHAR(42) NOT NULL,
     "amount" BIGINT NOT NULL,
     "position_id" INTEGER,
     "status" VARCHAR(20) NOT NULL,
-    "claim_tx" VARCHAR(88),
+    "claim_tx" VARCHAR(66),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "claimed_at" TIMESTAMP(3),
 
@@ -113,7 +145,7 @@ CREATE TABLE "fee_claims" (
     "id" SERIAL NOT NULL,
     "token_id" INTEGER NOT NULL,
     "amount" BIGINT NOT NULL,
-    "tx_signature" VARCHAR(88) NOT NULL,
+    "tx_hash" VARCHAR(66) NOT NULL,
     "claimed_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "fee_claims_pkey" PRIMARY KEY ("id")
@@ -123,7 +155,7 @@ CREATE TABLE "fee_claims" (
 CREATE TABLE "telegram_users" (
     "id" SERIAL NOT NULL,
     "telegram_id" BIGINT NOT NULL,
-    "wallet_address" VARCHAR(44) NOT NULL,
+    "wallet_address" VARCHAR(42) NOT NULL,
     "encrypted_key" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "settings" JSONB NOT NULL DEFAULT '{}',
@@ -137,7 +169,7 @@ CREATE TABLE "pool_ledger" (
     "type" VARCHAR(30) NOT NULL,
     "amount" BIGINT NOT NULL,
     "reference_id" INTEGER,
-    "tx_signature" VARCHAR(88),
+    "tx_hash" VARCHAR(66),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "pool_ledger_pkey" PRIMARY KEY ("id")
@@ -149,7 +181,7 @@ CREATE TABLE "insurance_fund" (
     "type" VARCHAR(20) NOT NULL,
     "amount" BIGINT NOT NULL,
     "reason" VARCHAR(200),
-    "tx_signature" VARCHAR(88),
+    "tx_hash" VARCHAR(66),
     "position_id" INTEGER,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -161,6 +193,30 @@ CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_wallet_address_key" ON "users"("wallet_address");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_referral_code_key" ON "users"("referral_code");
+
+-- CreateIndex
+CREATE INDEX "users_registration_ip_idx" ON "users"("registration_ip");
+
+-- CreateIndex
+CREATE INDEX "users_device_id_idx" ON "users"("device_id");
+
+-- CreateIndex
+CREATE INDEX "users_referred_by_id_idx" ON "users"("referred_by_id");
+
+-- CreateIndex
+CREATE INDEX "users_twitter_handle_idx" ON "users"("twitter_handle");
+
+-- CreateIndex
+CREATE INDEX "points_ledger_user_wallet_idx" ON "points_ledger"("user_wallet");
+
+-- CreateIndex
+CREATE INDEX "points_ledger_type_idx" ON "points_ledger"("type");
+
+-- CreateIndex
+CREATE INDEX "points_ledger_created_at_idx" ON "points_ledger"("created_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "tokens_address_key" ON "tokens"("address");
@@ -199,6 +255,9 @@ CREATE INDEX "pool_ledger_type_idx" ON "pool_ledger"("type");
 CREATE INDEX "insurance_fund_type_idx" ON "insurance_fund"("type");
 
 -- AddForeignKey
+ALTER TABLE "users" ADD CONSTRAINT "users_referred_by_id_fkey" FOREIGN KEY ("referred_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "positions" ADD CONSTRAINT "positions_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "tokens"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -215,3 +274,4 @@ ALTER TABLE "creator_payouts" ADD CONSTRAINT "creator_payouts_position_id_fkey" 
 
 -- AddForeignKey
 ALTER TABLE "fee_claims" ADD CONSTRAINT "fee_claims_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "tokens"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+

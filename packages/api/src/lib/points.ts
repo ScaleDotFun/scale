@@ -1,23 +1,23 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Points (pre-token flywheel)
+// LOADED PROTOCOL — Points (pre-token flywheel)
 //
-// Points come from REAL position volume only: 100 points per 1 SOL of
+// Points come from REAL position volume only: 100 points per 1 ETH of
 // notional position size, awarded when a position successfully opens
 // (the swap landed — no points for failed/refunded opens). Referrers
 // earn a 20% override on everything their referrals generate, forever.
 // Never points for posting/social — that pattern gets projects banned.
 // ──────────────────────────────────────────────
 
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import crypto from 'node:crypto';
 
 export const POINTS_PER_SOL = 100n;
 export const REFERRAL_BONUS_BPS = 2_000n; // 20%
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const WEI_PER_ETH = 1_000_000_000n;
 
 /** Points for a position's notional size (floor). */
-export function pointsForVolume(positionSizeLamports: bigint): bigint {
-  return (positionSizeLamports * POINTS_PER_SOL) / LAMPORTS_PER_SOL;
+export function pointsForVolume(positionSizeWei: bigint): bigint {
+  return (positionSizeWei * POINTS_PER_SOL) / WEI_PER_ETH;
 }
 
 /**
@@ -27,10 +27,10 @@ export function pointsForVolume(positionSizeLamports: bigint): bigint {
 export async function awardPositionPoints(
   userWallet: string,
   positionId: number,
-  positionSizeLamports: bigint,
+  positionSizeWei: bigint,
 ): Promise<void> {
   try {
-    const points = pointsForVolume(positionSizeLamports);
+    const points = pointsForVolume(positionSizeWei);
     if (points <= 0n) return;
 
     const writes = [

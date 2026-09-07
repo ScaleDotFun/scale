@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /ape Command
+// LOADED PROTOCOL — /ape Command
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -9,7 +9,7 @@ import {
   bold,
   code,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatPercent,
   formatUsd,
   tierBadge,
@@ -29,12 +29,12 @@ export async function handleApe(ctx: CommandContext<Context>): Promise<void> {
   if (parts.length < 3) {
     await ctx.reply(
       [
-        `🦍 ${bold('Usage:')} /ape \\<token\\> \\<sol\\> \\<leverage\\>`,
+        `🦍 ${bold('Usage:')} /ape \\<token\\> \\<eth\\> \\<leverage\\>`,
         ``,
         `Example: ${code('/ape DOGE 0.5 5x')}`,
         ``,
         `• ${bold('token')} — symbol or contract address`,
-        `• ${bold('sol')} — amount of SOL to use`,
+        `• ${bold('eth')} — amount of ETH to use`,
         `• ${bold('leverage')} — 2x to 10x \\(depends on tier\\)`,
       ].join('\n'),
       { parse_mode: 'MarkdownV2' },
@@ -43,12 +43,12 @@ export async function handleApe(ctx: CommandContext<Context>): Promise<void> {
   }
 
   const tokenQuery = parts[0];
-  const amountSol = parseFloat(parts[1]);
+  const amountEth = parseFloat(parts[1]);
   const leverageStr = parts[2].replace(/x$/i, '');
   const leverage = parseInt(leverageStr, 10);
 
-  if (isNaN(amountSol) || amountSol <= 0) {
-    await ctx.reply('⚠️ Invalid SOL amount\\. Must be a positive number\\.', {
+  if (isNaN(amountEth) || amountEth <= 0) {
+    await ctx.reply('⚠️ Invalid ETH amount\\. Must be a positive number\\.', {
       parse_mode: 'MarkdownV2',
     });
     return;
@@ -73,18 +73,18 @@ export async function handleApe(ctx: CommandContext<Context>): Promise<void> {
       return;
     }
 
-    const userCapLamports = BigInt(Math.round(amountSol * 1e9));
-    const protocolCapLamports = userCapLamports * BigInt(leverage - 1);
-    const positionSizeLamports = userCapLamports * BigInt(leverage);
+    const userCapWei = BigInt(Math.round(amountEth * 1e9));
+    const protocolCapWei = userCapWei * BigInt(leverage - 1);
+    const positionSizeWei = userCapWei * BigInt(leverage);
 
     // Build preview
     const tier = escapeMarkdown(tierBadge(token.tier));
     const sym = escapeMarkdown(token.symbol);
     const price = escapeMarkdown(formatUsd(token.priceUsd));
     const mcap = escapeMarkdown(formatUsd(token.marketCapUsd));
-    const userCap = escapeMarkdown(formatSol(userCapLamports));
-    const protoCap = escapeMarkdown(formatSol(protocolCapLamports));
-    const posSize = escapeMarkdown(formatSol(positionSizeLamports));
+    const userCap = escapeMarkdown(formatEth(userCapWei));
+    const protoCap = escapeMarkdown(formatEth(protocolCapWei));
+    const posSize = escapeMarkdown(formatEth(positionSizeWei));
     const lev = escapeMarkdown(`${leverage}x`);
 
     const msg = [
@@ -102,20 +102,20 @@ export async function handleApe(ctx: CommandContext<Context>): Promise<void> {
       `${bold('Position Size:')} ${posSize}`,
       ``,
       `${bold('⏱ Duration:')} Max 24h`,
-      `${bold('🔒 Profit Lock:')} 30% → \\$SCALE \\(7d lock\\)`,
+      `${bold('🔒 Profit Lock:')} 30% → \\$LOADED \\(7d lock\\)`,
       ``,
       `━━━━━━━━━━━━━━━━━━━━━━`,
       ``,
       `${bold('📊 Scenarios')}`,
-      `🟢 If 2x → you profit \\~${escapeMarkdown(formatSol(userCapLamports))}`,
-      `🟢 If 3x → you profit \\~${escapeMarkdown(formatSol(userCapLamports * 2n))}`,
+      `🟢 If 2x → you profit \\~${escapeMarkdown(formatEth(userCapWei))}`,
+      `🟢 If 3x → you profit \\~${escapeMarkdown(formatEth(userCapWei * 2n))}`,
       `🔴 Max Loss → your ${userCap} \\(capped\\)`,
       ``,
       `⚠️ ${bold('Confirm to ape in?')}`,
     ].join('\n');
 
     // Encode callback data: token|amount|leverage
-    const cbData = `${token.address}|${amountSol}|${leverage}`;
+    const cbData = `${token.address}|${amountEth}|${leverage}`;
     const keyboard = new InlineKeyboard()
       .text('✅ APE IN', `confirm_ape:${cbData}`)
       .text('❌ CANCEL', 'cancel_ape');

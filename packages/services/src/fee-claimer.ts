@@ -1,34 +1,35 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Fee Claimer Worker (Solana)
+// LOADED PROTOCOL — Fee Claimer Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// On pump.fun, creator fees accrue on-chain to the wallet that launched
-// the coin. For the protocol's own $SCALE launch those fees are claimable
-// by the pool wallet via pump.fun's claim flow (currently manual — pump.fun
-// publishes no third-party claim API). SCALE's core revenue (flat fees on
+// On PONS, creator fees accrue on-chain to the wallet that launched
+// the coin. For the protocol's own $LOADED launch those fees are claimable
+// by the pool wallet via PONS's claim flow (currently manual — PONS
+// publishes no third-party claim API). LOADED's core revenue (flat fees on
 // positions) needs no claiming at all: it arrives inline at position close
 // and is recorded straight into the pool ledger.
 //
 // What this worker DOES do — honestly — is watch a dedicated fee wallet
-// (FEE_WALLET env; the pool wallet's SOL balance is too noisy since user
-// collateral flows through it constantly) and record real SOL inflows as
-// fee_claim ledger rows, so manually-claimed pump.fun creator fees still
+// (FEE_WALLET env; the pool wallet's ETH balance is too noisy since user
+// collateral flows through it constantly) and record real ETH inflows as
+// fee_claim ledger rows, so manually-claimed PONS creator fees still
 // show up in protocol accounting. Without FEE_WALLET it stays quiet and
 // fabricates nothing.
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@scale/database';
-import { getSolBalance, isValidSolanaAddress } from '@scale/solana';
+import { prisma } from '@loaded/database';
+import { WEI_PER_ETH } from '@loaded/core';
+import { getNativeBalance, isValidAddress } from '@loaded/evm';
 import { redisConnection, QUEUE_NAMES, feeClaimsQueue } from './queues.js';
 
 const PREFIX = '[fee-claimer]';
 
-/** Redis key: last observed SOL balance of the fee wallet (lamports) */
-const REDIS_LAST_FEE_KEY = 'scale:fees:last_fee_lamports';
+/** Redis key: last observed ETH balance of the fee wallet (wei) */
+const REDIS_LAST_FEE_KEY = 'loaded:fees:last_fee_wei';
 
-/** Ignore dust below 0.0001 SOL */
-const MIN_INFLOW_LAMPORTS = 100_000n;
+/** Ignore dust below 0.00001 ETH (a few cents — below any real fee claim) */
+const MIN_INFLOW_WEI = WEI_PER_ETH / 100_000n;
 
 interface FeeClaimJobData {
   tokenId?: number;
@@ -36,12 +37,12 @@ interface FeeClaimJobData {
 
 function feeWallet(): string | null {
   const addr = (process.env.FEE_WALLET ?? '').trim();
-  return addr && isValidSolanaAddress(addr) ? addr : null;
+  return addr && isValidAddress(addr) ? addr : null;
 }
 
 /**
- * Watch the fee wallet's SOL balance. Any increase since the last check
- * is treated as claimed pump.fun creator fees and recorded as a real
+ * Watch the fee wallet's ETH balance. Any increase since the last check
+ * is treated as claimed PONS creator fees and recorded as a real
  * pool inflow. Decreases just reset the watermark — outflows are
  * protocol operations recorded elsewhere.
  */
@@ -52,13 +53,13 @@ async function processFeeWatch(_job: Job<FeeClaimJobData>): Promise<void> {
     return;
   }
 
-  const current = await getSolBalance(wallet);
+  const current = await getNativeBalance(wallet);
 
   const lastRaw = await redisConnection.get(REDIS_LAST_FEE_KEY);
   if (lastRaw === null) {
     // First run — set the watermark, record nothing retroactively.
     await redisConnection.set(REDIS_LAST_FEE_KEY, current.toString());
-    console.log(`${PREFIX} fee-wallet watermark initialized at ${current} lamports`);
+    console.log(`${PREFIX} fee-wallet watermark initialized at ${current} wei`);
     return;
   }
 
@@ -73,19 +74,19 @@ async function processFeeWatch(_job: Job<FeeClaimJobData>): Promise<void> {
   }
 
   const inflow = current - last;
-  if (inflow < MIN_INFLOW_LAMPORTS) return;
+  if (inflow < MIN_INFLOW_WEI) return;
 
   await prisma.poolLedger.create({
     data: {
       type: 'fee_claim',
       amount: inflow,
-      txSignature: null, // aggregated balance delta — no single tx
+      txHash: null, // aggregated balance delta — no single tx
     },
   });
   await redisConnection.set(REDIS_LAST_FEE_KEY, current.toString());
 
   console.log(
-    `${PREFIX} 💰 Recorded ${(Number(inflow) / 1e9).toFixed(4)} SOL of claimed creator fees into the pool ledger`,
+    `${PREFIX} 💰 Recorded ${(Number(inflow) / 1e18).toFixed(4)} ETH of claimed creator fees into the pool ledger`,
   );
 }
 

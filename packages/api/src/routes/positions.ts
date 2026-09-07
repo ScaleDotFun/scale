@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Position Routes (Solana / Jupiter)
+// LOADED PROTOCOL — Position Routes (Robinhood Chain)
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import {
   validatePositionOpen,
   validatePositionSafety,
@@ -12,19 +12,22 @@ import {
   calculatePositionSize,
   calculateFlatFee,
   getExitThresholdPercent,
+  WEI_PER_ETH,
   type Tier,
-} from '@scale/core';
+} from '@loaded/core';
 import {
-  swapSolForToken,
-  swapTokenForSol,
+  swapNativeForToken,
+  swapTokenForNative,
   getProtocolAccount,
   hasProtocolKey,
   loadCustodialWallet,
-  getSolBalance,
-  getJupToken,
-  transferSol,
-} from '@scale/solana';
-import { fetchToken as gtFetchToken, fetchSolUsd } from '../lib/geckoterminal';
+  getNativeBalance,
+  getTokenInfo,
+  transferNative,
+  erc20TotalSupply,
+  erc20Decimals,
+} from '@loaded/evm';
+import { fetchToken as gtFetchToken, fetchEthUsd } from '../lib/geckoterminal';
 import { positionPriceToUsd } from '../lib/priceUnits';
 import { awardPositionPoints } from '../lib/points';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
@@ -40,7 +43,7 @@ const router = Router();
  *
  * Open a new leveraged position. Validates params against tier rules and pool balance,
  * creates the position record, and returns a preview.
- * Swaps execute on Solana via Jupiter.
+ * Swaps execute on Robinhood Chain via the LI.FI aggregator.
  */
 router.post(
   '/open',
@@ -51,14 +54,14 @@ router.post(
       const authReq = req as AuthenticatedRequest;
       const wallet = authReq.wallet!;
       const { tokenAddress, leverage, slippageBps } = req.body;
-      // Accept both field names — frontend sends capitalLamports
-      const userCapitalLamports = req.body.userCapitalLamports ?? req.body.capitalLamports;
+      // Accept both field names — frontend sends capitalWei
+      const userCapitalWei = req.body.userCapitalWei ?? req.body.capitalWei;
 
       // Validate required fields
-      if (!tokenAddress || userCapitalLamports === undefined || leverage === undefined) {
+      if (!tokenAddress || userCapitalWei === undefined || leverage === undefined) {
         throw new ValidationError('Missing required fields', [
           ...(!tokenAddress ? ['tokenAddress is required'] : []),
-          ...(userCapitalLamports === undefined ? ['userCapitalLamports is required'] : []),
+          ...(userCapitalWei === undefined ? ['userCapitalWei is required'] : []),
           ...(leverage === undefined ? ['leverage is required'] : []),
         ]);
       }
@@ -79,7 +82,7 @@ router.post(
         where: {
           userWallet: wallet,
           tokenId: token.id,
-          status: { in: ['open', 'closing'] },
+          status: { in: ['opening', 'open', 'closing'] },
         },
       });
       if (existingPosition) {
@@ -91,12 +94,12 @@ router.post(
       const tier = token.tier as Tier;
       let userCapital: bigint;
       try {
-        userCapital = BigInt(userCapitalLamports);
+        userCapital = BigInt(userCapitalWei);
       } catch {
         throw new ValidationError('Invalid capital amount — must be a numeric string');
       }
 
-      // Pool capacity — the protocol wallet's REAL on-chain SOL balance is
+      // Pool capacity — the protocol wallet's REAL on-chain ETH balance is
       // what actually fronts the swap, so that's the gate. The DB ledger
       // is internal accounting and starts empty (no fees yet), so it must
       // never block a position the funded wallet can genuinely fill. Keep
@@ -106,10 +109,10 @@ router.post(
         (await import('../lib/onchain')).getOnchainStats(),
       ]);
       const ledgerBalance = poolAgg._sum.amount ?? 0n;
-      const POOL_GAS_RESERVE = 50_000_000n; // 0.05 SOL
+      const POOL_GAS_RESERVE = WEI_PER_ETH / 1_000n; // 0.001 ETH — L2 gas is cheap
       const poolBalance = onchain
-        ? (BigInt(onchain.poolWalletLamports) > POOL_GAS_RESERVE
-            ? BigInt(onchain.poolWalletLamports) - POOL_GAS_RESERVE
+        ? (BigInt(onchain.poolWalletWei) > POOL_GAS_RESERVE
+            ? BigInt(onchain.poolWalletWei) - POOL_GAS_RESERVE
             : 0n)
         : ledgerBalance;
 
@@ -118,7 +121,7 @@ router.post(
         {
           userWallet: wallet,
           tokenAddress,
-          userCapitalLamports: userCapital,
+          userCapitalWei: userCapital,
           leverage: Number(leverage),
         },
         tier,
@@ -156,26 +159,36 @@ router.post(
       }
 
       // Safety validation — slippage risk + liquidity depth check
-      // Real SOL price + token price/liquidity/supply from Jupiter,
-      // with GeckoTerminal as fallback for tokens Jupiter doesn't know.
-      let solPriceUsd = 0;
+      // Real ETH price + token price/liquidity from the market feed,
+      // with GeckoTerminal as fallback.
+      let ethPriceUsd = 0;
       let liquidityUsd = 0;
       let tokenSupply = 0;
       let tokenPriceUsd = 0;
 
       try {
-        const [solUsd, jupToken] = await Promise.all([
-          fetchSolUsd(),
-          getJupToken(tokenAddress),
+        const [ethUsd, marketToken] = await Promise.all([
+          fetchEthUsd(),
+          getTokenInfo(tokenAddress),
         ]);
-        solPriceUsd = solUsd;
-        if (jupToken) {
-          tokenPriceUsd = jupToken.usdPrice ?? 0;
-          liquidityUsd = jupToken.liquidity ?? 0;
-          tokenSupply = jupToken.circSupply ?? jupToken.totalSupply ?? 0;
+        ethPriceUsd = ethUsd;
+        if (marketToken) {
+          tokenPriceUsd = marketToken.priceUsd ?? 0;
+          liquidityUsd = marketToken.liquidity ?? 0;
+          // Supply is not part of the market feed — read it on-chain and
+          // scale out of raw units so it is comparable to a USD price.
+          try {
+            const [raw, decimals] = await Promise.all([
+              erc20TotalSupply(tokenAddress),
+              erc20Decimals(tokenAddress),
+            ]);
+            tokenSupply = Number(raw) / Math.pow(10, decimals);
+          } catch {
+            tokenSupply = 0;
+          }
         }
       } catch (mktErr) {
-        console.warn('[positions] Jupiter lookup failed:', mktErr instanceof Error ? mktErr.message : mktErr);
+        console.warn('[positions] market lookup failed:', mktErr instanceof Error ? mktErr.message : mktErr);
       }
       if (tokenPriceUsd <= 0) {
         try {
@@ -188,7 +201,7 @@ router.post(
         }
       }
       // Hard-fail on missing prices — never trade on a made-up number.
-      if (solPriceUsd <= 0 || tokenPriceUsd <= 0) {
+      if (ethPriceUsd <= 0 || tokenPriceUsd <= 0) {
         throw new ValidationError(
           'Cannot price this token right now — market data unavailable. Try again shortly.',
         );
@@ -196,14 +209,14 @@ router.post(
 
       // ── 3% supply cap ──
       // Protocol max buy = less than 3% of the token's total supply
-      if (tokenSupply > 0 && tokenPriceUsd > 0 && solPriceUsd > 0) {
+      if (tokenSupply > 0 && tokenPriceUsd > 0 && ethPriceUsd > 0) {
         const maxBuyUsd = tokenSupply * tokenPriceUsd * 0.03; // 3% of supply value
-        const positionSol = Number(positionSize) / 1e9;
-        const positionUsd = positionSol * solPriceUsd;
+        const positionEth = Number(positionSize) / 1e18;
+        const positionUsd = positionEth * ethPriceUsd;
         if (positionUsd > maxBuyUsd) {
           throw new ValidationError(
             `Position too large — would buy more than 3% of token supply. ` +
-            `Max position: ~${(maxBuyUsd / solPriceUsd).toFixed(4)} SOL`
+            `Max position: ~${(maxBuyUsd / ethPriceUsd).toFixed(4)} ETH`
           );
         }
       }
@@ -213,7 +226,7 @@ router.post(
         Number(leverage),
         poolBalance,
         liquidityUsd,
-        solPriceUsd,
+        ethPriceUsd,
         tier,
       );
       if (!safetyCheck.safe) {
@@ -225,7 +238,7 @@ router.post(
       preview.tokenAddress = tokenAddress;
 
       // ── On-chain execution ──────────────────────────
-      // 1. Load user's custodial wallet keypair
+      // 1. Load the user's custodial wallet
       const user = await prisma.user.findFirst({
         where: { walletAddress: wallet },
         select: { encryptedKey: true },
@@ -236,109 +249,190 @@ router.post(
       const userAccount = loadCustodialWallet(user.encryptedKey);
       if (!hasProtocolKey()) {
         throw new ValidationError(
-          'Protocol pool wallet is not configured for Solana yet — trading is paused.',
+          'Protocol pool wallet is not configured for Robinhood Chain yet — trading is paused.',
         );
       }
       const protocolAccount = getProtocolAccount();
 
-      // 2. Check user has enough SOL balance
-      const userBalance = await getSolBalance(wallet);
+      // 2. Check user has enough ETH balance
+      const userBalance = await getNativeBalance(wallet);
       if (userBalance < userCapital) {
         throw new ValidationError(
-          `You don't have enough SOL. Your balance is ${(Number(userBalance) / 1e9).toFixed(6)} SOL ` +
-          `but this position requires ${(Number(userCapital) / 1e9).toFixed(6)} SOL. ` +
-          `Deposit more SOL to your account wallet first.`,
+          `You don't have enough ETH. Your balance is ${(Number(userBalance) / 1e18).toFixed(6)} ETH ` +
+          `but this position requires ${(Number(userCapital) / 1e18).toFixed(6)} ETH. ` +
+          `Deposit more ETH to your account wallet first.`,
         );
       }
 
-      // 3. Transfer user's SOL collateral to protocol wallet
-      const transferSig = await transferSol(userAccount, protocolAccount.publicKey.toBase58(), userCapital);
-      console.log(`[positions] User SOL collateral transferred to protocol: ${transferSig}`);
+      // 3. Persist INTENT before any money moves. A row in 'opening' status
+      // is the recovery anchor: if the process dies or the DB blips at any
+      // later step, the reconciliation sweep can see exactly how far this
+      // open got (collateralTx? openTx?) and either finish it or refund it.
+      // Without this row, funds moved on-chain are invisible to every worker.
+      const intent = await prisma.position.create({
+        data: {
+          userWallet: wallet,
+          tokenId: token.id,
+          status: 'opening',
+          statusChangedAt: new Date(),
+          userCapital: userCapital,
+          protocolCapital: protocolCapital,
+          leverage: Number(leverage),
+          flatFee: flatFee,
+          tier: tier,
+          exitThreshold: exitThreshold,
+          takeProfitPct: takeProfitPct,
+          stopLossPct: stopLossPct,
+        },
+      });
+      const positionRowId = intent.id;
+      const persistMarker = async (data: Record<string, unknown>, label: string) => {
+        for (let i = 0; i < 5; i++) {
+          try {
+            await prisma.position.update({ where: { id: positionRowId }, data });
+            return;
+          } catch {
+            await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+          }
+        }
+        console.error(`[positions] CRITICAL: could not persist ${label} for position #${positionRowId}`);
+      };
 
-      // 4. Execute Jupiter swap — buy tokens with full position size (user + protocol capital)
+      // 4. Transfer user's ETH collateral to protocol wallet
+      let transferSig: string;
+      try {
+        transferSig = await transferNative(userAccount, protocolAccount.address, userCapital);
+      } catch (xferErr) {
+        await persistMarker({ status: 'failed', statusChangedAt: new Date() }, 'failed status');
+        throw new ValidationError(
+          `Could not transfer your collateral: ${xferErr instanceof Error ? xferErr.message : 'network error'}. Nothing was charged.`,
+        );
+      }
+      await persistMarker({ collateralTx: transferSig }, 'collateralTx');
+      console.log(`[positions] User ETH collateral transferred to protocol: ${transferSig}`);
+
+      // 4. Execute LI.FI swap — buy tokens with full position size (user + protocol capital)
       const slippage = Number(slippageBps) || 150; // default 1.5% slippage (bps)
       let openTx: string | undefined;
       let tokensBought: bigint | undefined;
       let entryPrice: number | undefined;
 
       try {
-        // The minimum-out is quoted inside swapSolForToken via Jupiter's
+        // The minimum-out is quoted inside swapNativeForToken via LI.FI's
         // quote API — real route state, not a mid-price estimate.
-        const swapResult = await swapSolForToken(
+        const swapResult = await swapNativeForToken(
           protocolAccount,
           tokenAddress,
-          positionSize, // full leveraged amount, in lamports
+          positionSize, // full leveraged amount, in wei
           slippage,     // basis points
         );
 
         openTx = swapResult.txHash;
         tokensBought = swapResult.amountOut;
 
-        // Entry price: lamports spent per raw token unit
+        // Entry price: wei spent per raw token unit
         entryPrice = Number(positionSize) / Number(tokensBought);
 
         console.log(
-          `[positions] Jupiter swap executed: ${openTx} | tokens=${tokensBought} | entryPrice=${entryPrice}`,
+          `[positions] LI.FI swap executed: ${openTx} | tokens=${tokensBought} | entryPrice=${entryPrice}`,
         );
       } catch (swapErr) {
-        // Swap failed — refund user's SOL
-        console.error(`[positions] Jupiter swap failed, refunding user:`, swapErr);
+        // Swap conclusively did not land (verified via status polling in the
+        // EVM layer) — refund the collateral and mark the intent 'failed'.
+        console.error(`[positions] LI.FI swap failed, refunding user:`, swapErr);
         let refundSuccess = false;
+        let refundSig: string | undefined;
         try {
-          await transferSol(protocolAccount, userAccount.publicKey.toBase58(), userCapital);
+          refundSig = await transferNative(protocolAccount, userAccount.address, userCapital);
           refundSuccess = true;
         } catch (refundErr) {
           console.error(`[positions] CRITICAL: Refund failed!`, refundErr);
         }
+        await persistMarker(
+          { status: refundSuccess ? 'failed' : 'opening', userReturnTx: refundSig, statusChangedAt: new Date() },
+          'swap-failure state',
+        );
+        // If the refund also failed, the row stays 'opening' with
+        // collateralTx set and no openTx — the recovery sweep refunds it.
         throw new ValidationError(
           refundSuccess
-            ? `Token swap failed: ${swapErr instanceof Error ? swapErr.message : 'Unknown error'}. Your SOL has been refunded.`
-            : `Token swap failed and automatic refund also failed. Please contact support to recover your ${Number(userCapital) / 1e9} SOL.`,
+            ? `Token swap failed: ${swapErr instanceof Error ? swapErr.message : 'Unknown error'}. Your ETH has been refunded.`
+            : `Token swap failed and the instant refund hit a network error — your ${Number(userCapital) / 1e18} ETH will be auto-refunded within a few minutes.`,
+        );
+      }
+      // Marker: the buy landed — record its signature before settlement so a
+      // crash here is recoverable forward (sweep re-derives entry data from
+      // the transaction itself).
+      await persistMarker({ openTx }, 'openTx');
+
+      // Tripwire: entry data must be sane before the row can go 'open'.
+      // (The EVM layer's quote fallback makes this unreachable; if it
+      // ever fires, the row stays 'opening' with openTx set and the
+      // recovery sweep derives entry data from the transaction itself.)
+      if (!tokensBought || tokensBought <= 0n || !entryPrice || !Number.isFinite(entryPrice)) {
+        console.error(
+          `[positions] CRITICAL: swap ${openTx} confirmed but receipt unverifiable ` +
+          `(tokens=${tokensBought}, entry=${entryPrice}) — position #${positionRowId} left in 'opening' for auto-recovery`,
+        );
+        throw new ValidationError(
+          `Swap confirmed on-chain but the token receipt could not be verified yet. ` +
+          `Your position will appear automatically within a few minutes.`,
         );
       }
 
-      // 5. Create position record + pool ledger atomically
-      const position = await prisma.$transaction(async (tx) => {
-        const pos = await tx.position.create({
-          data: {
-            userWallet: wallet,
-            tokenId: token.id,
-            status: 'open',
-            userCapital: userCapital,
-            protocolCapital: protocolCapital,
-            leverage: Number(leverage),
-            flatFee: flatFee,
-            tier: tier,
-            exitThreshold: exitThreshold,
-            takeProfitPct: takeProfitPct,
-            stopLossPct: stopLossPct,
-            entryPrice: entryPrice,
-            tokensBought: tokensBought,
-            openTx: openTx,
-          },
-          include: {
-            token: {
-              select: {
-                address: true,
-                name: true,
-                symbol: true,
-                tier: true,
+      // 5. Settle: flip the intent row to 'open' + pool ledger atomically.
+      // Retried because a transient DB failure here must not orphan a
+      // position whose buy already landed; if every retry fails, the row
+      // stays 'opening' (with openTx) and the sweep finishes the job.
+      let position: (typeof intent & { token: { address: string; name: string | null; symbol: string | null; tier: string | null } }) | null = null;
+      let settleErr: unknown;
+      for (let i = 0; i < 3 && !position; i++) {
+        try {
+          position = await prisma.$transaction(async (tx) => {
+            const pos = await tx.position.update({
+              where: { id: positionRowId },
+              data: {
+                status: 'open',
+                statusChangedAt: new Date(),
+                entryPrice: entryPrice,
+                tokensBought: tokensBought,
+                openTx: openTx,
               },
-            },
-          },
-        });
+              include: {
+                token: {
+                  select: {
+                    address: true,
+                    name: true,
+                    symbol: true,
+                    tier: true,
+                  },
+                },
+              },
+            });
 
-        // Record pool outflow for protocol capital
-        await tx.poolLedger.create({
-          data: {
-            type: 'position_open',
-            amount: -protocolCapital,
-            referenceId: pos.id,
-          },
-        });
+            // Record pool outflow for protocol capital
+            await tx.poolLedger.create({
+              data: {
+                type: 'position_open',
+                amount: -protocolCapital,
+                referenceId: pos.id,
+              },
+            });
 
-        return pos;
-      });
+            return pos;
+          });
+        } catch (err) {
+          settleErr = err;
+          await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+        }
+      }
+      if (!position) {
+        console.error(`[positions] CRITICAL: settlement failed for #${positionRowId} — left 'opening' for auto-recovery:`, settleErr);
+        throw new ValidationError(
+          'Your buy executed on-chain but a database hiccup delayed the position record. ' +
+          'It will appear automatically within a few minutes — do not re-submit.',
+        );
+      }
 
       // Award points on the notional size (non-fatal; never blocks the trade)
       await awardPositionPoints(wallet, position.id, positionSize);
@@ -371,7 +465,7 @@ router.post(
 /**
  * POST /positions/:id/close
  *
- * Close an open position: sell tokens via Jupiter, calculate P&L,
+ * Close an open position: sell tokens via LI.FI, calculate P&L,
  * distribute profits, and return capital.
  */
 router.post(
@@ -410,7 +504,7 @@ router.post(
       // Atomically set status to 'closing' — prevents concurrent close attempts (double-spend)
       const updated = await prisma.position.updateMany({
         where: { id: positionId, status: 'open' },
-        data: { status: 'closing' },
+        data: { status: 'closing', statusChangedAt: new Date() },
       });
       if (updated.count === 0) {
         throw new ValidationError(`Position is already ${position.status} or being closed`);
@@ -418,41 +512,43 @@ router.post(
 
       const entryPrice = Number(position.entryPrice);
       const tokensBought = position.tokensBought;
-      const userCapitalLamports = position.userCapital;
-      const protocolCapitalLamports = position.protocolCapital;
+      const userCapitalWei = position.userCapital;
+      const protocolCapitalWei = position.protocolCapital;
       const tier = position.tier as Tier;
       if (!hasProtocolKey()) {
-        await prisma.position.update({ where: { id: positionId }, data: { status: 'open' } });
+        await prisma.position.update({ where: { id: positionId }, data: { status: 'open', statusChangedAt: new Date() } });
         throw new ValidationError(
-          'Protocol pool wallet is not configured for Solana yet — closing is paused.',
+          'Protocol pool wallet is not configured for Robinhood Chain yet — closing is paused.',
         );
       }
       const protocolAccount = getProtocolAccount();
 
-      // 1. Sell tokens via Jupiter
+      // 1. Sell tokens via LI.FI
       const slippage = Number(req.body.slippageBps) || 200; // default 2% for sells (bps)
       let closeTx: string;
-      let solReceived: bigint; // lamports of SOL received
+      let ethReceived: bigint; // wei of ETH received
 
       try {
-        // minimum-out quoted inside swapTokenForSol via Jupiter's quote API
-        const sellResult = await swapTokenForSol(
+        // minimum-out quoted inside swapTokenForNative via LI.FI's quote API
+        const sellResult = await swapTokenForNative(
           protocolAccount,
           position.token.address,
           tokensBought,
           slippage, // basis points
         );
         closeTx = sellResult.txHash;
-        solReceived = sellResult.amountOut;
+        ethReceived = sellResult.amountOut;
 
         console.log(
-          `[positions] Sold tokens: ${closeTx} | received=${solReceived} lamports`,
+          `[positions] Sold tokens: ${closeTx} | received=${ethReceived} wei`,
         );
       } catch (sellErr) {
-        // Revert status back to open so user can retry
+        // The EVM layer now conclusively distinguishes not-landed from
+        // landed-but-unconfirmed, so a throw here means nothing moved —
+        // reverting to 'open' is safe and lets the user retry.
         await prisma.position.update({
           where: { id: positionId },
-          data: { status: 'open' },
+          data: { status: 'open', statusChangedAt: new Date() },
         });
         console.error(`[positions] Token sell failed:`, sellErr);
         throw new ValidationError(
@@ -460,62 +556,78 @@ router.post(
         );
       }
 
-      // 2. Calculate P&L from actual swap result
-      const exitPrice = Number(solReceived) / Number(tokensBought);
-      const positionSize = userCapitalLamports + protocolCapitalLamports;
+      // Marker: the sell is irreversible from here — persist it BEFORE the
+      // payout so a crash or payout failure can never lead to a second sell
+      // (the recovery sweep finalizes from this marker instead).
+      for (let i = 0; i < 5; i++) {
+        try {
+          await prisma.position.update({ where: { id: positionId }, data: { closeTx, ethReceived } });
+          break;
+        } catch {
+          await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+        }
+      }
 
-      // Actual P&L: solReceived - totalCapitalDeployed
-      const totalProfitLamports = solReceived - positionSize;
-      const isProfitable = totalProfitLamports > 0n;
-      const flatFeeLamports = position.flatFee;
+      // 2. Calculate P&L from actual swap result
+      const exitPrice = Number(ethReceived) / Number(tokensBought);
+      const positionSize = userCapitalWei + protocolCapitalWei;
+
+      // Actual P&L: ethReceived - totalCapitalDeployed
+      const totalProfitWei = ethReceived - positionSize;
+      const isProfitable = totalProfitWei > 0n;
+      const flatFeeWei = position.flatFee;
 
       // Revenue distribution from flat fee
-      const creatorPayoutLamports = (flatFeeLamports * 30n) / 100n;  // 30% to creator
-      const burnAmountLamports = (flatFeeLamports * 20n) / 100n;     // 20% burned
-      const poolReturnLamports = flatFeeLamports - creatorPayoutLamports - burnAmountLamports; // 50% to pool
+      const creatorPayoutWei = (flatFeeWei * 30n) / 100n;  // 30% to creator
+      const burnAmountWei = (flatFeeWei * 20n) / 100n;     // 20% burned
+      const poolReturnWei = flatFeeWei - creatorPayoutWei - burnAmountWei; // 50% to pool
 
       // User profit distribution
-      let userCashProfitLamports = 0n;
-      let userLockLamports = 0n;
+      let userCashProfitWei = 0n;
+      let userLockWei = 0n;
       if (isProfitable) {
-        userCashProfitLamports = (totalProfitLamports * 70n) / 100n;  // 70% cash
-        userLockLamports = totalProfitLamports - userCashProfitLamports; // 30% locked in $SCALE
+        userCashProfitWei = (totalProfitWei * 70n) / 100n;  // 70% cash
+        userLockWei = totalProfitWei - userCashProfitWei; // 30% locked in $LOADED
       }
 
       // What goes back to user: their original capital + 70% profit - flat fee
-      const userReturnLamports = isProfitable
-        ? userCapitalLamports + userCashProfitLamports - flatFeeLamports
-        : (solReceived > protocolCapitalLamports + flatFeeLamports
-            ? solReceived - protocolCapitalLamports - flatFeeLamports
+      const userReturnWei = isProfitable
+        ? userCapitalWei + userCashProfitWei - flatFeeWei
+        : (ethReceived > protocolCapitalWei + flatFeeWei
+            ? ethReceived - protocolCapitalWei - flatFeeWei
             : 0n); // user lost everything
 
       // Protocol gets back: their capital + pool's share of the flat fee
       // (flat fee is split: 30% creator + 20% burn + 50% pool — pool share IS the protocol revenue)
-      const protocolReturnLamports = protocolCapitalLamports + poolReturnLamports;
+      const protocolReturnWei = protocolCapitalWei + poolReturnWei;
 
       // Determine status
       const finalStatus = isProfitable ? 'closed_profit' : 'closed_loss';
 
-      // 3. Transfer user's SOL back to their wallet
-      if (userReturnLamports > 0n) {
+      // 3. Transfer user's ETH back to their wallet
+      if (userReturnWei > 0n) {
         try {
-          await transferSol(protocolAccount, wallet, userReturnLamports);
-          console.log(`[positions] Returned ${Number(userReturnLamports) / 1e9} SOL to user ${wallet}`);
+          const returnSig = await transferNative(protocolAccount, wallet, userReturnWei);
+          await prisma.position.update({
+            where: { id: positionId },
+            data: { userReturnTx: returnSig },
+          }).catch(() => { /* marker write is best-effort; settlement below persists state */ });
+          console.log(`[positions] Returned ${Number(userReturnWei) / 1e18} ETH to user ${wallet}`);
         } catch (returnErr) {
           captureError(returnErr instanceof Error ? returnErr : new Error(String(returnErr)), {
             userId: wallet,
             positionId,
             action: 'sol_return_failed',
-            metadata: { amountLamports: userReturnLamports.toString() },
+            metadata: { amountWei: userReturnWei.toString() },
           });
-          console.error(`[positions] CRITICAL: Failed to return SOL to user:`, returnErr);
-          // Revert position status so funds can be recovered on retry
-          await prisma.position.update({
-            where: { id: positionId },
-            data: { status: 'open' },
-          });
+          console.error(`[positions] CRITICAL: Failed to return ETH to user:`, returnErr);
+          // NEVER revert to 'open' here: the sell already landed, so a
+          // reverted position would be re-sold on the next close — a double
+          // spend from the shared pool. Leave it 'closing' with the closeTx
+          // marker set; the recovery sweep pays out and settles forward.
           throw new ValidationError(
-            'Failed to return SOL to your wallet. Position has been reverted to open. Please try again.',
+            'Your tokens were sold, but the ETH payout hit a network error. ' +
+            'It will complete automatically within a few minutes — no action needed.',
           );
         }
       }
@@ -525,14 +637,15 @@ router.post(
         where: { id: positionId },
         data: {
           status: finalStatus,
+          statusChangedAt: new Date(),
           exitPrice: exitPrice,
-          pnlSol: totalProfitLamports,
-          userProfit: userCashProfitLamports + userLockLamports,
-          protocolRevenue: flatFeeLamports,
-          creatorPayout: creatorPayoutLamports,
-          burnAmount: burnAmountLamports,
-          poolReturn: poolReturnLamports,
-          lockAmount: userLockLamports,
+          pnlEth: totalProfitWei,
+          userProfit: userCashProfitWei + userLockWei,
+          protocolRevenue: flatFeeWei,
+          creatorPayout: creatorPayoutWei,
+          burnAmount: burnAmountWei,
+          poolReturn: poolReturnWei,
+          lockAmount: userLockWei,
           closedAt: new Date(),
           closeTx,
         },
@@ -547,9 +660,9 @@ router.post(
       await prisma.poolLedger.create({
         data: {
           type: 'position_close',
-          amount: protocolCapitalLamports + poolReturnLamports,
+          amount: protocolCapitalWei + poolReturnWei,
           referenceId: positionId,
-          txSignature: closeTx,
+          txHash: closeTx,
         },
       });
 
@@ -561,18 +674,18 @@ router.post(
         },
       });
 
-      const pnlSol = Number(totalProfitLamports) / 1e9; // SOL
+      const pnlEth = Number(totalProfitWei) / 1e18; // ETH
       console.log(
-        `[positions] Position #${positionId} closed as ${finalStatus} | P&L: ${pnlSol.toFixed(6)} SOL`,
+        `[positions] Position #${positionId} closed as ${finalStatus} | P&L: ${pnlEth.toFixed(6)} ETH`,
       );
 
       sendSuccess(res, {
         id: closedPosition.id,
         status: closedPosition.status,
-        message: `Position closed. ${isProfitable ? `Profit: +${pnlSol.toFixed(6)} SOL` : `Loss: ${pnlSol.toFixed(6)} SOL`}`,
+        message: `Position closed. ${isProfitable ? `Profit: +${pnlEth.toFixed(6)} ETH` : `Loss: ${pnlEth.toFixed(6)} ETH`}`,
         token: closedPosition.token,
-        pnlSol: pnlSol.toFixed(6),
-        userReturn: (Number(userReturnLamports) / 1e9).toFixed(6),
+        pnlEth: pnlEth.toFixed(6),
+        userReturn: (Number(userReturnWei) / 1e18).toFixed(6),
         closeTx,
         closedAt: closedPosition.closedAt,
       });
@@ -620,8 +733,8 @@ router.get(
         const openedAtMs = pos.openedAt.getTime();
         const now = Date.now();
         const timeRemainingMs = Math.max(0, openedAtMs + 24 * 60 * 60 * 1000 - now);
-        // Booked in lamports-per-raw-unit; the UI charts token-USD —
-        // convert server-side (null when SOL/USD or decimals are unavailable)
+        // Booked in wei-per-raw-unit; the UI charts token-USD —
+        // convert server-side (null when ETH/USD or decimals are unavailable)
         const entryPriceUsd = await positionPriceToUsd(entryPrice, pos.token.address);
 
         return {
@@ -708,7 +821,7 @@ router.get(
         entryPrice: pos.entryPrice ? String(pos.entryPrice) : null,
         exitPrice: pos.exitPrice ? String(pos.exitPrice) : null,
         tokensBought: pos.tokensBought ? String(pos.tokensBought) : null,
-        pnlSol: pos.pnlSol ? String(pos.pnlSol) : null,
+        pnlEth: pos.pnlEth ? String(pos.pnlEth) : null,
         userProfit: pos.userProfit ? String(pos.userProfit) : null,
         protocolRevenue: pos.protocolRevenue ? String(pos.protocolRevenue) : null,
         openedAt: pos.openedAt,

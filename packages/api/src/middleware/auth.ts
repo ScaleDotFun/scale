@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Auth Middleware
+// LOADED PROTOCOL — Auth Middleware
 // ──────────────────────────────────────────────
 
 import type { Request, Response, NextFunction } from 'express';
@@ -36,7 +36,7 @@ export interface AuthenticatedRequest extends Request {
 /**
  * Issue a JWT for an authenticated user.
  * @param userId  Database user ID
- * @param wallet  Solana wallet address (base58)
+ * @param wallet  Robinhood Chain wallet address (0x…)
  * @returns Signed JWT string
  */
 export function issueToken(userId: number, wallet: string): string {
@@ -74,11 +74,11 @@ export function verifyWalletSignature(
 
     const token = authHeader.slice(7);
     const payload = verifyToken(token);
-    // Sessions minted before the Solana migration carry an EVM-era
+    // Sessions minted before the Robinhood Chain migration carry an EVM-era
     // (0x…) wallet — force a fresh sign-in (which migrates the account
-    // and issues a Solana-wallet token) instead of failing downstream.
-    // Lightweight base58 shape check — no need to pull in web3 here.
-    if (payload.wallet && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(payload.wallet)) {
+    // and issues a Robinhood Chain-wallet token) instead of failing downstream.
+    // Lightweight hex-address shape check — no need to pull in viem here.
+    if (payload.wallet && !/^0x[a-fA-F0-9]{40}$/.test(payload.wallet)) {
       throw new AuthError('Session expired — please sign in again');
     }
     req.userId = payload.userId;

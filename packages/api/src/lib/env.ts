@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Environment Variable Validation
+// LOADED PROTOCOL — Environment Variable Validation
 // ──────────────────────────────────────────────
 //
 // Validates required environment variables at startup.
@@ -23,17 +23,17 @@ const ENV_VARS: EnvVar[] = [
   // Auth
   { name: 'JWT_SECRET', required: true, description: 'JWT signing secret', sensitive: true },
 
-  // Solana
-  { name: 'SOLANA_RPC_URL', required: false, description: 'Solana RPC endpoint (defaults to the public mainnet-beta RPC)' },
+  // Robinhood Chain
+  { name: 'EVM_RPC_URL', required: false, description: 'Robinhood Chain RPC endpoint (defaults to the public mainnet-beta RPC)' },
   { name: 'PROTOCOL_WALLET_PRIVATE_KEY', required: false, description: 'Protocol pool wallet private key — trading disabled until set', sensitive: true },
   { name: 'PROTOCOL_WALLET', required: false, description: 'Protocol pool wallet public address (read-only fallback) — trading disabled until the private key is set' },
 
   // Token
-  { name: 'SCALE_TOKEN_MINT', required: false, description: '$SCALE token mint address' },
+  { name: 'LOADED_TOKEN_MINT', required: false, description: '$LOADED token mint address' },
 
   // External APIs
-  { name: 'JUPITER_API_URL', required: false, description: 'Jupiter API base URL (defaults to the public lite endpoint)' },
-  { name: 'JUPITER_API_KEY', required: false, description: 'Jupiter API key for higher rate limits', sensitive: true },
+  { name: 'LIFI_API_URL', required: false, description: 'LI.FI API base URL (defaults to the public endpoint)' },
+  { name: 'LIFI_API_KEY', required: false, description: 'LI.FI API key for higher rate limits', sensitive: true },
   { name: 'FEE_WALLET', required: false, description: 'Fee wallet address for protocol revenue' },
 
   // Telegram

@@ -15,9 +15,9 @@ const SECTIONS: Array<{ title: string; rows: Array<[string, string]> }> = [
     ],
   },
   {
-    title: 'TRADING — SCALE> PROMPT (ON /TRADE)',
+    title: 'TRADING — LOADED> PROMPT (ON /TRADE)',
     rows: [
-      ['long 0.5 sol on TEST at 5x', 'parse a full order in one line'],
+      ['long 0.5 eth on TEST at 5x', 'parse a full order in one line'],
       ['close', 'close current position'],
       ['close all', 'flatten everything'],
           ],
@@ -54,7 +54,7 @@ export const HelpOverlay: FC = () => {
     <div className="man-overlay" onClick={() => setOpen(false)}>
       <div className="man" onClick={(e) => e.stopPropagation()}>
         <div className="man-head">
-          <span>SCALE(1) — TERMINAL MANUAL</span>
+          <span>LOADED(1) — TERMINAL MANUAL</span>
           <span className="cmdk-esc">ESC</span>
         </div>
         <div className="man-body">

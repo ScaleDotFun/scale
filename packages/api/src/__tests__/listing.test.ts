@@ -1,168 +1,216 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Token Listing Verification Tests
+// LOADED PROTOCOL — Token Listing Verification Tests
 //
-// POST /tokens/list enforces the listing deal: the coin must be a
-// genuine pump.fun launch AND its creator must share creator rewards
-// with the SCALE pool wallet (default 100%) via pump.fun's on-chain
-// fee-sharing program. Everything else is rejected with actionable
-// errors that tell the creator exactly what to fix.
+// POST /tokens/list enforces the listing deal: the coin must be a genuine
+// launchpad token AND its PONS creator fees (70% of the 1% trade fee) must
+// demonstrably reach the LOADED pool wallet. PONS ships
+// setCreatorFeeRecipient(address) with no matching getter, so the gate is
+// economic — money has to show up on-chain. An unreadable chain is
+// 'unverifiable' and must block the listing, never wave it through.
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestApp } from './setup';
-import { prisma } from '@scale/database';
-import { verifyPumpRewardShare, splTotalSupply } from '@scale/solana';
+import { prisma } from '@loaded/database';
+import { verifyCreatorFeeShare, erc20TotalSupply, getTokenInfo, isValidAddress } from '@loaded/evm';
 
-const TOKEN = 'FsoJx9BdYPFhpVg84truwvBBpVMLtEnCcqYA9duSpump';
-const POOL = 'GDfnEsia2WLAW5t8yx2X5j2mkfA74B5675t2kNMaUMPb';
-const CREATOR = 'CbUPTbC4K7zdAEWxfa1nad4468xpqDwaBSVbQFVN8rvT';
+const TOKEN = '0x9f2a0c7d54b1e3a86d5f0b17c2e8934ab6d1f705';
+const POOL = '0x1f4b7d9e2c6a80351fbb0d47e9c8a2136d5f0e11';
 
-const JUP_TOKEN = {
-  id: TOKEN,
+const TOKEN_INFO = {
+  address: TOKEN,
   name: 'Cash Cat',
   symbol: 'CASHCAT',
-  icon: 'https://ipfs.io/ipfs/cashcat.png',
-  decimals: 6,
-  dev: CREATOR,
-  launchpad: 'pump.fun',
-  graduatedPool: '8sLbNZoA1cfnvMJLPfp98ZLAnFSYCFApfJKMbiXNLwxj',
-  mcap: 1_000_000,
-  usdPrice: 0.001,
+  decimals: 18,
+  imageUri: 'https://ipfs.io/ipfs/cashcat.png',
+  priceUsd: 0.001,
+  marketCap: 1_000_000,
   liquidity: 250_000,
-  circSupply: 1_000_000_000,
-  totalSupply: 1_000_000_000,
+  volume24h: 42_000,
+  priceChange24h: 12.5,
+  launchpad: 'pons-v2-dex',
 };
 
-const share = (over: Partial<Awaited<ReturnType<typeof verifyPumpRewardShare>>>) => ({
-  status: 'verified' as const,
-  walletPct: 100,
-  shareholders: [{ address: POOL, pct: 100 }],
-  creator: CREATOR,
+type Gate = Awaited<ReturnType<typeof verifyCreatorFeeShare>>;
+
+const gate = (over: Partial<Gate>): Gate => ({
+  status: 'verified',
+  token: TOKEN_INFO,
+  launchpad: 'pons-v2-dex',
+  poolWallet: POOL,
   graduated: true,
-  token: JUP_TOKEN as any,
+  detail: '4 ERC-20 credit(s) to the pool wallet in blocks 100–50100',
   ...over,
 });
 
-describe('POST /tokens/list — creator-reward share gate', () => {
+describe('POST /tokens/list — PONS creator-fee gate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.PROTOCOL_WALLET = POOL;
-    delete process.env.SCALE_MIN_FEE_SHARE_PCT;
+    delete process.env.LOADED_VERIFIED_TOKENS;
+    delete process.env.LOADED_TOKEN_MINT;
+    vi.mocked(isValidAddress).mockImplementation(
+      (addr: string) => typeof addr === 'string' && /^0x[0-9a-fA-F]{40}$/.test(addr.trim()),
+    );
     vi.mocked(prisma.token.findUnique).mockResolvedValue(null as any);
-    vi.mocked(splTotalSupply).mockResolvedValue(10n ** 15n);
+    vi.mocked(erc20TotalSupply).mockResolvedValue(10n ** 27n);
+    vi.mocked(getTokenInfo).mockResolvedValue(TOKEN_INFO as any);
+    vi.mocked(verifyCreatorFeeShare).mockResolvedValue(gate({}));
   });
 
-  it('rejects an invalid (EVM 0x…) address', async () => {
+  it('rejects an address that is not a Robinhood Chain 0x address', async () => {
     const { agent } = createTestApp();
-    const res = await agent.post('/api/tokens/list').send({ tokenAddress: '0x020bfc650a365f8bb26819deaabf3e21291018b4' });
+    const res = await agent
+      .post('/api/tokens/list')
+      .send({ tokenAddress: 'GDfnEsia2WLAW5t8yx2X5j2mkfA74B5675t2kNMaUMPb' });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/base58/i);
-  });
-
-  it('rejects a mint that does not exist on Solana (RPC-level check)', async () => {
-    vi.mocked(splTotalSupply).mockRejectedValue(new Error('could not find mint'));
-    const { agent } = createTestApp();
-    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/not found on Solana/i);
+    expect(res.body.error).toMatch(/0x/);
     expect(prisma.token.create).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-pump.fun launch', async () => {
-    vi.mocked(verifyPumpRewardShare).mockResolvedValue(
-      share({ status: 'not_pump_token', walletPct: 0, shareholders: [] }),
+  it('rejects a contract that does not exist on Robinhood Chain (RPC-level check)', async () => {
+    vi.mocked(erc20TotalSupply).mockRejectedValue(new Error('execution reverted'));
+    const { agent } = createTestApp();
+    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not found on Robinhood Chain/i);
+    expect(prisma.token.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a coin that never launched on a launchpad', async () => {
+    vi.mocked(verifyCreatorFeeShare).mockResolvedValue(
+      gate({
+        status: 'not_launchpad_token',
+        launchpad: null,
+        graduated: false,
+        detail: 'Only trades on uniswap-v4 — no launchpad pool.',
+      }),
     );
     const { agent } = createTestApp();
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/Only pump\.fun launches/i);
+    expect(res.body.error).toMatch(/only PONS launches/i);
     expect(prisma.token.create).not.toHaveBeenCalled();
   });
 
-  it('rejects a coin with reward sharing never enabled — and says how to fix it', async () => {
-    vi.mocked(verifyPumpRewardShare).mockResolvedValue(
-      share({ status: 'not_configured', walletPct: 0, shareholders: [] }),
-    );
-    const { agent } = createTestApp();
-    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/Share creator rewards/i);
-    expect(res.body.error).toContain(POOL);
-    expect(res.body.error).toContain('100%');
-    expect(prisma.token.create).not.toHaveBeenCalled();
-  });
-
-  it('rejects a coin whose sharing config omits the pool wallet', async () => {
-    vi.mocked(verifyPumpRewardShare).mockResolvedValue(
-      share({
+  it('rejects a coin whose PONS creator fees never reach the pool — and says how to fix it', async () => {
+    vi.mocked(verifyCreatorFeeShare).mockResolvedValue(
+      gate({
         status: 'not_redirected',
-        walletPct: 0,
-        shareholders: [{ address: CREATOR, pct: 100 }],
+        detail: 'no credit to the pool wallet in blocks 100–50100',
       }),
     );
     const { agent } = createTestApp();
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/not a shareholder/i);
+    expect(res.body.error).toMatch(/not reaching the LOADED pool wallet/i);
+    expect(res.body.error).toContain('setCreatorFeeRecipient');
+    expect(res.body.error).toContain(POOL);
     expect(prisma.token.create).not.toHaveBeenCalled();
   });
 
-  it('rejects a partial share below the bar — and reports the actual percent', async () => {
-    vi.mocked(verifyPumpRewardShare).mockResolvedValue(
-      share({
-        status: 'partial',
-        walletPct: 40,
-        shareholders: [{ address: POOL, pct: 40 }, { address: CREATOR, pct: 60 }],
-      }),
+  it('refuses to list when the chain could not be read — never a silent pass', async () => {
+    vi.mocked(verifyCreatorFeeShare).mockResolvedValue(
+      gate({ status: 'unverifiable', detail: 'the chain could not be read over the scan window' }),
     );
     const { agent } = createTestApp();
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('40%');
-    expect(res.body.error).toContain('100%');
+    expect(res.body.error).toMatch(/try again in a minute/i);
     expect(prisma.token.create).not.toHaveBeenCalled();
   });
 
-  it('lists a coin sharing 100% to the pool, with the dev wallet as creator', async () => {
-    vi.mocked(verifyPumpRewardShare).mockResolvedValue(share({}));
-    vi.mocked(prisma.token.create).mockResolvedValue({
-      id: 1, address: TOKEN, name: 'Cash Cat', symbol: 'CASHCAT', imageUri: JUP_TOKEN.icon,
-      creatorWallet: CREATOR, tier: 'degen', listedAt: new Date(),
-    } as any);
-
+  it('refuses to list when the gate itself throws', async () => {
+    vi.mocked(verifyCreatorFeeShare).mockRejectedValue(new Error('RPC 502'));
     const { agent } = createTestApp();
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
-    expect(res.status).toBe(201);
-    expect(res.body.data).toMatchObject({
-      symbol: 'CASHCAT',
-      feeVerified: true,
-      creatorWallet: CREATOR,
-      marketCapUsd: 1_000_000,
-      liquidityUsd: 250_000,
-    });
-    expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({
-      creatorWallet: CREATOR,
-      name: 'Cash Cat',
-      symbol: 'CASHCAT',
-      imageUri: JUP_TOKEN.icon,
-    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/could not verify/i);
+    expect(prisma.token.create).not.toHaveBeenCalled();
   });
 
-  it('falls back to the pool wallet as creator when the dev wallet is unknown', async () => {
-    vi.mocked(verifyPumpRewardShare).mockResolvedValue(
-      share({ creator: undefined, token: { ...JUP_TOKEN, dev: undefined } as any }),
-    );
+  it('refuses to list while the pool wallet is unconfigured', async () => {
+    delete process.env.PROTOCOL_WALLET;
+    const { agent } = createTestApp();
+    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/pool wallet not configured/i);
+    expect(verifyCreatorFeeShare).not.toHaveBeenCalled();
+  });
+
+  it('lists a coin whose PONS creator fees land in the pool wallet', async () => {
     vi.mocked(prisma.token.create).mockResolvedValue({
-      id: 2, address: TOKEN, name: 'Cash Cat', symbol: 'CASHCAT', imageUri: null,
+      id: 1, address: TOKEN, name: 'Cash Cat', symbol: 'CASHCAT', imageUri: TOKEN_INFO.imageUri,
       creatorWallet: POOL, tier: 'degen', listedAt: new Date(),
     } as any);
 
     const { agent } = createTestApp();
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
     expect(res.status).toBe(201);
-    expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({
+    expect(vi.mocked(verifyCreatorFeeShare).mock.calls[0]).toEqual([TOKEN, POOL]);
+    expect(res.body.data).toMatchObject({
+      symbol: 'CASHCAT',
+      feeVerified: true,
       creatorWallet: POOL,
+      marketCapUsd: 1_000_000,
+      liquidityUsd: 250_000,
     });
+    expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({
+      address: TOKEN,
+      creatorWallet: POOL,
+      name: 'Cash Cat',
+      symbol: 'CASHCAT',
+      imageUri: TOKEN_INFO.imageUri,
+    });
+  });
+
+  it('lists a coin with no market data yet, without inventing metadata', async () => {
+    vi.mocked(verifyCreatorFeeShare).mockResolvedValue(gate({ token: null, graduated: false }));
+    vi.mocked(prisma.token.create).mockResolvedValue({
+      id: 2, address: TOKEN, name: null, symbol: null, imageUri: null,
+      creatorWallet: POOL, tier: 'degen', listedAt: new Date(),
+    } as any);
+
+    const { agent } = createTestApp();
+    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ marketCapUsd: 0, liquidityUsd: 0 });
+    expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({
+      name: null,
+      symbol: null,
+      imageUri: null,
+    });
+  });
+
+  it('honours the LOADED_VERIFIED_TOKENS admin override, case-insensitively', async () => {
+    process.env.LOADED_VERIFIED_TOKENS = ` ${TOKEN.toUpperCase().replace('0X', '0x')} `;
+    vi.mocked(prisma.token.create).mockResolvedValue({
+      id: 3, address: TOKEN, name: 'Cash Cat', symbol: 'CASHCAT', imageUri: TOKEN_INFO.imageUri,
+      creatorWallet: POOL, tier: 'degen', listedAt: new Date(),
+    } as any);
+
+    const { agent } = createTestApp();
+    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    expect(res.status).toBe(201);
+    expect(res.body.data.feeVerified).toBe(true);
+    expect(verifyCreatorFeeShare).not.toHaveBeenCalled();
+    // Metadata still comes from the market feed, not the caller.
+    expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({
+      symbol: 'CASHCAT',
+    });
+  });
+
+  it('auto-passes $LOADED itself', async () => {
+    process.env.LOADED_TOKEN_MINT = TOKEN;
+    vi.mocked(prisma.token.create).mockResolvedValue({
+      id: 4, address: TOKEN, name: 'Cash Cat', symbol: 'CASHCAT', imageUri: null,
+      creatorWallet: POOL, tier: 'degen', listedAt: new Date(),
+    } as any);
+
+    const { agent } = createTestApp();
+    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    expect(res.status).toBe(201);
+    expect(verifyCreatorFeeShare).not.toHaveBeenCalled();
   });
 
   it('rejects a token that is already listed', async () => {
@@ -171,5 +219,6 @@ describe('POST /tokens/list — creator-reward share gate', () => {
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/already listed/i);
+    expect(verifyCreatorFeeShare).not.toHaveBeenCalled();
   });
 });

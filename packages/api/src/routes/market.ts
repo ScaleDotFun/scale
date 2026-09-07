@@ -1,15 +1,15 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Market Data Routes (Solana / GeckoTerminal)
+// LOADED PROTOCOL — Market Data Routes (Robinhood Chain / GeckoTerminal)
 //
-// The protocol targets Solana and pump.fun launches. Market data comes
-// from GeckoTerminal's `solana` network — real pools, prices and OHLCV,
-// no API key — plus Jupiter's price feed for seconds-level ticks.
+// The protocol targets Robinhood Chain and PONS launches. Market data comes
+// from GeckoTerminal's `robinhood` network — real pools, prices and OHLCV,
+// no API key — plus LI.FI's price feed for seconds-level ticks.
 // Response shapes are kept identical to the previous Birdeye endpoints
 // so the frontend (screener, chart, token pages) works unchanged.
 // ──────────────────────────────────────────────
 
 import { Router } from 'express';
-import { isValidSolanaAddress } from '@scale/solana';
+import { isValidAddress } from '@loaded/evm';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError } from '../lib/errors';
@@ -18,10 +18,10 @@ import { watchToken, liveCandles } from '../lib/liveTicks';
 
 const router = Router();
 
-/** Solana uses base58 mint addresses (case-sensitive). */
+/** Robinhood Chain uses 20-byte hex token addresses. */
 function validateTokenAddress(address: string): void {
-  if (typeof address !== 'string' || !isValidSolanaAddress(address)) {
-    throw new ValidationError('Invalid token address — expected a Solana (base58) mint address');
+  if (typeof address !== 'string' || !isValidAddress(address)) {
+    throw new ValidationError('Invalid token address — expected a Robinhood Chain token address (0x…)');
   }
 }
 
@@ -48,8 +48,23 @@ async function warmHotFeeds(): Promise<void> {
     console.warn('[market] reference warm failed:', err instanceof Error ? err.message : err);
   }
 }
-// warm immediately at boot, then refresh every 45s (±5s jitter)
-setTimeout(warmHotFeeds, 1_500);
+/**
+ * Boot warm, retried with backoff.
+ *
+ * Until the first warm lands the cache is empty, so requests fall through to a
+ * live GT call — and a single upstream hiccup in that window is what users see
+ * as "FEED OFFLINE". Retrying quickly keeps that window to seconds instead of
+ * waiting out the 30s refresh interval.
+ */
+async function warmUntilReady(): Promise<void> {
+  const delays = [1_500, 3_000, 6_000, 12_000, 20_000];
+  for (const wait of delays) {
+    await new Promise((r) => setTimeout(r, wait));
+    await warmHotFeeds();
+    if (trendingCache) return;
+  }
+}
+void warmUntilReady();
 setInterval(() => {
   setTimeout(warmHotFeeds, Math.random() * 10_000);
 }, 30_000).unref();
@@ -77,7 +92,7 @@ async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Prom
 }
 
 /**
- * GET /market/trending — trending memecoins on Solana.
+ * GET /market/trending — trending memecoins on Robinhood Chain.
  */
 router.get('/trending', publicLimiter, async (_req, res) => {
   try {
@@ -94,7 +109,7 @@ router.get('/trending', publicLimiter, async (_req, res) => {
 });
 
 /**
- * GET /market/search?q=keyword — search Solana tokens.
+ * GET /market/search?q=keyword — search Robinhood Chain tokens.
  */
 router.get('/search', publicLimiter, async (req, res) => {
   try {
@@ -153,7 +168,7 @@ router.get('/token/:address/price-history', publicLimiter, async (req, res) => {
 
 /**
  * GET /market/token/:address/live-history — seconds-level candles built
- * from a batched Jupiter price poll (one call for all watched mints).
+ * from a batched LI.FI price poll (one call for all watched mints).
  * Query: type (1s|5s|15s), limit. The watcher self-starts on first
  * request and expires 90s after the last one.
  */
@@ -201,8 +216,8 @@ router.get('/token/:address/pool', publicLimiter, async (req, res) => {
 });
 
 /**
- * GET /market/reference-history — SOL/USD OHLCV for the landing hero.
- * Solana's gas + quote asset is SOL, so the hero wall tracks wrapped SOL.
+ * GET /market/reference-history — ETH/USD OHLCV for the landing hero.
+ * Robinhood Chain's gas + quote asset is ETH, so the hero wall tracks wrapped ETH.
  */
 router.get('/reference-history', publicLimiter, async (req, res) => {
   try {

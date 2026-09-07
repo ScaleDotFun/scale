@@ -1,11 +1,11 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Express API Server
+// LOADED PROTOCOL — Express API Server
 // ──────────────────────────────────────────────
 
 import './lib/sentry'; // must init before anything else
 import 'dotenv/config';
 import { validateEnv } from './lib/env';
-import { prisma } from '@scale/database';
+import { prisma } from '@loaded/database';
 import { createApp } from './app';
 
 // Validate environment before starting
@@ -21,7 +21,7 @@ const PORT = parseInt(process.env.PORT || process.env.API_PORT || '4001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`\nSCALE PROTOCOL API server listening on ${HOST}:${PORT}`);
+  console.log(`\nLOADED PROTOCOL API server listening on ${HOST}:${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Health:      http://localhost:${PORT}/health`);
   console.log(`   API base:    http://localhost:${PORT}/api\n`);

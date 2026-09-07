@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /close, /closeall Commands
+// LOADED PROTOCOL — /close, /closeall Commands
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';
@@ -9,7 +9,7 @@ import {
   bold,
   code,
   escapeMarkdown,
-  formatSol,
+  formatEth,
   formatPercent,
 } from '../lib/format.js';
 
@@ -51,13 +51,13 @@ export async function handleClose(ctx: CommandContext<Context>): Promise<void> {
 
     const sym = escapeMarkdown(pos.tokenSymbol);
     const pnl = escapeMarkdown(formatPercent(pos.pnlPercent));
-    const pnlSol = escapeMarkdown(formatSol(BigInt(pos.pnlLamports)));
+    const pnlEth = escapeMarkdown(formatEth(BigInt(pos.pnlWei)));
 
     const msg = [
       `📦 ${bold('Close Position')}`,
       ``,
       `${bold('Token:')} ${sym}`,
-      `${bold('P\\&L:')} ${pnl} \\(${pnlSol}\\)`,
+      `${bold('P\\&L:')} ${pnl} \\(${pnlEth}\\)`,
       `${bold('Leverage:')} ${escapeMarkdown(pos.leverage + 'x')}`,
       ``,
       `⚠️ Are you sure you want to close this position?`,

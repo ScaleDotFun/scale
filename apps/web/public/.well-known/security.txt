@@ -1,4 +1,4 @@
-Contact: https://x.com/ScaleDotFun
+Contact: https://x.com/LoadedDotFun
 Expires: 2027-01-01T00:00:00.000Z
 Preferred-Languages: en
-Canonical: https://www.scale.fun/.well-known/security.txt
+Canonical: https://www.loaded.fun/.well-known/security.txt

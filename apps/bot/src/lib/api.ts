@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — REST API Client
+// LOADED PROTOCOL — REST API Client
 // ──────────────────────────────────────────────
 
 const BASE_URL = process.env.API_URL ?? 'http://localhost:4001';
@@ -71,8 +71,8 @@ export interface WalletInfo {
 }
 
 export interface BalanceInfo {
-  solLamports: string;
-  solBalance: number;
+  ethWei: string;
+  ethBalance: number;
   apeBalance: number;
 }
 
@@ -83,14 +83,14 @@ export interface PositionInfo {
   tier: string;
   status: string;
   leverage: number;
-  userCapitalLamports: string;
-  positionSizeLamports: string;
-  protocolCapitalLamports: string;
-  flatFeeLamports: string;
+  userCapitalWei: string;
+  positionSizeWei: string;
+  protocolCapitalWei: string;
+  flatFeeWei: string;
   entryPriceSol: number;
   currentPriceSol: number;
   pnlPercent: number;
-  pnlLamports: string;
+  pnlWei: string;
   openedAt: string;
   expiresAt: string;
 }
@@ -110,7 +110,7 @@ export interface TokenInfo {
   tier: string;
   creatorWallet: string;
   isActive: boolean;
-  priceSol: number;
+  priceEth: number;
   priceUsd: number;
   marketCapUsd: number;
   liquidityUsd: number;
@@ -121,34 +121,34 @@ export interface TokenInfo {
 
 export interface BurnInfo {
   id: string;
-  amountLamports: string;
+  amountWei: string;
   apeTokensBurned: string;
-  txSignature: string;
+  txHash: string;
   burnedAt: string;
 }
 
 export interface BurnStats {
-  totalBurnedLamports: string;
+  totalBurnedWei: string;
   totalBurnedTokens: string;
   burnCount: number;
 }
 
 export interface ProtocolStatsResp {
-  totalBurnedLamports: string;
+  totalBurnedWei: string;
   totalBurnedTokens: string;
-  totalLockedLamports: string;
+  totalLockedWei: string;
   totalLockedTokens: string;
-  poolSizeLamports: string;
-  totalCreatorPayoutsLamports: string;
+  poolSizeWei: string;
+  totalCreatorPayoutsWei: string;
   totalTradesExecuted: number;
   totalListedTokens: number;
   activePositions: number;
 }
 
 export interface PoolInfo {
-  sizeLamports: string;
+  sizeWei: string;
   utilizationPct: number;
-  availableLamports: string;
+  availableWei: string;
 }
 
 export interface CreatorDashboardResp {
@@ -172,7 +172,7 @@ export interface EarningsInfo {
   claimedEarnings: string;
   payouts: Array<{
     id: string;
-    amountLamports: string;
+    amountWei: string;
     status: string;
     claimedAt: string | null;
     createdAt: string;
@@ -180,14 +180,14 @@ export interface EarningsInfo {
 }
 
 export interface ClaimResult {
-  txSignature: string;
-  amountLamports: string;
+  txHash: string;
+  amountWei: string;
   payoutIds: string[];
 }
 
 export interface LockInfo {
   id: string;
-  amountLamports: string;
+  amountWei: string;
   apeTokens: string;
   lockedAt: string;
   unlocksAt: string;
@@ -195,9 +195,9 @@ export interface LockInfo {
 }
 
 export interface PnLSummary {
-  totalProfitLamports: string;
-  totalLossLamports: string;
-  netPnlLamports: string;
+  totalProfitWei: string;
+  totalLossWei: string;
+  netPnlWei: string;
   winCount: number;
   lossCount: number;
   winRate: number;
@@ -205,23 +205,23 @@ export interface PnLSummary {
 }
 
 export interface WithdrawResult {
-  txSignature: string;
-  amountLamports: string;
+  txHash: string;
+  amountWei: string;
   toAddress: string;
 }
 
 export interface OpenPositionResult {
   positionId: string;
-  txSignature: string;
+  txHash: string;
   position: PositionInfo;
 }
 
 export interface ClosePositionResult {
-  txSignature: string;
-  pnlLamports: string;
+  txHash: string;
+  pnlWei: string;
   isProfitable: boolean;
-  cashoutLamports: string;
-  lockLamports: string | null;
+  cashoutWei: string;
+  lockWei: string | null;
 }
 
 export interface UserSettings {
@@ -257,20 +257,20 @@ export async function getOrCreateWallet(telegramId: string): Promise<WalletInfo>
   });
 }
 
-/** Get SOL and $SCALE balance for a user */
+/** Get ETH and $LOADED balance for a user */
 export async function getBalance(telegramId: string): Promise<BalanceInfo> {
   return api<BalanceInfo>(`/wallet/${telegramId}/balance`);
 }
 
-/** Withdraw SOL to an external address */
-export async function withdrawSol(
+/** Withdraw ETH to an external address */
+export async function withdrawEth(
   telegramId: string,
-  amountLamports: string,
+  amountWei: string,
   toAddress: string,
 ): Promise<WithdrawResult> {
   return api<WithdrawResult>(`/wallet/${telegramId}/withdraw`, {
     method: 'POST',
-    body: { amountLamports, toAddress },
+    body: { amountWei, toAddress },
   });
 }
 
@@ -282,12 +282,12 @@ export async function withdrawSol(
 export async function openPosition(
   telegramId: string,
   tokenSymbol: string,
-  amountSol: number,
+  amountEth: number,
   leverage: number,
 ): Promise<OpenPositionResult> {
   return api<OpenPositionResult>('/positions/open', {
     method: 'POST',
-    body: { telegramId, tokenSymbol, amountSol, leverage },
+    body: { telegramId, tokenSymbol, amountEth, leverage },
   });
 }
 
@@ -383,7 +383,7 @@ export async function claimCreatorEarnings(telegramId: string): Promise<ClaimRes
 // API Functions — Locks / PnL
 // ──────────────────────────────────────────────
 
-/** Get user's $SCALE profit locks */
+/** Get user's $LOADED profit locks */
 export async function getUserLocks(telegramId: string): Promise<LockInfo[]> {
   return api<LockInfo[]>(`/locks/${telegramId}`);
 }

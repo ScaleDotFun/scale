@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — /trending, /search, /info, /listed
+// LOADED PROTOCOL — /trending, /search, /info, /listed
 // ──────────────────────────────────────────────
 
 import type { CommandContext, Context } from 'grammy';

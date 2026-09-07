@@ -1,14 +1,14 @@
 // ──────────────────────────────────────────────
-// SCALE PROTOCOL — Creator Payout Worker
+// LOADED PROTOCOL — Creator Payout Worker
 // ──────────────────────────────────────────────
 //
 // Records creator payout entitlements when positions close profitably.
-// Actual SOL transfer happens when the creator claims via the API.
+// Actual ETH transfer happens when the creator claims via the API.
 //
 
 import { Worker, type Job } from 'bullmq';
-import { prisma } from '@scale/database';
-import { formatSol } from '@scale/core';
+import { prisma } from '@loaded/database';
+import { formatEth } from '@loaded/core';
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[creator-payout]';
@@ -16,20 +16,20 @@ const PREFIX = '[creator-payout]';
 interface CreatorPayoutJobData {
   tokenId: number;
   creatorWallet: string;
-  amountLamports: string; // bigint serialized as string
+  amountWei: string; // bigint serialized as string
   positionId: number;
 }
 
 /**
  * Process a creator payout job: record the claimable payout in the database.
- * The actual SOL transfer happens when the creator initiates a claim via the API.
+ * The actual ETH transfer happens when the creator initiates a claim via the API.
  */
 async function processCreatorPayout(job: Job<CreatorPayoutJobData>): Promise<void> {
-  const { tokenId, creatorWallet, amountLamports: amountStr, positionId } = job.data;
+  const { tokenId, creatorWallet, amountWei: amountStr, positionId } = job.data;
   const amount = BigInt(amountStr);
 
   console.log(
-    `${PREFIX} Recording payout for creator ${creatorWallet}: ${formatSol(amount)} SOL (position #${positionId})`,
+    `${PREFIX} Recording payout for creator ${creatorWallet}: ${formatEth(amount)} ETH (position #${positionId})`,
   );
 
   try {
@@ -67,13 +67,13 @@ async function processCreatorPayout(job: Job<CreatorPayoutJobData>): Promise<voi
     ]);
 
     console.log(
-      `${PREFIX} ✅ Created claimable payout of ${formatSol(amount)} SOL for ${creatorWallet} ` +
+      `${PREFIX} ✅ Created claimable payout of ${formatEth(amount)} ETH for ${creatorWallet} ` +
         `(${token.symbol ?? `token #${tokenId}`}, position #${positionId})`,
     );
-    // NOTE: Actual SOL transfer happens when creator calls the claim endpoint.
+    // NOTE: Actual ETH transfer happens when creator calls the claim endpoint.
     // The API will:
     //   1. Find all claimable payouts for the creator
-    //   2. Execute SOL transfer from pool to creator wallet
+    //   2. Execute ETH transfer from pool to creator wallet
     //   3. Update payout status to 'claimed' with claimTx and claimedAt
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
