@@ -2,12 +2,17 @@
 // LOADED PROTOCOL — Listing Scanner Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// Enforces the listing deal ON-CHAIN via PONS's fee-sharing
-// program (same gate the API /tokens/list uses):
-//   • checkAndListToken(mint): lists a coin when its creator shares
-//     ≥ LOADED_MIN_FEE_SHARE_PCT (default 100%) of creator rewards
-//     with the LOADED pool wallet (or the coin is on the
+// Enforces the listing deal ON-CHAIN (same gate the API /tokens/list uses):
+//   • checkAndListToken(addr): lists a coin only once its PONS creator fees
+//     are provably arriving at the LOADED pool wallet (or the coin is on the
 //     LOADED_VERIFIED_TOKENS admin allowlist).
+//
+//     On PONS the creator fee stream is all-or-nothing at the "Creator wallet"
+//     field: it either points at the pool — in which case the creator's entire
+//     share reaches us — or it does not and we receive nothing. There is no
+//     partial split to measure, so the gate verifies the only thing that
+//     actually matters: that the money shows up. A creator who flips "Holder
+//     fee sharing" on diverts the stream to holders and stops verifying.
 //   • Periodic scan: RE-VERIFIES every active listing and deactivates
 //     any whose creator later re-routed rewards away from the pool —
 //     nobody keeps a leverage listing without paying for it. Dead
@@ -26,11 +31,6 @@ import {
 import { redisConnection, QUEUE_NAMES } from './queues.js';
 
 const PREFIX = '[listing-scanner]';
-
-function minFeeSharePct(): number {
-  const raw = Number(process.env.LOADED_MIN_FEE_SHARE_PCT);
-  return Number.isFinite(raw) ? Math.min(100, Math.max(1, raw)) : 100;
-}
 
 /** Admin allowlist of extra mints that may list without the share gate. */
 function verifiedTokens(): string[] {
@@ -158,7 +158,6 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
   if (!pool) return;
   const allow = new Set(verifiedTokens());
   const LOADED_MINT = (process.env.LOADED_TOKEN_MINT || '').trim();
-  const minPct = minFeeSharePct();
   const active = await prisma.token.findMany({ where: { isActive: true } });
 
   for (const token of active) {

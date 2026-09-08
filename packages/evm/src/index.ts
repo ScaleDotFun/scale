@@ -885,6 +885,61 @@ interface CreditScan {
  * ETH emit no log at all and therefore cannot be attributed here; those come back
  * as not_redirected rather than a guess.
  */
+/** Resolved curve per token — a curve never moves, so cache it forever. */
+const _curveCache = new Map<string, Address | null>();
+
+/**
+ * The PONS bonding curve for a coin.
+ *
+ * PONS mints the entire supply to the curve at launch, so the recipient of the
+ * mint (the one Transfer whose `from` is the zero address) IS the curve. That
+ * is the only reliable handle on it: GeckoTerminal reports pools as Uniswap V4
+ * poolIds, which are 32-byte hashes and not contracts at all, and PONS exposes
+ * no registry mapping token -> curve.
+ *
+ * The candidate is confirmed by checking its bytecode carries the curve's own
+ * selectors, so an ordinary airdrop-style mint can never be mistaken for one.
+ */
+export async function findCurveForToken(token: string): Promise<Address | null> {
+  const key = token.toLowerCase();
+  const cached = _curveCache.get(key);
+  if (cached !== undefined) return cached;
+
+  let found: Address | null = null;
+  try {
+    const client = getPublicClient();
+    const logs = await withTimeout(
+      client.getLogs({
+        address: getAddress(token),
+        event: TRANSFER_EVENT,
+        args: { from: '0x0000000000000000000000000000000000000000' as Address },
+        fromBlock: 0n,
+        toBlock: 'latest',
+      }),
+      FEE_SCAN_TIMEOUT_MS,
+      'getLogs(mint)',
+    );
+    for (const log of logs) {
+      const to = (log.args as { to?: Address }).to;
+      if (!to) continue;
+      const code = await client.getCode({ address: to }).catch(() => undefined);
+      if (!code || code === '0x') continue;
+      // setCreatorFeeRecipient(address) + token() — the curve's fingerprint.
+      if (code.includes('7b04ea62') && code.includes('fc0c546a')) {
+        found = getAddress(to);
+        break;
+      }
+    }
+  } catch {
+    // Leave it unresolved rather than caching a wrong answer; the caller
+    // reports 'unverifiable' and the next sweep retries.
+    return null;
+  }
+
+  _curveCache.set(key, found);
+  return found;
+}
+
 async function scanPoolCredits(
   token: string,
   poolWallet: string,
@@ -894,7 +949,7 @@ async function scanPoolCredits(
     return {
       readable: false,
       credited: false,
-      detail: 'no PONS pool contract found for this coin — fee credits cannot be attributed',
+      detail: 'could not resolve this coin’s PONS curve — fee credits cannot be attributed yet',
     };
   }
 
@@ -995,14 +1050,14 @@ export async function verifyCreatorFeeShare(
   }
   info.launchpad = launchpad;
 
-  // Fee credits are attributed to the coin's PONS pools. A graduated coin's
-  // Uniswap V4 pool is a 32-byte poolId, not a contract, so only the launchpad
-  // pools — the ones that actually charge the creator fee — are usable here.
-  const sources = pools
-    .filter((p) => isPonsDex(p.dex) || isLaunchpadToken(token, p.dex))
-    .map((p) => p.id)
-    .filter((id) => isValidAddress(id))
-    .map((id) => getAddress(id));
+  // Fee credits are attributed to the coin's own PONS bonding curve — the
+  // contract that charges the 1% and pays the creator's slice out.
+  //
+  // Pool ids are NOT usable here: PONS graduates into Uniswap V4, whose pools
+  // are 32-byte poolIds rather than contracts, so filtering them for a valid
+  // address discarded every source and left the gate permanently unverifiable.
+  const curve = await findCurveForToken(token);
+  const sources = curve ? [curve] : [];
 
   const scan = await scanPoolCredits(token, poolWallet, sources);
   const result: CreatorFeeResult = {
