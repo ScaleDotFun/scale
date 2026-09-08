@@ -92,6 +92,10 @@ vi.mock('@loaded/evm', () => ({
   readCurveGraduated: vi.fn(() => Promise.resolve(false)),
   claimVaultCredit: vi.fn(() => Promise.resolve(null)),
   vaultCreditOf: vi.fn(() => Promise.resolve(0n)),
+  tokensCreditingBeneficiary: vi.fn(() => Promise.resolve([])),
+  readCurveToken: vi.fn(() => Promise.resolve(null)),
+  isLaunchpadToken: vi.fn(() => true),
+  getPublicClient: vi.fn(() => ({ getBlockNumber: async () => 0n })),
   unwrapWrappedNative: vi.fn(() => Promise.resolve(null)),
   poolReserveFor: vi.fn((n: number) => 3_000_000_000_000_000n + 1_000_000_000_000_000n * BigInt(n)),
   explorerTxUrl: vi.fn((h: string) => `https://explorer.chain.robinhood.com/tx/${h}`),
@@ -117,7 +121,11 @@ vi.mock('bullmq', () => {
 
 // ─── Mock queues module ───────────────────────
 vi.mock('../queues.js', () => ({
-  redisConnection: {},
+  redisConnection: {
+    get: vi.fn(() => Promise.resolve(null)),
+    set: vi.fn(() => Promise.resolve('OK')),
+    del: vi.fn(() => Promise.resolve(1)),
+  },
   QUEUE_NAMES: {
     PRICE_CHECK: 'price-check',
     POSITION_CLOSE: 'position-close',

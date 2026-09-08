@@ -1284,6 +1284,98 @@ export async function flushCurveFees(
  * data word is the amount in wei. Verified against three live claim()
  * transactions, each of which emitted exactly one of these.
  */
+/**
+ * Vault credit event: a flush moved a curve's accrued fees into escrow.
+ *
+ *   topic1 = beneficiary (who the fees belong to)
+ *   topic2 = the source bonding curve
+ *   data[0] = amount credited
+ *
+ * This is the chain stating, unambiguously, which coins pay us. It is the only
+ * discovery signal that cannot be wrong: a coin either credited the pool or it
+ * did not.
+ */
+const VAULT_CREDIT_EVENT = '0x4e45da441832cf53bdaa69235704fc0575e68210f459ee1562911024b12967d5';
+
+/** curve.token() — the coin a bonding curve belongs to. */
+const CURVE_TOKEN_SELECTOR = '0xfc0c546a';
+
+/** The coin behind a bonding curve. Null when the curve will not say. */
+export async function readCurveToken(curve: string): Promise<Address | null> {
+  try {
+    const out = await getPublicClient().call({
+      to: getAddress(curve),
+      data: CURVE_TOKEN_SELECTOR as Hex,
+    });
+    const word = out.data;
+    if (!word || word.length < 66) return null;
+    const addr = getAddress(`0x${word.slice(26, 66)}`);
+    return addr === '0x0000000000000000000000000000000000000000' ? null : addr;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every coin that has credited `beneficiary` in the fee vault between two
+ * blocks, resolved from curve to token.
+ *
+ * Discovery used to run exclusively off a third-party trending feed with a
+ * $50,000 24h-volume floor, which meant the protocol could only find a coin
+ * that was ALREADY popular. A creator who redirected their fees — the one
+ * thing that actually earns the pool anything, and the entire deal on offer —
+ * was invisible until they got big enough to trend. Two coins were paying the
+ * pool for hours without ever appearing on the site.
+ *
+ * Scanned in windows, because public RPCs cap the block span of a single
+ * getLogs call. Windows that fail are skipped rather than aborting the sweep:
+ * a partial answer here costs a delay, and the next sweep re-reads.
+ */
+export async function tokensCreditingBeneficiary(
+  beneficiary: string,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<Address[]> {
+  const client = getPublicClient();
+  const topic1 = `0x${getAddress(beneficiary).slice(2).toLowerCase().padStart(64, '0')}` as Hex;
+  const WINDOW = 20_000n;
+
+  const curves = new Set<string>();
+  for (let start = fromBlock; start <= toBlock; start += WINDOW) {
+    const end = start + WINDOW - 1n > toBlock ? toBlock : start + WINDOW - 1n;
+    try {
+      // Raw request: viem's typed getLogs takes an ABI event, and this one is
+      // identified by topic hash only — the vault's ABI is not published.
+      const logs = (await client.request({
+        method: 'eth_getLogs',
+        params: [
+          {
+            address: PONS_FEE_VAULT,
+            fromBlock: `0x${start.toString(16)}`,
+            toBlock: `0x${end.toString(16)}`,
+            topics: [VAULT_CREDIT_EVENT, topic1],
+          },
+        ],
+      } as never)) as Array<{ topics: string[] }>;
+      for (const log of logs) {
+        const curve = log.topics[2];
+        if (curve) curves.add(`0x${curve.slice(26)}`);
+      }
+    } catch (err) {
+      console.warn(
+        `${LOG_PREFIX} credit scan window ${start}-${end} failed, skipping: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  const tokens: Address[] = [];
+  for (const curve of curves) {
+    const token = await readCurveToken(curve);
+    if (token) tokens.push(token);
+  }
+  return tokens;
+}
+
 const VAULT_CLAIMED_EVENT = '0xd8138f8a3f377c5259ca548e70e4c2de94f129f5a11036a15b69513cba2b426a';
 
 /**
