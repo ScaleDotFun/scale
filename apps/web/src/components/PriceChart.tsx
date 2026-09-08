@@ -395,7 +395,26 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
         emitPrice(price);
 
         const current = currentBarRef.current;
-        if (!current) return; // no baseline bars yet — don't invent candles
+        if (!current) {
+          // No baseline bars. This used to return, permanently: the first fetch
+          // coming back empty (a cold pool watcher, a rate-limited minute
+          // fetch) left currentBarRef null, and since only the data effect ever
+          // seeds it, EVERY subsequent live tick was dropped — while the LIVE
+          // badge and the price readout kept updating behind an opaque
+          // "no candles" overlay that could never clear. The poller is usually
+          // returning real data 1.5s later. Seed from the first tick instead so
+          // the chart heals itself, rather than inventing history it lacks.
+          const seedStart = Math.floor(timestamp / intervalSecs) * intervalSecs;
+          const seed = serverBar
+            ? { time: seedStart, open: serverBar.o, high: serverBar.h, low: serverBar.l, close: serverBar.c, volume: serverBar.v }
+            : { time: seedStart, open: price, high: price, low: price, close: price, volume: 0 };
+          currentBarRef.current = seed;
+          barsRef.current = [seed];
+          applyBars([seed]);
+          setDataState('ok');
+          setLoading(false);
+          return;
+        }
 
         const barStart = Math.floor(timestamp / intervalSecs) * intervalSecs;
         const currentBarStart = Math.floor(current.time / intervalSecs) * intervalSecs;
@@ -469,9 +488,17 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
       stream.disconnect();
       streamRef.current = null;
     };
-    // `supply` dep: candles often load before token overview resolves —
-    // when supply lands, reload once so axis units match the MC readout
-  }, [tokenAddress, interval, source, unit, themeTick, retryTick, supply]);
+    // `supply` is deliberately NOT a dependency.
+    //
+    // It was one, to reload the axis once the token overview resolved and the
+    // market-cap scale became computable. But the overview refreshes on its own
+    // timer, so any change in the reported supply — including a transient
+    // upstream hiccup that returns a different number, or undefined — tore down
+    // the stream, blanked the chart, refetched 300 candles, reset the user's
+    // zoom and pan, and silently flipped the y-axis between market cap and raw
+    // price mid-session. applyBars already rescales on the `unit` change, which
+    // is the only thing supply actually feeds.
+  }, [tokenAddress, interval, source, unit, themeTick, retryTick]);
 
   // Embed fallback — GeckoTerminal pool widget (needs the pool address)
   useEffect(() => {
@@ -649,17 +676,28 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
           </div>
         )}
 
-        {/* Live chart (lightweight-charts) */}
-        {showLiveChart && (
-          <div
-            ref={containerRef}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: source === 'live' ? 'block' : 'none',
-            }}
-          />
-        )}
+        {/* Live chart (lightweight-charts).
+
+            NOT conditionally rendered, deliberately. This div is the node
+            lightweight-charts attaches its canvases to, and the chart is
+            created once, in an effect keyed on [themeTick]. Wrapping it in
+            `showLiveChart && ...` unmounted the node on a switch to Embed
+            while the chart object lived on pointing at the detached element —
+            and coming back mounted a fresh empty div that nothing ever
+            re-initialised. The panel went black and stayed black for the rest
+            of the visit: no candles, no axes, and no error state either, since
+            the data effect kept happily calling setData on the orphan and
+            reporting 'ok'. The inline display toggle below was already written
+            for a permanently-mounted host; it just never got the chance to run,
+            because the guard above it could only ever be true. */}
+        <div
+          ref={containerRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: showLiveChart ? 'block' : 'none',
+          }}
+        />
 
         {/* Honest empty / error states */}
         {showLiveChart && tokenAddress && !loading && dataState !== 'ok' && (

@@ -991,7 +991,17 @@ export async function findCurveForToken(token: string): Promise<Address | null> 
     throw new Error(`${LOG_PREFIX} could not resolve the curve for ${token}: ${(err as Error).message}`);
   }
 
-  _curveCache.set(key, found);
+  // Cache the ANSWER, never the absence of one.
+  //
+  // A miss here is very often just the chain not having caught up: the mint
+  // Transfer this scan keys on is seconds old when a creator lists on launch
+  // day, which is precisely when they list. Caching that null pinned "this is
+  // not a PONS launch" onto the token for the lifetime of the process — so the
+  // coin stayed unlistable, and its fees stayed unflushed, until someone
+  // happened to redeploy. Verified against the LOADED launch itself: the gate
+  // returned not_launchpad_token, and the identical call 60 seconds later
+  // resolved the curve in 252ms.
+  if (found) _curveCache.set(key, found);
   return found;
 }
 
