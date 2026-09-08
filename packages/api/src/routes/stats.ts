@@ -2,13 +2,46 @@
 // LOADED PROTOCOL — Stats Routes
 // ──────────────────────────────────────────────
 
+import { timingSafeEqual } from 'node:crypto';
+import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { prisma } from '@loaded/database';
-import { publicLimiter } from '../middleware/rateLimit';
+import { publicLimiter, authLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError } from '../lib/response';
 import { getOnchainStats } from '../lib/onchain';
 
 const router = Router();
+
+/**
+ * Admin gate for every route below that can move money or destroy data.
+ *
+ * A plain `!==` on an attacker-supplied header leaks the secret a byte at a
+ * time under timing analysis, and these routes carry no per-route limiter, so
+ * guesses were cheap. Compare in constant time, and refuse outright unless a
+ * real secret is configured — an absent or placeholder ADMIN_SECRET must fail
+ * closed rather than depend on `undefined` never matching a header string.
+ */
+const MIN_ADMIN_SECRET_LEN = 24;
+function requireAdmin(req: Request, res: Response): boolean {
+  const expected = process.env.ADMIN_SECRET ?? '';
+  if (expected.length < MIN_ADMIN_SECRET_LEN) {
+    console.error(
+      `[stats] admin route refused: ADMIN_SECRET is missing or shorter than ${MIN_ADMIN_SECRET_LEN} chars`,
+    );
+    res.status(503).json({ success: false, error: 'Admin routes are disabled' });
+    return false;
+  }
+  const provided = String(req.headers['x-admin-secret'] ?? '');
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  if (!ok) {
+    console.warn(`[stats] admin auth failure from ${req.ip} on ${req.path}`);
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return false;
+  }
+  return true;
+}
 
 /**
  * GET /stats
@@ -176,12 +209,9 @@ router.get('/pool', publicLimiter, async (req, res) => {
  * Seed the pool ledger with an initial deposit. Protected by ADMIN_SECRET.
  * Body: { amountWei: string }
  */
-router.post('/admin/seed-pool', async (req, res) => {
+router.post('/admin/seed-pool', authLimiter, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (!secret || secret !== process.env.ADMIN_SECRET) {
-      return res.status(403).json({ success: false, error: 'Forbidden' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     const amountWei = BigInt(req.body.amountWei || '0');
     if (amountWei <= 0n) {
@@ -214,12 +244,9 @@ router.post('/admin/seed-pool', async (req, res) => {
  * Transfer ETH from the protocol wallet to a target address. Protected by ADMIN_SECRET.
  * Body: { destinationAddress: string, amountWei: string }  (amount in wei)
  */
-router.post('/admin/fund-wallet', async (req, res) => {
+router.post('/admin/fund-wallet', authLimiter, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (!secret || secret !== process.env.ADMIN_SECRET) {
-      return res.status(403).json({ success: false, error: 'Forbidden' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     const { destinationAddress, amountWei } = req.body;
     if (!destinationAddress || !amountWei) {
@@ -234,6 +261,17 @@ router.post('/admin/fund-wallet', async (req, res) => {
     const amount = BigInt(amountWei);
 
     const txSig = await transferNative(protocolAccount, destinationAddress, amount);
+
+    // Record the outflow. Without this a successful call moved pool ETH with
+    // no internal trace at all, so the ledger would keep reporting money that
+    // had already left the wallet.
+    await prisma.poolLedger.create({
+      data: {
+        type: 'admin_withdrawal',
+        amount: -amount,
+        txHash: txSig,
+      },
+    }).catch((e) => console.error('[stats] CRITICAL: admin withdrawal ledger write failed:', e));
 
     sendSuccess(res, {
       message: 'Wallet funded',
@@ -252,12 +290,9 @@ router.post('/admin/fund-wallet', async (req, res) => {
  * Backfill name/symbol/imageUri for all tokens missing metadata.
  * Protected by ADMIN_SECRET.
  */
-router.post('/admin/backfill-tokens', async (req, res) => {
+router.post('/admin/backfill-tokens', authLimiter, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (!secret || secret !== process.env.ADMIN_SECRET) {
-      return res.status(403).json({ success: false, error: 'Forbidden' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     const tokens = await prisma.token.findMany({
       where: { OR: [{ name: null }, { symbol: null }, { imageUri: null }] },
@@ -301,16 +336,28 @@ router.post('/admin/backfill-tokens', async (req, res) => {
  * Deactivate all tokens or delete specific ones. Protected by ADMIN_SECRET.
  * Body: { action: 'deactivate-all' | 'delete-all' }
  */
-router.post('/admin/reset-tokens', async (req, res) => {
+router.post('/admin/reset-tokens', authLimiter, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (!secret || secret !== process.env.ADMIN_SECRET) {
-      return res.status(403).json({ success: false, error: 'Forbidden' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     const { action, tokenAddress } = req.body;
 
     if (action === 'delete-all') {
+      // Position rows are the recovery record: status, collateralTx, openTx and
+      // closeTx are what the reconciliation sweep and sweep-pool use to finish
+      // or refund anything in flight. Deleting them while money is committed
+      // destroys the only map back to it.
+      const live = await prisma.position.count({
+        where: { status: { in: ['opening', 'open', 'closing'] } },
+      });
+      if (live > 0 && req.body.force !== true) {
+        return res.status(409).json({
+          success: false,
+          error:
+            `Refusing to delete: ${live} position(s) still hold funds on-chain, and their rows are the ` +
+            `only record of where that money is. Close or reconcile them first, or resend with force: true.`,
+        });
+      }
       const delPositions = await prisma.position.deleteMany({});
       const delTokens = await prisma.token.deleteMany({});
       sendSuccess(res, {
@@ -321,10 +368,12 @@ router.post('/admin/reset-tokens', async (req, res) => {
     } else if (action === 'force-list' && tokenAddress) {
       // Admin-verified listing — bypasses fee check for tokens we've
       // manually confirmed have fees going to protocol
-      const existing = await prisma.token.findUnique({ where: { address: tokenAddress } });
+      const existing = await prisma.token.findFirst({
+        where: { address: { equals: tokenAddress, mode: 'insensitive' } },
+      });
       if (existing) {
         // Reactivate if deactivated
-        await prisma.token.update({ where: { address: tokenAddress }, data: { isActive: true } });
+        await prisma.token.update({ where: { id: existing.id }, data: { isActive: true } });
         sendSuccess(res, { message: 'Token reactivated', address: tokenAddress });
       } else {
         // Fetch metadata from GeckoTerminal (Robinhood Chain)
@@ -340,8 +389,12 @@ router.post('/admin/reset-tokens', async (req, res) => {
           liquidity = gt.liquidity;
         } catch { /* use defaults */ }
 
+        // Use the liquidity the feed actually reported. Substituting 10% of
+        // market cap when it reports none invented the exact number the tier
+        // decision turns on, and passing "has any liquidity" as isBonded
+        // claimed graduation the feed never said anything about.
         const { determineTier } = await import('@loaded/core');
-        const tierConfig = determineTier(marketCap, liquidity || marketCap * 0.1, liquidity > 0);
+        const tierConfig = determineTier(marketCap, liquidity, false);
         const tier = tierConfig ? tierConfig.tier : 'degen';
 
         const token = await prisma.token.create({
@@ -356,7 +409,13 @@ router.post('/admin/reset-tokens', async (req, res) => {
             isAutoListed: true,
           },
         });
-        sendSuccess(res, { message: 'Token force-listed', token: { id: token.id, name, symbol, tier } });
+        sendSuccess(res, {
+          message: 'Token force-listed',
+          token: { id: token.id, name, symbol, tier },
+          warning:
+            'Force-listing bypasses the fee gate but not the re-verification sweep: unless this address ' +
+            'is in LOADED_VERIFIED_TOKENS, the scanner will delist it again within about 15 minutes.',
+        });
       }
     } else {
       const updated = await prisma.token.updateMany({

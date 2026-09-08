@@ -93,12 +93,13 @@ vi.mock('bullmq', () => {
     getRepeatableJobs: vi.fn(() => Promise.resolve([])),
     removeRepeatableByKey: vi.fn(() => Promise.resolve()),
   };
+  // Constructible: worker modules do `new Worker(...)` at import time, and an
+  // arrow-function mock is not a constructor, so importing one threw.
   return {
-    Queue: vi.fn(() => mockQueue),
-    Worker: vi.fn(() => ({
-      on: vi.fn(),
-      close: vi.fn(() => Promise.resolve()),
-    })),
+    Queue: vi.fn(function () { return mockQueue; }),
+    Worker: vi.fn(function () {
+      return { on: vi.fn(), close: vi.fn(() => Promise.resolve()) };
+    }),
   };
 });
 
@@ -121,6 +122,7 @@ vi.mock('../queues.js', () => ({
   },
   positionCloseQueue: {
     add: vi.fn(() => Promise.resolve()),
+    getJob: vi.fn(() => Promise.resolve(null)),
   },
   burnQueue: {
     add: vi.fn(() => Promise.resolve()),

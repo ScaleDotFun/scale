@@ -71,7 +71,10 @@ export const Docs: FC = () => {
             You deposit <span className="mono">0.5 ETH</span> at <span className="mono">5x</span> leverage.
             The protocol supplies <span className="mono">2.0 ETH</span> from the lending pool.
             A real spot buy of <span className="mono">2.5 ETH</span> worth of tokens is executed on-chain.
-            You pay a flat fee of <span className="mono">0.5%</span> (0.0125 ETH) on the total position size.
+            You pay a flat fee on the total position size, set by the coin's tier:
+            <span className="mono">2%</span> bonded, <span className="mono">3%</span> rising,
+            <span className="mono">5%</span> degen. On a bonded coin that is
+            <span className="mono">0.05 ETH</span> here.
           </p>
         </div>
 

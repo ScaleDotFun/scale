@@ -29,7 +29,6 @@ export const Account: FC = () => {
   // Locks state
   const [locks, setLocks] = useState<LockItem[]>([]);
   const [locksLoading, setLocksLoading] = useState(true);
-  const [claiming, setClaiming] = useState<number | null>(null);
 
   // Copy state
   const [copied, setCopied] = useState(false);
@@ -106,31 +105,6 @@ export const Account: FC = () => {
     }
   }, [destAddress, withdrawAmount, withdrawing, fetchBalance]);
 
-  const handleClaim = useCallback(async (lockId: number) => {
-    setClaiming(lockId);
-    try {
-      const token = api.getAuthToken();
-      const res = await fetch(`${API_BASE}/locks/${lockId}/claim`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        const msg = json?.details?.[0] || json?.error || 'Failed to claim lock. It may not be ready yet.';
-        alert(msg);
-        return;
-      }
-      await fetchLocks();
-    } catch (err) {
-      alert('Failed to claim lock. Please try again later.');
-    } finally {
-      setClaiming(null);
-    }
-  }, [fetchLocks]);
-
   const handleSignOut = useCallback(() => {
     logout();
     navigate('/auth');
@@ -191,8 +165,13 @@ export const Account: FC = () => {
     outline: 'none',
   };
 
-  const activeLocks = locks.filter((l) => !l.isUnlocked);
-  const claimable = locks.filter((l) => l.isUnlocked || l.isExpired);
+  // isUnlocked means the tokens have ALREADY been transferred out to the user,
+  // and isExpired is computed independently of it — so the old
+  // (!isUnlocked) / (isUnlocked || isExpired) split listed delivered tokens as
+  // pending forever and counted matured locks in both cards at once.
+  const activeLocks = locks.filter((l) => !l.isUnlocked && !l.isExpired && BigInt(l.tokenAmount) > 0n);
+  const releasing = locks.filter((l) => !l.isUnlocked && l.isExpired && BigInt(l.tokenAmount) > 0n);
+  const delivered = locks.filter((l) => l.isUnlocked);
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 700, margin: '0 auto' }}>
@@ -332,30 +311,30 @@ export const Account: FC = () => {
                 </div>
               </div>
               <div>
-                <div style={statLabel}>Claimable</div>
+                <div style={statLabel}>Releasing</div>
                 <div style={{
                   fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
-                  color: claimable.length > 0 ? '#c8ff00' : '#f0f4e4',
+                  color: releasing.length > 0 ? '#c8ff00' : '#f0f4e4',
                 }}>
-                  {claimable.length}
+                  {releasing.length}
                 </div>
               </div>
               <div>
-                <div style={statLabel}>Total Locks</div>
+                <div style={statLabel}>Delivered</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#f0f4e4', fontFamily: "'JetBrains Mono', monospace" }}>
-                  {locks.length}
+                  {delivered.length}
                 </div>
               </div>
             </div>
 
-            {/* Claimable locks */}
-            {claimable.length > 0 && (
+            {/* Matured — the release sweep sends these automatically */}
+            {releasing.length > 0 && (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#c8ff00', marginBottom: 8 }}>
-                  Ready to Claim
+                  Releasing now
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {claimable.map((lock) => (
+                  {releasing.map((lock) => (
                     <div key={lock.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '10px 14px', background: '#090b05', border: '1px solid rgba(52, 211, 153, 0.15)',
@@ -369,14 +348,7 @@ export const Account: FC = () => {
                           From {lock.position?.tokenSymbol ?? 'token'} trade · Locked {formatTimeAgo(lock.lockedAt)}
                         </div>
                       </div>
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => handleClaim(lock.id)}
-                        disabled={claiming === lock.id}
-                        style={{ fontSize: 12, padding: '6px 14px' }}
-                      >
-                        {claiming === lock.id ? 'Claiming...' : 'Claim'}
-                      </button>
+                      <div style={{ fontSize: 11, color: '#c8ff00' }}>Sending to your wallet</div>
                     </div>
                   ))}
                 </div>

@@ -2,10 +2,10 @@
 // LOADED PROTOCOL — Token Listing Verification Tests
 //
 // POST /tokens/list enforces the listing deal: the coin must be a genuine
-// launchpad token AND its PONS creator fees (the creator's share of the 1% trade fee) must
-// demonstrably reach the LOADED pool wallet. PONS ships
-// setCreatorFeeRecipient(address) with no matching getter, so the gate is
-// economic — money has to show up on-chain. An unreadable chain is
+// launchpad token AND its PONS creator fee stream (the creator's share of the
+// 1% trade fee) must be pointed at the LOADED pool wallet. The gate reads that
+// recipient directly off the coin's bonding curve, so it is contract state
+// rather than an inference from transfer history. An unreadable chain is
 // 'unverifiable' and must block the listing, never wave it through.
 // ──────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ describe('POST /tokens/list — PONS creator-fee gate', () => {
     vi.mocked(isValidAddress).mockImplementation(
       (addr: string) => typeof addr === 'string' && /^0x[0-9a-fA-F]{40}$/.test(addr.trim()),
     );
-    vi.mocked(prisma.token.findUnique).mockResolvedValue(null as any);
+    vi.mocked(prisma.token.findFirst).mockResolvedValue(null as any);
     vi.mocked(erc20TotalSupply).mockResolvedValue(10n ** 27n);
     vi.mocked(getTokenInfo).mockResolvedValue(TOKEN_INFO as any);
     vi.mocked(verifyCreatorFeeShare).mockResolvedValue(gate({}));
@@ -104,7 +104,9 @@ describe('POST /tokens/list — PONS creator-fee gate', () => {
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/not reaching the LOADED pool wallet/i);
-    expect(res.body.error).toContain('setCreatorFeeRecipient');
+    // The instruction must be one a creator can actually follow: the curve's
+    // setter is callable only by the PONS factory, so it names the UI field.
+    expect(res.body.error).toContain('Creator wallet');
     expect(res.body.error).toContain(POOL);
     expect(prisma.token.create).not.toHaveBeenCalled();
   });
@@ -214,7 +216,7 @@ describe('POST /tokens/list — PONS creator-fee gate', () => {
   });
 
   it('rejects a token that is already listed', async () => {
-    vi.mocked(prisma.token.findUnique).mockResolvedValue({ id: 1, address: TOKEN } as any);
+    vi.mocked(prisma.token.findFirst).mockResolvedValue({ id: 1, address: TOKEN } as any);
     const { agent } = createTestApp();
     const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
     expect(res.status).toBe(400);

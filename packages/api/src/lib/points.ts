@@ -11,13 +11,16 @@
 import { prisma } from '@loaded/database';
 import crypto from 'node:crypto';
 
-export const POINTS_PER_SOL = 100n;
+export const POINTS_PER_ETH = 100n;
 export const REFERRAL_BONUS_BPS = 2_000n; // 20%
-const WEI_PER_ETH = 1_000_000_000n;
+// 1e18, not 1e9. This was carried over from lamports during the chain move,
+// so every position minted a BILLION times the advertised rate while the UI
+// and the API both still said "100 points per 1 ETH".
+const WEI_PER_ETH = 1_000_000_000_000_000_000n;
 
 /** Points for a position's notional size (floor). */
 export function pointsForVolume(positionSizeWei: bigint): bigint {
-  return (positionSizeWei * POINTS_PER_SOL) / WEI_PER_ETH;
+  return (positionSizeWei * POINTS_PER_ETH) / WEI_PER_ETH;
 }
 
 /**

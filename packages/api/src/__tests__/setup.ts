@@ -99,7 +99,10 @@ vi.mock('@loaded/evm', () => ({
   swapTokenForNative: vi.fn(() => Promise.resolve({ txHash: 'mock-tx', amountOut: 0n })),
   getTokenInfo: vi.fn(() => Promise.resolve(null)),
   getTrendingTokens: vi.fn(() => Promise.resolve([])),
-  getTrendingTokens: vi.fn(() => Promise.resolve([])),
+  getAddress: vi.fn((a: string) => a),
+  findCurveForToken: vi.fn(() => Promise.resolve(null)),
+  readCurveDeployer: vi.fn(() => Promise.resolve(null)),
+  readCreatorFeeRecipient: vi.fn(() => Promise.resolve(null)),
   verifyCreatorFeeShare: vi.fn(() => Promise.resolve({ status: 'not_found', walletPct: 0, shareholders: [] })),
   verifyLaunchpadToken: vi.fn(() => Promise.resolve({ status: 'not_found' })),
   getUsdPrices: vi.fn(() => Promise.resolve(new Map())),
@@ -110,7 +113,9 @@ vi.mock('@loaded/evm', () => ({
 
 // ─── Mock @loaded/core ──────────────────
 vi.mock('@loaded/core', () => ({
-  WEI_PER_ETH: 10n ** 9n,
+  WEI_PER_ETH: 10n ** 18n,
+  SAFETY_BUFFER_BPS: 500,
+  BLOCKED_LIQUIDITY_THRESHOLD_USD: 5_000,
   getTierConfig: vi.fn(() => ({
     name: 'Bronze',
     label: 'DEGEN',

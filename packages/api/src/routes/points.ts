@@ -7,7 +7,7 @@ import { prisma } from '@loaded/database';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError } from '../lib/response';
-import { ensureReferralCode, POINTS_PER_SOL, REFERRAL_BONUS_BPS } from '../lib/points';
+import { ensureReferralCode, POINTS_PER_ETH, REFERRAL_BONUS_BPS } from '../lib/points';
 
 const router = Router();
 
@@ -50,7 +50,7 @@ router.get('/me', verifyWalletSignature, async (req: AuthenticatedRequest, res) 
       breakdown,
       referralCode: code,
       referralCount,
-      pointsPerEth: POINTS_PER_SOL.toString(),
+      pointsPerEth: POINTS_PER_ETH.toString(),
       referralBonusPct: Number(REFERRAL_BONUS_BPS) / 100,
     });
   } catch (err) {

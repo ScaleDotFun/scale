@@ -48,6 +48,9 @@ const ENV_VARS: EnvVar[] = [
 
   // Encryption
   { name: 'ENCRYPTION_KEY', required: false, description: 'Encryption key for bot wallets', sensitive: true },
+
+  // Admin
+  { name: 'ADMIN_SECRET', required: false, description: 'Admin route secret — admin routes are disabled below 24 chars', sensitive: true },
 ];
 
 /**

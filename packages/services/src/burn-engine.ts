@@ -59,10 +59,29 @@ async function addPendingToRedis(amount: bigint): Promise<bigint> {
 }
 
 /**
- * Reset the pending burn balance in Redis (after executing a burn).
+ * Draw an executed burn back out of the accumulator.
+ *
+ * Deliberately a decrement, not `SET 0`: allocations from other closes land
+ * while a burn is executing, and zeroing the key threw those away. Subtracting
+ * exactly what was burned leaves them intact for the next threshold crossing.
  */
-async function resetPendingInRedis(): Promise<void> {
-  await redisConnection.set(REDIS_PENDING_BURN_KEY, '0');
+async function drawDownPendingInRedis(amount: bigint): Promise<void> {
+  await redisConnection.call('INCRBY', REDIS_PENDING_BURN_KEY, (-amount).toString());
+}
+
+/**
+ * Claim a position's burn allocation exactly once.
+ *
+ * BullMQ retries re-run this job body with identical data, and the accumulator
+ * increment used to be the first thing it did — so three attempts turned one
+ * position's allocation into three copies of real pool ETH queued to be burned.
+ * SET NX makes the claim idempotent; the key outlives any retry backoff.
+ */
+async function claimBurnAllocation(positionId: number): Promise<boolean> {
+  const res = await redisConnection.set(
+    `loaded:burn:claimed:${positionId}`, '1', 'EX', 30 * 24 * 3600, 'NX',
+  );
+  return res === 'OK';
 }
 
 /**
@@ -119,8 +138,12 @@ async function processBurnJob(job: Job<BurnJobData>): Promise<void> {
   );
 
   try {
-    // Atomically accumulate in Redis
-    const newPending = await addPendingToRedis(ethAmount);
+    // Accumulate once per position, never once per attempt.
+    const fresh = await claimBurnAllocation(positionId);
+    const newPending = fresh ? await addPendingToRedis(ethAmount) : await getPendingFromRedis();
+    if (!fresh) {
+      console.log(`${PREFIX} position #${positionId} already counted — not re-adding to the accumulator`);
+    }
     console.log(`${PREFIX} Pending burn total: ${fmtSol(newPending)} ETH`);
 
     // Check if we've hit the threshold
@@ -147,10 +170,15 @@ async function processBurnJob(job: Job<BurnJobData>): Promise<void> {
 
     const { txHash, tokensBurned } = await executeBurn(burnAmount);
 
-    // Only reset Redis AFTER successful burn — if burn fails, amount stays for next attempt
-    await resetPendingInRedis();
+    // Draw down BEFORE writing the DB rows, and never rethrow past this point.
+    // The ETH is gone from the pool the moment the burn confirms; if this job
+    // were retried after that, it would swap and burn the same allocation a
+    // second time. Losing the bookkeeping row is recoverable from the tx hash
+    // logged below — a second burn of real pool ETH is not.
+    await drawDownPendingInRedis(burnAmount);
 
     // Record burn in database
+    try {
     await prisma.$transaction([
       // Create burn record
       prisma.burn.create({
@@ -172,6 +200,17 @@ async function processBurnJob(job: Job<BurnJobData>): Promise<void> {
         },
       }),
     ]);
+
+    } catch (dbErr) {
+      console.error(
+        `${PREFIX} CRITICAL: burn ${txHash} CONFIRMED ON-CHAIN but its database rows failed to write. ` +
+        `${fmtSol(burnAmount)} ETH left the pool and ${tokensBurned} $LOADED were burned for position ` +
+        `#${positionId}; the pool ledger now overstates the pool by that amount until a Burn row and a ` +
+        `negative 'burn' poolLedger row are added by hand: ` +
+        `${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
+      );
+      return; // deliberately NOT rethrown — a retry would burn a second time
+    }
 
     console.log(
       `${PREFIX} 🔥 Burned ${fmtSol(burnAmount)} ETH → ${tokensBurned} $LOADED tokens (tx: ${txHash})`,
@@ -221,7 +260,7 @@ export async function getPendingBurnWei(): Promise<bigint> {
 
 /** Reset pending burns in Redis (for testing) */
 export async function resetPendingBurns(): Promise<void> {
-  await resetPendingInRedis();
+  await redisConnection.set(REDIS_PENDING_BURN_KEY, '0');
 }
 
 

@@ -6,6 +6,7 @@
 // thresholds and 24h timeout, and dispatches position-close jobs.
 //
 
+import { randomUUID } from 'node:crypto';
 import { Worker, type Job } from 'bullmq';
 import { prisma } from '@loaded/database';
 import {
@@ -38,13 +39,67 @@ interface PriceCheckJobData {
 }
 
 /**
+ * Enqueue work on the close queue under a deterministic job id.
+ *
+ * BullMQ's add() is a SILENT no-op when a job with that id already exists in
+ * any state — including 'completed' and 'failed', which the queue retains for
+ * 24h and 7d respectively. A close that exhausted its three attempts would
+ * therefore block every future close for that position: the closer releases
+ * the row back to 'open' and the monitor keeps evaluating it, but no job can
+ * ever be created again, so liquidation, stop-loss, take-profit and the 24h
+ * timeout are all dead for it and the pool rides the coin to zero.
+ *
+ * Dropping the finished job first restores the intended behaviour: dedupe
+ * while a close is genuinely in flight, retry freely once one has settled.
+ * Exactly-once is not weakened — it comes from the DB claim
+ * (updateMany where status:'open' → 'closing'), not from the job id.
+ */
+async function enqueueCloseJob(
+  jobId: string,
+  positionId: number,
+  reason: PositionCloseReason,
+): Promise<void> {
+  try {
+    const existing = await positionCloseQueue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState().catch(() => 'unknown');
+      if (state !== 'completed' && state !== 'failed') return; // in flight — dedupe is correct
+      await existing.remove();
+    }
+  } catch (err) {
+    // A Redis hiccup here must not stop us from trying to enqueue.
+    console.warn(`${PREFIX} could not clear stale job ${jobId}:`, err instanceof Error ? err.message : err);
+  }
+  await positionCloseQueue.add(
+    'close-position',
+    { positionId, reason },
+    { attempts: 3, backoff: { type: 'exponential', delay: 5000 }, jobId },
+  );
+}
+
+type PositionCloseReason = 'threshold' | 'timeout' | 'user' | 'take_profit' | 'stop_loss' | 'finalize';
+
+/**
  * Reconciliation sweep — the safety net for every crash window in the
  * open/close state machines. Positions stuck in a transient status past
  * their staleness threshold are finished forward (markers present) or
  * rolled back/refunded (markers absent). Runs on every monitor tick.
  */
-async function reconcileStalePositions(): Promise<void> {
+export async function reconcileStalePositions(): Promise<void> {
   const now = Date.now();
+
+  // Without the pool key nothing can be finished forward and nothing can be
+  // refunded. Running anyway would fall through every recovery branch and
+  // write funded rows off as 'failed' — a status no sweep ever revisits — so
+  // users would silently lose collateral that is sitting in the pool. Skip the
+  // whole sweep instead and stay loud until the key comes back.
+  if (!hasProtocolKey()) {
+    console.error(
+      `${PREFIX} CRITICAL: PROTOCOL_WALLET_PRIVATE_KEY is not set — reconciliation is paused. ` +
+      `Stale positions will NOT be recovered or refunded until it is restored.`,
+    );
+    return;
+  }
 
   // A. Stale 'closing' rows.
   //    - closeTx set: the sell landed but settlement/payout never finished
@@ -65,11 +120,7 @@ async function reconcileStalePositions(): Promise<void> {
   for (const row of staleClosing) {
     if (row.closeTx) {
       console.warn(`${PREFIX} reconcile: #${row.id} stuck in 'closing' with landed sell — enqueueing finalize`);
-      await positionCloseQueue.add(
-        'close-position',
-        { positionId: row.id, reason: 'finalize' },
-        { attempts: 3, backoff: { type: 'exponential', delay: 5000 }, jobId: `finalize-${row.id}-${row.closeTx.slice(0, 8)}` },
-      );
+      await enqueueCloseJob(`finalize-${row.id}-${row.closeTx.slice(0, 8)}`, row.id, 'finalize');
     } else {
       console.warn(`${PREFIX} reconcile: #${row.id} orphaned in 'closing' (no sell landed) — releasing to 'open'`);
       await prisma.position.updateMany({
@@ -90,7 +141,7 @@ async function reconcileStalePositions(): Promise<void> {
   });
   for (const row of staleOpening) {
     try {
-      if (row.openTx && hasProtocolKey()) {
+      if (row.openTx) {
         const pool = getProtocolAccount().address;
         const tokens = await confirmedTokenDelta(row.openTx, pool, row.token.address);
         if (tokens && tokens > 0n) {
@@ -111,8 +162,32 @@ async function reconcileStalePositions(): Promise<void> {
         console.error(`${PREFIX} reconcile: #${row.id} has openTx but no token delta found — leaving for next sweep`);
         continue;
       }
-      if (row.collateralTx && hasProtocolKey()) {
-        const refundSig = await transferNative(getProtocolAccount(), row.userWallet, row.userCapital);
+      if (row.collateralTx) {
+        // Reserve the refund slot before moving anything. transferNative throws
+        // on a confirmation timeout as well as on a real failure, and the catch
+        // below only logs "will retry next sweep" — without a reservation the
+        // next sweep would refund the same collateral a second time out of the
+        // pool. Same discipline as the closer's payout: reserve, never release.
+        const reservation = `pending:${randomUUID()}`;
+        const reserved = await prisma.position.updateMany({
+          where: { id: row.id, status: 'opening', userReturnTx: null },
+          data: { userReturnTx: reservation },
+        });
+        if (reserved.count === 0) {
+          console.warn(`${PREFIX} reconcile: #${row.id} refund already reserved — skipping`);
+          continue;
+        }
+        let refundSig: string;
+        try {
+          refundSig = await transferNative(getProtocolAccount(), row.userWallet, row.userCapital);
+        } catch (err) {
+          console.error(
+            `${PREFIX} CRITICAL: refund for #${row.id} left reserved (${reservation}) after failure — ` +
+            `verify on-chain whether ${row.userCapital} wei reached ${row.userWallet} before clearing:`,
+            err instanceof Error ? err.message : err,
+          );
+          continue;
+        }
         await prisma.position.update({
           where: { id: row.id },
           data: { status: 'failed', statusChangedAt: new Date(), userReturnTx: refundSig },
@@ -120,11 +195,13 @@ async function reconcileStalePositions(): Promise<void> {
         console.warn(`${PREFIX} reconcile: #${row.id} refunded ${Number(row.userCapital) / 1e18} ETH to ${row.userWallet} (buy never landed)`);
         continue;
       }
+      // Reaching here means both markers are null: the API never got as far as
+      // moving the user's collateral, so 'failed' really does mean nothing moved.
       await prisma.position.update({
         where: { id: row.id },
         data: { status: 'failed', statusChangedAt: new Date() },
       });
-      console.warn(`${PREFIX} reconcile: #${row.id} marked 'failed' (no funds moved)`);
+      console.warn(`${PREFIX} reconcile: #${row.id} marked 'failed' (no marker — no funds moved)`);
     } catch (err) {
       console.error(`${PREFIX} reconcile: #${row.id} recovery attempt failed (will retry next sweep):`, err instanceof Error ? err.message : err);
     }
@@ -174,6 +251,21 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
     // wei-per-raw-unit basis entryPrice is stored in
     const priceMap = await getTokenPricesEth(tokenAddresses);
 
+    // A price feed that returns nothing silently disables take-profit,
+    // stop-loss and liquidation for every open position — the monitor keeps
+    // running and logs nothing. Say so, loudly, on every blind tick.
+    if (priceMap.size === 0) {
+      console.error(
+        `${PREFIX} CRITICAL: no prices for any of ${tokenAddresses.length} token(s) — ` +
+        `TP/SL/liquidation are BLIND for all ${openPositions.length} open position(s) this tick`,
+      );
+    } else if (priceMap.size < tokenAddresses.length) {
+      console.warn(
+        `${PREFIX} price feed partial: ${priceMap.size}/${tokenAddresses.length} tokens priced — ` +
+        `positions on the rest are unmonitored this tick`,
+      );
+    }
+
     let closedCount = 0;
     let warningCount = 0;
 
@@ -208,15 +300,8 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
           );
 
           if (timeoutCheck.shouldClose && timeoutCheck.reason === 'timeout') {
-            await positionCloseQueue.add(
-              'close-position',
-              { positionId: position.id, reason: 'timeout' },
-              {
-                attempts: 3,
-                backoff: { type: 'exponential', delay: 5000 },
-                jobId: `close-${position.id}`, // ONE close job per position, regardless of reason
-              },
-            );
+            // ONE close job per position, regardless of reason.
+            await enqueueCloseJob(`close-${position.id}`, position.id, 'timeout');
             closedCount++;
             console.log(
               `${PREFIX} Position #${position.id} timed out (24h) → queued for close`,
@@ -240,16 +325,8 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
         );
 
         if (result.shouldClose && result.reason) {
-          // Queue a close job (deduplicated by jobId)
-          await positionCloseQueue.add(
-            'close-position',
-            { positionId: position.id, reason: result.reason },
-            {
-              attempts: 3,
-              backoff: { type: 'exponential', delay: 5000 },
-              jobId: `close-${position.id}`,
-            },
-          );
+          // Queue a close job (deduplicated by jobId while one is in flight)
+          await enqueueCloseJob(`close-${position.id}`, position.id, result.reason);
           closedCount++;
           console.log(
             `${PREFIX} Position #${position.id} hit ${result.reason} → queued for close (P&L: ${calculateLivePnLPercent(entryPrice, currentPrice, leverage).toFixed(2)}%)`,
@@ -263,15 +340,7 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
         const slPct = position.stopLossPct != null ? Number(position.stopLossPct) : null;
 
         if (tpPct != null && priceMovePct >= tpPct) {
-          await positionCloseQueue.add(
-            'close-position',
-            { positionId: position.id, reason: 'take_profit' },
-            {
-              attempts: 3,
-              backoff: { type: 'exponential', delay: 5000 },
-              jobId: `close-${position.id}`,
-            },
-          );
+          await enqueueCloseJob(`close-${position.id}`, position.id, 'take_profit');
           closedCount++;
           console.log(
             `${PREFIX} Position #${position.id} hit take-profit (+${priceMovePct.toFixed(2)}% ≥ +${tpPct}%) → queued for close`,
@@ -280,15 +349,7 @@ async function processPriceCheckJob(job: Job<PriceCheckJobData>): Promise<void> 
         }
 
         if (slPct != null && priceMovePct <= -slPct) {
-          await positionCloseQueue.add(
-            'close-position',
-            { positionId: position.id, reason: 'stop_loss' },
-            {
-              attempts: 3,
-              backoff: { type: 'exponential', delay: 5000 },
-              jobId: `close-${position.id}`,
-            },
-          );
+          await enqueueCloseJob(`close-${position.id}`, position.id, 'stop_loss');
           closedCount++;
           console.log(
             `${PREFIX} Position #${position.id} hit stop-loss (${priceMovePct.toFixed(2)}% ≤ -${slPct}%) → queued for close`,

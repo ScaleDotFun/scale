@@ -24,6 +24,8 @@ import { prisma } from '@loaded/database';
 import { determineTier } from '@loaded/core';
 import {
   verifyCreatorFeeShare,
+  findCurveForToken,
+  readCurveDeployer,
   getTokenInfo,
   protocolPublicKey,
   isValidAddress,
@@ -57,7 +59,7 @@ async function checkAndListToken(mint: string): Promise<boolean> {
   }
 
   const pool = protocolPublicKey();
-  const allowlisted = verifiedTokens().includes(mint);
+  const allowlisted = verifiedTokens().some((a) => a.toLowerCase() === mint.toLowerCase());
   if (!pool && !allowlisted) return false;
 
   let creator: string | null = null;
@@ -75,7 +77,12 @@ async function checkAndListToken(mint: string): Promise<boolean> {
       return false;
     }
     if (check.token) {
-      creator = null;
+      // The coin's real creator is the wallet that deployed it, read off its
+      // own curve. It cannot be the fee recipient — once a creator redirects,
+      // that IS the pool wallet, so the protocol would end up booking its own
+      // creator revenue share as a liability to itself.
+      const curve = await findCurveForToken(mint).catch(() => null);
+      creator = curve ? await readCurveDeployer(curve).catch(() => null) : null;
       name = check.token.name ?? null;
       symbol = check.token.symbol ?? null;
       imageUri = check.token.imageUri ?? null;
@@ -94,7 +101,9 @@ async function checkAndListToken(mint: string): Promise<boolean> {
   // repeat forever.
   const tierConfig = determineTier(marketCapUsd, liquidityUsd, graduated);
 
-  const existing = await prisma.token.findUnique({ where: { address: mint } });
+  const existing = await prisma.token.findFirst({
+    where: { address: { equals: mint, mode: 'insensitive' } },
+  });
   if (existing) {
     if (!existing.isActive && tierConfig) {
       await prisma.token.update({ where: { id: existing.id }, data: { isActive: true } });
@@ -115,7 +124,9 @@ async function checkAndListToken(mint: string): Promise<boolean> {
       name,
       symbol,
       imageUri,
-      creatorWallet: creator ?? pool ?? mint, // real PONS dev when verified
+      // Never fall back to `mint`: that booked creator payouts to the token
+      // contract itself, an address nobody can ever sign for.
+      creatorWallet: creator ?? pool ?? '',
       tier: tierConfig.tier,
       isActive: true,
       isAutoListed: true,
@@ -156,14 +167,46 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
   // 2. re-verify active listings
   const pool = protocolPublicKey();
   if (!pool) return;
-  const allow = new Set(verifiedTokens());
-  const LOADED_MINT = (process.env.LOADED_TOKEN_MINT || '').trim();
-  const active = await prisma.token.findMany({ where: { isActive: true } });
+  // Lowercased on both sides: discovery writes EIP-55 checksummed addresses
+  // and the env vars carry whatever casing was pasted, so an exact-string
+  // comparison could silently fail to exempt $LOADED itself from delisting.
+  const allow = new Set(verifiedTokens().map((a) => a.toLowerCase()));
+  const LOADED_MINT = (process.env.LOADED_TOKEN_MINT || '').trim().toLowerCase();
+  // Bounded and rotated. This loop makes several external calls per coin
+  // every 5 minutes; unbounded, a growing catalogue would exhaust the market
+  // feed's rate limit and (before the fix above) read the 429s as evidence of
+  // non-payment. A cursor keeps every listing checked, just not all at once.
+  const REVERIFY_PER_SWEEP = 40;
+  const cursor = Number((await redisConnection.get(REVERIFY_CURSOR_KEY)) ?? 0);
+  const active = await prisma.token.findMany({
+    where: { isActive: true, id: { gt: cursor } },
+    orderBy: { id: 'asc' },
+    take: REVERIFY_PER_SWEEP,
+  });
+  // Wrap around once we run off the end so the sweep is a full rotation.
+  await redisConnection.set(
+    REVERIFY_CURSOR_KEY,
+    String(active.length < REVERIFY_PER_SWEEP ? 0 : active[active.length - 1]!.id),
+  );
 
   for (const token of active) {
-    if (token.address === LOADED_MINT || allow.has(token.address)) continue; // exempt
+    const addrKey = token.address.toLowerCase();
+    if ((LOADED_MINT && addrKey === LOADED_MINT) || allow.has(addrKey)) continue; // exempt
     try {
       const check = await verifyCreatorFeeShare(token.address, pool);
+      // Only a POSITIVE reading counts against a listing. verifyCreatorFeeShare
+      // returns rather than throws on read failure, so 'unverifiable' (RPC or
+      // market data down), 'not_found' (a 429 from the metadata feed looks
+      // exactly like a missing token) and 'not_launchpad_token' (empty pool
+      // list) all used to strike. Three of those in a row — trivially produced
+      // by one rate-limit window, since this sweep alone makes multiple calls
+      // per active coin every 5 minutes — delisted the entire catalogue.
+      if (check.status !== 'verified' && check.status !== 'not_redirected') {
+        console.warn(
+          `${PREFIX} re-verify inconclusive for ${token.symbol ?? token.address} (${check.status}) — keeping the listing`,
+        );
+        continue;
+      }
       if (check.status !== 'verified') {
         // Hysteresis: one bad read is not proof — bonding-curve graduation
         // and RPC lag both produce transient non-verified reads (LOADED
@@ -204,8 +247,11 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
   //    re-enabled the reward share comes back automatically —
   //    checkAndListToken reactivates existing rows on a verified read.
   //    Newest first, capped per sweep to bound RPC load.
+  // (This used to filter `address: { endsWith: 'pump' }` — a pump.fun mint
+  // suffix left over from Solana. No 0x address can end in 'pump', so the
+  // query always returned nothing and delistings were permanent.)
   const inactive = await prisma.token.findMany({
-    where: { isActive: false, address: { endsWith: 'pump' } },
+    where: { isActive: false },
     orderBy: { id: 'desc' },
     take: 10,
     select: { address: true },
@@ -222,6 +268,8 @@ async function processScan(job: Job<ListingScanJobData>): Promise<void> {
 // Deactivation hysteresis — in-memory strike counter per mint. Resets on
 // process restart, which only makes delisting slower, never wrong.
 const DEACTIVATE_STRIKES = 3;
+/** Where the bounded re-verify rotation left off. */
+const REVERIFY_CURSOR_KEY = 'loaded:listing-scan:reverify-cursor';
 const strikeCounts = new Map<string, number>();
 function recordStrike(mint: string): number {
   const n = (strikeCounts.get(mint) ?? 0) + 1;

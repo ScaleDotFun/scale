@@ -41,12 +41,21 @@ export const Trade: FC = () => {
 
   // Balance state
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
-  useEffect(() => {
+  const refreshBalance = useCallback(() => {
     if (!isAuthenticated) { setWalletBalance(null); return; }
     api.getWalletBalance()
       .then((b) => setWalletBalance(b.balanceEth))
-      .catch(() => setWalletBalance(null));
+      .catch(() => { /* keep the last known figure rather than blanking it */ });
   }, [isAuthenticated]);
+  // Polled, and refreshed after every trade. Fetching once on mount left the
+  // figure frozen at its page-load value for the whole session — directly
+  // beside the input the user sizes their next trade against.
+  useEffect(() => {
+    if (!isAuthenticated) { setWalletBalance(null); return; }
+    refreshBalance();
+    const t = setInterval(refreshBalance, 15_000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, refreshBalance]);
 
   const [activeTab, setActiveTab] = useState<'positions' | 'history' | 'trades'>('positions');
   const [collateral, setCollateral] = useState('');
@@ -65,6 +74,7 @@ export const Trade: FC = () => {
     setCloseError('');
     try {
       await closePosition(positionId);
+      refreshBalance();
     } catch (err: unknown) {
       let msg = 'Could not close the position. Please try again.';
       const body = (err as { body?: { details?: string[]; error?: string } })?.body;
@@ -74,7 +84,7 @@ export const Trade: FC = () => {
       setCloseError(msg);
       setTimeout(() => setCloseError(''), 8000);
     }
-  }, [closePosition]);
+  }, [closePosition, refreshBalance]);
   const [expandedPosition, setExpandedPosition] = useState<number | null>(null);
 
   // ── Listing check state ──
@@ -177,6 +187,16 @@ export const Trade: FC = () => {
    * Only computable for the token whose price is streaming; positions
    * on other tokens show '—' rather than a fake 0.
    */
+  /**
+   * The protocol closes 5% (of collateral) BEFORE the raw tier threshold —
+   * shouldAutoClose adds SAFETY_BUFFER_BPS before comparing, so the pool can
+   * still recover its capital through the slippage of the exit. A liquidation
+   * price drawn from the raw threshold promises a level the server never waits
+   * for: a bonded position is force-closed at -10%, not the -15% on the label.
+   */
+  const SAFETY_BUFFER_PCT = 5;
+  const effectiveExitPct = (rawPct: number) => rawPct + SAFETY_BUFFER_PCT;
+
   const livePnLFor = useCallback((pos: api.PositionInfo): number | null => {
     if (pos.token?.address !== selectedToken?.address) return pos.livePnLPercent ?? null;
     // entryPriceUsd comes converted from the API (positions book prices
@@ -191,11 +211,19 @@ export const Trade: FC = () => {
   const collateralEth = parseFloat(collateral) || 0;
   const positionSize = collateralEth * leverage;
   const protocolCapital = collateralEth * (leverage - 1);
-  // Use tier-specific fee from API, fallback to 0.5% for display before token loads
-  const flatFeePct = selectedToken?.flatFeePct ?? 0.5;
+  // Tier config comes from the API. There is no honest default: a fabricated
+  // 0.5% fee and an invented liquidation threshold are worse than showing
+  // nothing, because the user sizes a real trade against them. Every token
+  // endpoint now returns these, so a missing value means "still loading".
+  const hasTierConfig = selectedToken?.flatFeePct != null && selectedToken?.exitThresholdPct != null;
+  const flatFeePct = selectedToken?.flatFeePct ?? 0;
   const flatFee = positionSize * (flatFeePct / 100);
-  // Use tier-specific exit threshold from API, fallback to dynamic estimate
-  const exitThreshold = selectedToken?.exitThresholdPct ?? -(100 / leverage);
+  // The threshold the protocol ACTUALLY closes at — the raw tier threshold
+  // plus the 5% safety buffer the closer applies. Drawing the liquidation
+  // line at the raw number promised a price the server never waits for:
+  // a bonded position was force-closed at -10%, not the -15% shown.
+  const exitThreshold =
+    selectedToken?.liquidationThresholdPct ?? selectedToken?.exitThresholdPct ?? -(100 / leverage);
   const markPrice = tokenOverview?.price ?? 0;
   const tpPct = parseFloat(takeProfitPct) || 0;
   const slPct = parseFloat(stopLossPct) || 0;
@@ -210,7 +238,7 @@ export const Trade: FC = () => {
     .filter((pos) => pos.token?.address === selectedToken?.address)
     .map((pos) => {
       const entry = pos.entryPriceUsd ?? 0; // token-USD, same axis as the chart
-      const exitPct = parseFloat(pos.exitThreshold) || -10;
+      const exitPct = effectiveExitPct(parseFloat(pos.exitThreshold) || -10);
       return {
         entryPrice: entry,
         liquidationPrice: entry > 0 ? entry * (1 + exitPct / (100 * pos.leverage)) : 0,
@@ -263,6 +291,7 @@ export const Trade: FC = () => {
       setCollateral('');
       setTakeProfitPct('');
       setStopLossPct('');
+      refreshBalance();
       setTimeout(() => setOptimisticState('idle'), 2000);
     } catch (err: any) {
       let msg = 'Something went wrong. Please try again.';
@@ -277,7 +306,7 @@ export const Trade: FC = () => {
       setOptimisticState('error');
       setTimeout(() => setOptimisticState('idle'), 6000);
     }
-  }, [selectedToken, collateralEth, leverage, isOpening, openPosition, tpPct, slPct]);
+  }, [selectedToken, collateralEth, leverage, isOpening, openPosition, tpPct, slPct, refreshBalance]);
 
   const handleBuyClick = useCallback(() => {
     if (!selectedToken || collateralEth <= 0) return;
@@ -401,7 +430,7 @@ export const Trade: FC = () => {
                         const timeLeft = getTimeLeft(pos);
                         const isExpanded = expandedPosition === pos.id;
                         const entryNum = pos.entryPriceUsd ?? 0;
-                        const exitPct = parseFloat(pos.exitThreshold) || -10;
+                        const exitPct = effectiveExitPct(parseFloat(pos.exitThreshold) || -10);
                         const liqPricePos = entryNum > 0 ? entryNum * (1 + exitPct / (100 * pos.leverage)) : 0;
 
                         return (
@@ -488,6 +517,10 @@ export const Trade: FC = () => {
                     </thead>
                     <tbody>
                       {tradeHistory.map((pos) => {
+                        // The API used to serialise this as `pnlEth` (the
+                        // database column's name) while holding wei, so this
+                        // read was undefined and every closed trade rendered
+                        // "+0.0000 ETH" in green — liquidations included.
                         const profit = weiToEth(pos.pnlWei);
                         return (
                           <tr key={pos.id}>
@@ -501,8 +534,16 @@ export const Trade: FC = () => {
                               </span>
                             </td>
                             <td>
-                              <span className={`status-badge ${pos.status === 'closed_profit' ? 'status-profit' : 'status-loss'}`}>
-                                {pos.status === 'closed_profit' ? 'Profit' : pos.status === 'liquidated' ? 'Liquidated' : 'Loss'}
+                              {/* 'timed_out' is a 24h expiry, not a verdict —
+                                  the closer returns it regardless of P&L, so
+                                  reading the status alone labelled profitable
+                                  timeouts as losses. Judge by the money. */}
+                              <span className={`status-badge ${profit >= 0 ? 'status-profit' : 'status-loss'}`}>
+                                {pos.status === 'liquidated'
+                                  ? 'Liquidated'
+                                  : pos.status === 'timed_out'
+                                    ? (profit >= 0 ? 'Expired · Profit' : 'Expired · Loss')
+                                    : profit >= 0 ? 'Profit' : 'Loss'}
                               </span>
                             </td>
                             <td className="text-right text-dim">{pos.closedAt ? formatTimeAgo(pos.closedAt) : '--'}</td>
@@ -719,7 +760,7 @@ export const Trade: FC = () => {
                     <span className="mono" style={{ color: 'var(--primary)' }}>{protocolCapital.toFixed(4)} ETH</span>
                   </div>
                   <div className="exec-row">
-                    <span>Fee (0.5%)</span>
+                    <span>Fee{hasTierConfig ? ` (${flatFeePct}%)` : ''}</span>
                     <span className="mono">{flatFee.toFixed(5)} ETH</span>
                   </div>
                   <div className="exec-row">
@@ -809,12 +850,20 @@ export const Trade: FC = () => {
                     Your Positions · {selectedToken?.symbol}
                   </div>
                   {tokenPositions.map((pos) => {
-                    const pnl = pos.livePnLPercent ?? 0;
+                    // The API always returns livePnLPercent: null (live P&L is
+                    // the client's job), so `?? 0` pinned this panel at +0.0%
+                    // in green — under the Buy button, on positions that could
+                    // be moments from liquidation. Derive it the same way the
+                    // table does, and show '—' when there is genuinely no price.
+                    const livePnl = livePnLFor(pos);
+                    const hasPnl = livePnl != null;
+                    const pnl = livePnl ?? 0;
                     const pnlEth = (pnl / 100) * weiToEth(pos.userCapital);
                     const entryNum = pos.entryPriceUsd ?? 0;
-                    const timeMs = pos.timeRemainingMs ?? 0;
-                    const timeStr = timeMs <= 0 ? 'Expired' : formatCountdown(timeMs);
-                    const timeColor = timeMs <= 0 ? '#ff4d4d' : timeMs > 12 * 3600000 ? '#c8ff00' : timeMs > 4 * 3600000 ? 'var(--primary-hover)' : '#ff4d4d';
+                    // getTimeLeft subtracts the time elapsed since the last
+                    // positions poll; the raw timeRemainingMs used here before
+                    // was frozen between polls and ticked down in 10s jumps.
+                    const { text: timeStr, color: timeColor } = getTimeLeft(pos);
 
                     return (
                       <div
@@ -833,17 +882,19 @@ export const Trade: FC = () => {
                               className="mono"
                               style={{
                                 fontSize: 12,
-                                color: pnl >= 0 ? 'var(--green)' : 'var(--red)',
+                                color: !hasPnl ? '#a3ad8d' : pnl >= 0 ? 'var(--green)' : 'var(--red)',
                                 fontWeight: 600,
                               }}
                             >
-                              {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
+                              {hasPnl ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '—'}
                             </span>
-                            <span className="mono" style={{
-                              fontSize: 10, color: pnl >= 0 ? 'var(--green)' : 'var(--red)', opacity: 0.7
-                            }}>
-                              ({pnlEth >= 0 ? '+' : ''}{pnlEth.toFixed(4)} ETH)
-                            </span>
+                            {hasPnl && (
+                              <span className="mono" style={{
+                                fontSize: 10, color: pnl >= 0 ? 'var(--green)' : 'var(--red)', opacity: 0.7
+                              }}>
+                                ({pnlEth >= 0 ? '+' : ''}{pnlEth.toFixed(4)} ETH)
+                              </span>
+                            )}
                           </div>
                           <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#67704f' }}>
                             <span>Entry: <span className="mono" style={{ color: '#a3ad8d' }}>${formatPrice(entryNum)}</span></span>
@@ -860,10 +911,12 @@ export const Trade: FC = () => {
                             padding: '6px 14px',
                             borderRadius: 0,
                             border: 'none',
-                            background: pnl >= 0
-                              ? 'linear-gradient(135deg, rgba(200, 255, 0,0.15), rgba(200, 255, 0,0.08))'
-                              : 'linear-gradient(135deg, rgba(255, 77, 77,0.15), rgba(255, 77, 77,0.08))',
-                            color: pnl >= 0 ? '#c8ff00' : '#ff4d4d',
+                            background: !hasPnl
+                              ? 'linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))'
+                              : pnl >= 0
+                                ? 'linear-gradient(135deg, rgba(200, 255, 0,0.15), rgba(200, 255, 0,0.08))'
+                                : 'linear-gradient(135deg, rgba(255, 77, 77,0.15), rgba(255, 77, 77,0.08))',
+                            color: !hasPnl ? '#a3ad8d' : pnl >= 0 ? '#c8ff00' : '#ff4d4d',
                             fontSize: 12,
                             fontWeight: 700,
                             cursor: isClosing === String(pos.id) ? 'wait' : 'pointer',
@@ -952,7 +1005,7 @@ export const Trade: FC = () => {
                 )}
                 <div className="confirm-divider" />
                 <div className="confirm-row">
-                  <span>Fee (0.5%)</span>
+                  <span>Fee{hasTierConfig ? ` (${flatFeePct}%)` : ''}</span>
                   <span className="mono">{flatFee.toFixed(5)} ETH</span>
                 </div>
                 <div className="confirm-row">

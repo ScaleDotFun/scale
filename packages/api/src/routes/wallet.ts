@@ -94,6 +94,20 @@ router.post('/withdraw', verifyWalletSignature, async (req, res) => {
       );
     }
 
+    // ── Block withdrawal while capital is committed ──
+    // /auth/withdraw enforces this; this route is a second implementation of
+    // the same operation behind the same auth, so without the guard here the
+    // check was defeated by changing the path. 'opening' and 'closing' count
+    // too: funds are in flight in both, and a refund or payout is owed.
+    const openPositionCount = await prisma.position.count({
+      where: { userWallet: walletAddress, status: { in: ['open', 'opening', 'closing'] } },
+    });
+    if (openPositionCount > 0) {
+      throw new ValidationError(
+        `Cannot withdraw while you have ${openPositionCount} open position(s). Close them first.`,
+      );
+    }
+
     // ── Load the user's custodial wallet ──
     const user = await prisma.user.findFirst({
       where: { walletAddress },

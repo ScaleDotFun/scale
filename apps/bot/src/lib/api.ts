@@ -205,9 +205,12 @@ export interface PnLSummary {
 }
 
 export interface WithdrawResult {
-  txHash: string;
+  status: string;
+  from: string;
+  to: string;
   amountWei: string;
-  toAddress: string;
+  txHash: string;
+  explorer: string;
 }
 
 export interface OpenPositionResult {
@@ -268,9 +271,12 @@ export async function withdrawEth(
   amountWei: string,
   toAddress: string,
 ): Promise<WithdrawResult> {
-  return api<WithdrawResult>(`/wallet/${telegramId}/withdraw`, {
+  // /telegram/withdraw is the real route; /wallet/:id/withdraw never existed,
+  // so every withdrawal from the bot used to 404. Field names must match the
+  // API's contract too (destinationAddress, not toAddress).
+  return api<WithdrawResult>(`/telegram/withdraw`, {
     method: 'POST',
-    body: { amountWei, toAddress },
+    body: { amountWei, destinationAddress: toAddress },
   });
 }
 

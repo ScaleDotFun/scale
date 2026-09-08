@@ -12,7 +12,14 @@ import { ValidationError, NotFoundError, InsufficientFundsError } from '../lib/e
 
 const router = Router();
 
-import { generateCustodialWallet, isValidAddress } from '@loaded/evm';
+import {
+  generateCustodialWallet,
+  isValidAddress,
+  getNativeBalance,
+  loadCustodialWallet,
+  transferNative,
+  explorerTxUrl,
+} from '@loaded/evm';
 
 function generateTelegramBotWallet(): { address: string; encryptedKey: string } {
   const wallet = generateCustodialWallet();
@@ -129,18 +136,28 @@ router.post('/withdraw', verifyTelegramAuth, async (req, res) => {
       throw new NotFoundError('Telegram user');
     }
 
-    // In production, we would:
-    // 1. Check the actual on-chain balance of user.walletAddress
-    // 2. Submit a transfer transaction
-    // 3. Return the tx signature
-    // For now, we validate and return a pending status
+    // Real withdrawal. This used to validate and then return
+    // 'Withdrawal initiated — processed shortly' without moving anything and
+    // without recording a request: no worker existed to process it, so the
+    // money never left and the reply was simply false. Do the transfer here.
+    const balance = await getNativeBalance(user.walletAddress);
+    const GAS_RESERVE = 200_000_000_000_000n; // 0.0002 ETH — leave room for the tx itself
+    if (balance <= GAS_RESERVE || amount > balance - GAS_RESERVE) {
+      throw new ValidationError(
+        `Insufficient balance — wallet holds ${Number(balance) / 1e18} ETH, and a little must stay behind for gas.`,
+      );
+    }
+
+    const account = loadCustodialWallet(user.encryptedKey);
+    const txHash = await transferNative(account, destinationAddress, amount);
 
     sendSuccess(res, {
-      status: 'pending',
+      status: 'sent',
       from: user.walletAddress,
       to: destinationAddress,
       amountWei: amount,
-      message: 'Withdrawal initiated. Transaction will be processed shortly.',
+      txHash,
+      explorer: explorerTxUrl(txHash),
     });
   } catch (err) {
     sendError(res, err);

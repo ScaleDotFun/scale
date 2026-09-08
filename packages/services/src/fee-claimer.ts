@@ -2,31 +2,26 @@
 // LOADED PROTOCOL — Fee Claimer Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// On PONS, creator fees accrue on-chain to the wallet that launched
-// the coin. For the protocol's own $LOADED launch those fees are claimable
-// by the pool wallet via PONS's claim flow (currently manual — PONS
-// publishes no third-party claim API). LOADED's core revenue (flat fees on
-// positions) needs no claiming at all: it arrives inline at position close
-// and is recorded straight into the pool ledger.
+// Keeps the pool ledger honest about money that arrives on its own.
 //
-// What this worker DOES do — honestly — is watch a dedicated fee wallet
-// (FEE_WALLET env; the pool wallet's ETH balance is too noisy since user
-// collateral flows through it constantly) and record real ETH inflows as
-// fee_claim ledger rows, so manually-claimed PONS creator fees still
-// show up in protocol accounting. Without FEE_WALLET it stays quiet and
-// fabricates nothing.
+// There is no "claim" step on PONS: a creator who points their Creator wallet
+// at the LOADED pool wallet redirects the fee stream at the protocol level, so
+// their share simply lands as ordinary ETH credits from the coin's bonding
+// curve. Nothing to call, and no event log tying a credit to a coin.
+//
+// So instead of trying to claim or attribute, this worker reconciles: every
+// deliberate flow writes a poolLedger row, so whatever the wallet holds beyond
+// the ledger's sum is income that arrived by itself. It books the difference.
+// Set FEE_WALLET to watch a separate address instead of the pool.
 //
 
 import { Worker, type Job } from 'bullmq';
 import { prisma } from '@loaded/database';
 import { WEI_PER_ETH } from '@loaded/core';
-import { getNativeBalance, isValidAddress } from '@loaded/evm';
+import { getNativeBalance, isValidAddress, protocolPublicKey } from '@loaded/evm';
 import { redisConnection, QUEUE_NAMES, feeClaimsQueue } from './queues.js';
 
 const PREFIX = '[fee-claimer]';
-
-/** Redis key: last observed ETH balance of the fee wallet (wei) */
-const REDIS_LAST_FEE_KEY = 'loaded:fees:last_fee_wei';
 
 /** Ignore dust below 0.00001 ETH (a few cents — below any real fee claim) */
 const MIN_INFLOW_WEI = WEI_PER_ETH / 100_000n;
@@ -41,52 +36,61 @@ function feeWallet(): string | null {
 }
 
 /**
- * Watch the fee wallet's ETH balance. Any increase since the last check
- * is treated as claimed PONS creator fees and recorded as a real
- * pool inflow. Decreases just reset the watermark — outflows are
- * protocol operations recorded elsewhere.
+ * Reconcile the pool wallet against the pool ledger.
+ *
+ * There is nothing to "claim" from PONS. A creator who points their Creator
+ * wallet at us is redirecting the fee stream at the protocol level, so the
+ * money simply arrives — as plain ETH credits from each coin's bonding curve,
+ * with no claim call to make and no event log to match against a coin.
+ *
+ * What was missing was recording it. Every deliberate flow already writes a
+ * poolLedger row, so anything the wallet holds beyond the ledger's sum is
+ * income that arrived on its own: creator fees, mostly. Booking the difference
+ * keeps the ledger honest without inventing a per-coin attribution the chain
+ * cannot support.
+ *
+ * This replaces a Redis balance watermark, which lost any inflow that shared a
+ * polling window with an outflow (a balance snapshot cannot tell those apart)
+ * and silently dropped an interval whenever the key was evicted. A difference
+ * recomputed from durable state each tick has neither failure mode.
  */
 async function processFeeWatch(_job: Job<FeeClaimJobData>): Promise<void> {
-  const wallet = feeWallet();
-  if (!wallet) {
-    // No dedicated fee wallet configured — nothing real to watch.
-    return;
-  }
+  // An explicitly configured fee wallet still takes precedence, for setups
+  // that route fees somewhere separate from the trading pool.
+  const watched = feeWallet() ?? protocolPublicKey();
+  if (!watched) return;
 
-  const current = await getNativeBalance(wallet);
+  const [onchain, ledgerAgg] = await Promise.all([
+    getNativeBalance(watched),
+    prisma.poolLedger.aggregate({ _sum: { amount: true } }),
+  ]);
+  const ledger = ledgerAgg._sum.amount ?? 0n;
+  const unaccounted = onchain - ledger;
 
-  const lastRaw = await redisConnection.get(REDIS_LAST_FEE_KEY);
-  if (lastRaw === null) {
-    // First run — set the watermark, record nothing retroactively.
-    await redisConnection.set(REDIS_LAST_FEE_KEY, current.toString());
-    console.log(`${PREFIX} fee-wallet watermark initialized at ${current} wei`);
-    return;
-  }
-
-  const last = BigInt(lastRaw);
-
-  if (current <= last) {
-    if (current < last) {
-      // Outflow (sweep to pool, ops) — reset watermark, record nothing.
-      await redisConnection.set(REDIS_LAST_FEE_KEY, current.toString());
+  if (unaccounted < MIN_INFLOW_WEI) {
+    if (unaccounted < 0n) {
+      // The wallet holds LESS than the books say. Never book a negative here:
+      // an in-flight transaction looks exactly like this for a few seconds.
+      // Worth saying out loud if it persists, though.
+      console.warn(
+        `${PREFIX} pool wallet is ${(Number(-unaccounted) / 1e18).toFixed(6)} ETH below the ledger — ` +
+        `expected briefly while a transaction settles, investigate if it persists`,
+      );
     }
     return;
   }
 
-  const inflow = current - last;
-  if (inflow < MIN_INFLOW_WEI) return;
-
   await prisma.poolLedger.create({
     data: {
-      type: 'fee_claim',
-      amount: inflow,
-      txHash: null, // aggregated balance delta — no single tx
+      type: 'pool_reconcile',
+      amount: unaccounted,
+      txHash: null, // arrived as ordinary credits; no single transaction to cite
     },
   });
-  await redisConnection.set(REDIS_LAST_FEE_KEY, current.toString());
 
   console.log(
-    `${PREFIX} 💰 Recorded ${(Number(inflow) / 1e18).toFixed(4)} ETH of claimed creator fees into the pool ledger`,
+    `${PREFIX} 💰 Booked ${(Number(unaccounted) / 1e18).toFixed(6)} ETH of unaccounted pool income ` +
+    `(creator fees) — ledger now matches the wallet at ${(Number(onchain) / 1e18).toFixed(6)} ETH`,
   );
 }
 

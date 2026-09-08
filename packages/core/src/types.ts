@@ -23,9 +23,14 @@ export type PoolLedgerType =
   | 'position_close'
   | 'profit_recycle'
   | 'creator_payout'
+  | 'profit_lock_buy'
   | 'burn'
   | 'insurance_deposit'
-  | 'insurance_withdrawal';
+  | 'insurance_withdrawal'
+  | 'admin_withdrawal'
+  /** Money the wallet holds that no deliberate flow accounts for — mostly
+   *  redirected PONS creator fees, which arrive with nothing to claim. */
+  | 'pool_reconcile';
 
 // ──────────────────────────────────────────────
 // Risk tier configuration

@@ -16,8 +16,13 @@ export const Rewards: FC = () => {
   const [totalWallets, setTotalWallets] = useState(0);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // The leaderboard call is rate-limited and can 429 or 5xx. With no catch,
+    // its rejection skipped every setter and the page rendered its EMPTY
+    // states as facts — "No points yet, be the first" and the signed-out
+    // referral CTA — to a signed-in user who has points and a rank.
     try {
       const [lb, mine] = await Promise.all([
         api.getLeaderboard(50),
@@ -26,6 +31,9 @@ export const Rewards: FC = () => {
       setBoard(lb.leaderboard);
       setTotalWallets(lb.totalWallets);
       setMe(mine);
+      setLoadError(null);
+    } catch {
+      setLoadError('Could not load the leaderboard right now — retrying shortly.');
     } finally {
       setLoading(false);
     }
@@ -60,6 +68,12 @@ export const Rewards: FC = () => {
           they make, forever. Points are pre-token; the leaderboard is public.
         </p>
       </div>
+
+      {loadError && (
+        <div className="alert alert-error" style={{ padding: '12px 16px', borderRadius: 0 }}>
+          {loadError}
+        </div>
+      )}
 
       {/* My points */}
       {isAuthenticated && me ? (
@@ -123,7 +137,9 @@ export const Rewards: FC = () => {
         </div>
         {board.length === 0 ? (
           <div className="card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-2)' }}>
-            No points yet — be the first. Open a position and you top the board.
+            {loadError
+              ? 'Leaderboard unavailable right now.'
+              : 'No points yet — be the first. Open a position and you top the board.'}
           </div>
         ) : (
           <table className="terminal-table" style={{ width: '100%' }}>

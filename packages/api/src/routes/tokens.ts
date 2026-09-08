@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { prisma } from '@loaded/database';
-import { getTierConfig, determineTier, type Tier } from '@loaded/core';
+import { getTierConfig, determineTier, BLOCKED_LIQUIDITY_THRESHOLD_USD, SAFETY_BUFFER_BPS, type Tier } from '@loaded/core';
 import {
   erc20TotalSupply,
   verifyCreatorFeeShare,
+  findCurveForToken,
+  readCurveDeployer,
   getTokenInfo,
   protocolPublicKey,
   isValidAddress,
+  getAddress,
   explorerTokenUrl,
   type TokenInfo,
 } from '@loaded/evm';
@@ -78,6 +81,10 @@ router.get('/listed', publicLimiter, async (req, res) => {
         maxLeverage: config.maxLeverage,
         flatFeePct: config.flatFeeBps / 100,
         exitThresholdPct: config.exitThresholdBps / 100,
+        // What the protocol actually closes at: shouldAutoClose adds
+        // SAFETY_BUFFER_BPS before comparing, so a UI drawing the liquidation
+        // line at the raw threshold promises a price the server never waits for.
+        liquidationThresholdPct: (config.exitThresholdBps + SAFETY_BUFFER_BPS) / 100,
         listedAt: token.listedAt,
         isActive: token.isActive,
         totalTradingVolume: String(token.totalTradingVolume),
@@ -143,6 +150,9 @@ router.get('/trending', publicLimiter, async (req, res) => {
             tier: token.tier,
             tierLabel: config.label,
             maxLeverage: config.maxLeverage,
+            flatFeePct: config.flatFeeBps / 100,
+            exitThresholdPct: config.exitThresholdBps / 100,
+            liquidationThresholdPct: (config.exitThresholdBps + SAFETY_BUFFER_BPS) / 100,
             volume24h: String(volume24h),
             trades24h: rp._count,
             totalTradingVolume: String(token.totalTradingVolume),
@@ -170,6 +180,9 @@ router.get('/trending', publicLimiter, async (req, res) => {
         tier: token.tier,
         tierLabel: config.label,
         maxLeverage: config.maxLeverage,
+        flatFeePct: config.flatFeeBps / 100,
+        exitThresholdPct: config.exitThresholdBps / 100,
+        liquidationThresholdPct: (config.exitThresholdBps + SAFETY_BUFFER_BPS) / 100,
         volume24h: '0',
         trades24h: 0,
         totalTradingVolume: String(token.totalTradingVolume),
@@ -281,6 +294,7 @@ router.get('/:address', publicLimiter, async (req, res) => {
       maxLeverage: config.maxLeverage,
       flatFeePct: config.flatFeeBps / 100,
       exitThresholdPct: config.exitThresholdBps / 100,
+      liquidationThresholdPct: (config.exitThresholdBps + SAFETY_BUFFER_BPS) / 100,
       feeWalletPda: token.feeWalletPda,
       listedAt: token.listedAt,
       isActive: token.isActive,
@@ -317,9 +331,13 @@ router.post('/list', async (req, res) => {
       throw new ValidationError('Invalid token address — must be a Robinhood Chain (0x…) token address');
     }
 
-    // Check if token already listed
-    const existing = await prisma.token.findUnique({
-      where: { address: tokenAddress },
+    // Addresses are compared case-insensitively everywhere: discovery writes
+    // EIP-55 checksummed rows, GeckoTerminal reports lowercase, and a creator
+    // pastes whatever their wallet showed them. A byte-for-byte unique index
+    // would happily hold the same coin twice under two casings.
+    const canonicalAddress = getAddress(tokenAddress.trim());
+    const existing = await prisma.token.findFirst({
+      where: { address: { equals: canonicalAddress, mode: 'insensitive' } },
     });
     if (existing) {
       throw new ValidationError('Token is already listed');
@@ -337,13 +355,13 @@ router.post('/list', async (req, res) => {
     }
 
     // ── The listing deal — REAL, verified on-chain ──
-    // The coin must be a launchpad token AND its PONS creator fees must reach
-    // the LOADED pool wallet. PONS takes 1% per trade; the creator's share of
-    // that (set at launch, up to 10%) is what gets pointed at the pool.
-    // There is no public getter for the recipient, so the gate is economic:
-    // fees have to show up in the pool wallet on-chain, nothing self-reported.
+    // The coin must be a launchpad token AND its PONS creator fee stream must
+    // be pointed at the LOADED pool wallet. PONS charges 1% per trade and pays
+    // the creator's slice to a single address stored on the coin's bonding
+    // curve; we read that address directly. One recipient means redirection is
+    // all-or-nothing — there is no partial share to police.
     const LOADED_TOKEN = (process.env.LOADED_TOKEN_MINT || '').trim().toLowerCase();
-    const addrKey = tokenAddress.toLowerCase();
+    const addrKey = canonicalAddress.toLowerCase();
     const pool = poolWalletAddress();
     let feeVerified =
       (addrKey === LOADED_TOKEN && LOADED_TOKEN.length > 0) ||
@@ -366,9 +384,9 @@ router.post('/list', async (req, res) => {
       }
 
       const fixIt =
-        ` Set your PONS creator fee recipient to the LOADED pool wallet ${pool} ` +
-        `(setCreatorFeeRecipient on your coin), let one trade settle so the fee lands, ` +
-        `then list again. Guide: loaded.fun/list`;
+        ` Point your coin's PONS Creator wallet at the LOADED pool wallet ${pool}, ` +
+        `then list again — the change takes effect immediately, no trade needed. ` +
+        `Guide: loaded.fun/list`;
 
       switch (check.status) {
         case 'verified':
@@ -415,20 +433,46 @@ router.post('/list', async (req, res) => {
     const marketCapUsd = tokenInfo?.marketCap ?? 0;
     const liquidityUsd = tokenInfo?.liquidity ?? 0;
 
-    // Determine tier from market data
+    // Determine tier from market data.
+    // determineTier returns null for exactly one reason: liquidity is under
+    // BLOCKED_LIQUIDITY_THRESHOLD_USD, i.e. "do not trade this". Falling back
+    // to 'degen' turned that hard block into a listing, and opened leveraged
+    // trading on a book too thin for the pool to exit. Honour the block —
+    // but only when the feed actually told us something. A coin so new that
+    // it has no market data yet is unknown, not disqualified, and the
+    // auto-lister re-tiers it as soon as data appears.
     const tierConfig = determineTier(marketCapUsd, liquidityUsd, isBonded);
+    if (!tierConfig && tokenInfo) {
+      throw new ValidationError(
+        `This coin has $${Math.round(liquidityUsd).toLocaleString()} of liquidity — LOADED needs at least ` +
+        `$${BLOCKED_LIQUIDITY_THRESHOLD_USD.toLocaleString()} before it can front capital on it. ` +
+        `List again once the pool is deeper.`,
+      );
+    }
     const resolvedTier: Tier = tierConfig ? tierConfig.tier as Tier : 'degen';
+
+    // The creator on record is the wallet that launched the coin, read off its
+    // own bonding curve. It cannot be the fee recipient: once a creator
+    // redirects, that recipient IS our pool wallet, so booking payouts against
+    // it would make the protocol the beneficiary of its own creator revenue
+    // share. Fall back to the pool only when the chain would not tell us.
+    let creatorWallet = poolWalletAddress() ?? canonicalAddress;
+    try {
+      const curve = await findCurveForToken(canonicalAddress);
+      const deployer = curve ? await readCurveDeployer(curve) : null;
+      if (deployer) creatorWallet = deployer;
+    } catch {
+      // best-effort — a listing must not fail because the creator lookup did
+    }
 
     // Create token record
     const token = await prisma.token.create({
       data: {
-        address: tokenAddress,
+        address: canonicalAddress,
         name: resolvedName,
         symbol: resolvedSymbol,
         imageUri: resolvedImage,
-        // PONS publishes no creator getter, so the wallet on record is the one
-        // the fees provably land in — the pool.
-        creatorWallet: poolWalletAddress(),
+        creatorWallet,
         tier: resolvedTier,
         isActive: true,
       },

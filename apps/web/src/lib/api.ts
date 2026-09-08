@@ -186,6 +186,9 @@ export interface TokenInfo {
   maxLeverage?: number;
   flatFeePct?: number;
   exitThresholdPct?: number;
+  /** The threshold the protocol ACTUALLY closes at: exitThresholdPct plus the
+   *  5% safety buffer shouldAutoClose applies before comparing. */
+  liquidationThresholdPct?: number;
   volume24h?: string;
   trades24h?: number;
   totalTradingVolume?: string;

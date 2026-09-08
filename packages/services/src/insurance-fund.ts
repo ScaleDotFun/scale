@@ -82,7 +82,10 @@ async function processInsuranceFundJob(job: Job<InsuranceFundJobData>): Promise<
           return;
         }
 
-        // Calculate actual deposit (may be less than requested if near target)
+        // Size the deposit here and ONLY here. `amount` is the raw flat fee
+        // collected on the close; this applies INSURANCE_DEPOSIT_RATE_BPS to
+        // it and clamps to what the fund still needs. The dispatcher must not
+        // pre-apply the rate — doing so charged it twice.
         const actualDeposit = calculateInsuranceDeposit(amount, currentBalance, target);
 
         if (actualDeposit <= 0n) {

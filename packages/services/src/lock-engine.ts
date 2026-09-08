@@ -27,6 +27,22 @@ const PREFIX = '[lock-engine]';
 /** $LOADED token mint (SPL on Robinhood Chain) */
 const LOADED_TOKEN_MINT = (process.env.LOADED_TOKEN_MINT ?? '').trim();
 
+/** Non-throwing form, for deciding whether to defer rather than fail. */
+function isLockConfigured(): boolean {
+  return (
+    LOADED_TOKEN_MINT.length >= 32 &&
+    LOADED_TOKEN_MINT.length <= 44 &&
+    hasProtocolKey()
+  );
+}
+
+/**
+ * Marker on ProfitLock.buyTx for a lock we owe but have not bought yet.
+ * The ETH is already withheld from the user's payout, so the debt must be on
+ * the books even when the buy cannot run.
+ */
+const DEFERRED_BUY = 'deferred';
+
 function assertLockConfigured(): void {
   if (LOADED_TOKEN_MINT.length < 32 || LOADED_TOKEN_MINT.length > 44) {
     throw new Error(`${PREFIX} LOADED_TOKEN_MINT is not a Robinhood Chain (hex) token mint — cannot execute $LOADED locks`);
@@ -160,6 +176,17 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
     `${PREFIX} Processing lock: ${fmtSol(ethAmount)} ETH → $LOADED for wallet ${userWallet} (position #${positionId})`,
   );
 
+  // The user has ALREADY been paid out net of this amount: the close hands
+  // back 70% of profit and keeps 30% on the promise of a $LOADED lock. If the
+  // buy cannot run, that promise must still be recorded — otherwise the ETH
+  // simply becomes pool funds with no row, no ledger entry and no way for the
+  // user (or us) to know it is owed. Record the debt and return cleanly.
+  if (!isLockConfigured()) {
+    await recordDeferredLock(userWallet, ethAmount, positionId,
+      '$LOADED is not configured yet');
+    return;
+  }
+
   try {
     // Step 1: Buy $LOADED with the ETH amount
     const { buyTx, tokensPurchased } = await executeFrontBuy(ethAmount);
@@ -170,18 +197,25 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
     // Step 3: Record in database
     const unlocksAt = new Date(Date.now() + PROFIT_LOCK_DURATION_MS);
 
-    await prisma.profitLock.create({
-      data: {
-        userWallet,
-        ethAmount: ethAmount,
-        tokenAmount: tokensPurchased,
-        positionId,
-        buyTx,
-        lockTx,
-        unlocksAt,
-        isUnlocked: false,
-      },
-    });
+    await prisma.$transaction([
+      prisma.profitLock.create({
+        data: {
+          userWallet,
+          ethAmount: ethAmount,
+          tokenAmount: tokensPurchased,
+          positionId,
+          buyTx,
+          lockTx,
+          unlocksAt,
+          isUnlocked: false,
+        },
+      }),
+      // The ETH really left the wallet to buy $LOADED. Without this debit the
+      // ledger stays permanently above the wallet by every lock ever bought.
+      prisma.poolLedger.create({
+        data: { type: 'profit_lock_buy', amount: -ethAmount, referenceId: positionId, txHash: buyTx },
+      }),
+    ]);
 
     console.log(
       `${PREFIX} 🔒 Locked ${tokensPurchased} $LOADED for ${userWallet} until ${unlocksAt.toISOString()} (buy: ${buyTx}, lock: ${lockTx})`,
@@ -189,7 +223,86 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`${PREFIX} Error processing lock for position #${positionId}: ${msg}`);
+    // On the LAST attempt, book the debt instead of letting the job die
+    // silently in the failed set. A retry is worth having; losing the user's
+    // 30% with no record of it is not.
+    const maxAttempts = job.opts?.attempts ?? 1;
+    if (job.attemptsMade + 1 >= maxAttempts) {
+      await recordDeferredLock(userWallet, ethAmount, positionId, msg);
+      return;
+    }
     throw err;
+  }
+}
+
+/**
+ * Book a lock we owe but could not buy. tokenAmount 0 + buyTx 'deferred' marks
+ * it: the unlock sweep skips it, and `completeDeferredLocks` finishes the buy
+ * once $LOADED is configured. Never throws — this is the safety net itself.
+ */
+async function recordDeferredLock(
+  userWallet: string,
+  ethAmount: bigint,
+  positionId: number,
+  why: string,
+): Promise<void> {
+  try {
+    const existing = await prisma.profitLock.findFirst({ where: { positionId } });
+    if (existing) return; // already booked (deferred or completed)
+    await prisma.profitLock.create({
+      data: {
+        userWallet,
+        ethAmount,
+        tokenAmount: 0n,
+        positionId,
+        buyTx: DEFERRED_BUY,
+        unlocksAt: new Date(Date.now() + PROFIT_LOCK_DURATION_MS),
+        isUnlocked: false,
+      },
+    });
+    console.warn(
+      `${PREFIX} DEFERRED: ${fmtSol(ethAmount)} ETH of ${userWallet}'s locked profit (position ` +
+      `#${positionId}) is owed but not yet bought — ${why}. Recorded as a liability against the pool.`,
+    );
+  } catch (e) {
+    console.error(
+      `${PREFIX} CRITICAL: could not record the deferred lock for position #${positionId} — ` +
+      `${fmtSol(ethAmount)} ETH of ${userWallet}'s profit is withheld with NO database record: ` +
+      `${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+/**
+ * Finish locks that were booked before $LOADED could be bought. Runs on the
+ * hourly unlock sweep, so the backlog clears itself the moment the mint is set.
+ */
+async function completeDeferredLocks(): Promise<void> {
+  if (!isLockConfigured()) return;
+  const deferred = await prisma.profitLock.findMany({
+    where: { buyTx: DEFERRED_BUY, isUnlocked: false },
+    take: 25,
+  });
+  for (const lock of deferred) {
+    try {
+      const { buyTx, tokensPurchased } = await executeFrontBuy(lock.ethAmount);
+      const lockTx = await executeLock(lock.userWallet, tokensPurchased);
+      await prisma.$transaction([
+        prisma.profitLock.update({
+          where: { id: lock.id },
+          data: { buyTx, lockTx, tokenAmount: tokensPurchased },
+        }),
+        prisma.poolLedger.create({
+          data: { type: 'profit_lock_buy', amount: -lock.ethAmount, referenceId: lock.positionId, txHash: buyTx },
+        }),
+      ]);
+      console.log(
+        `${PREFIX} 🔒 Completed deferred lock #${lock.id}: ${fmtSol(lock.ethAmount)} ETH → ` +
+        `${tokensPurchased} $LOADED for ${lock.userWallet}`,
+      );
+    } catch (e) {
+      console.error(`${PREFIX} deferred lock #${lock.id} still cannot be bought: ${e instanceof Error ? e.message : e}`);
+    }
   }
 }
 
@@ -201,10 +314,18 @@ async function processUnlockCheck(_job: Job<UnlockCheckJobData>): Promise<void> 
   console.log(`${PREFIX} Checking for expired locks...`);
 
   try {
+    // Buy anything that was booked as owed but never purchased, first — the
+    // backlog clears itself as soon as $LOADED is configured.
+    await completeDeferredLocks().catch((e) =>
+      console.error(`${PREFIX} deferred-lock sweep failed:`, e instanceof Error ? e.message : e),
+    );
+
     const expiredLocks = await prisma.profitLock.findMany({
       where: {
         isUnlocked: false,
         unlocksAt: { lte: new Date() },
+        // Deferred rows hold no tokens yet — releasing one would transfer 0.
+        tokenAmount: { gt: 0n },
       },
       orderBy: { unlocksAt: 'asc' },
       take: 100, // process in batches
@@ -220,6 +341,19 @@ async function processUnlockCheck(_job: Job<UnlockCheckJobData>): Promise<void> 
     let unlockedCount = 0;
 
     for (const lock of expiredLocks) {
+      // A row that can never succeed — e.g. a userWallet that predates the
+      // chain move and is not a valid address — used to sit at the head of
+      // this ordering forever, taking a batch slot on every sweep. Park it
+      // after repeated failures so newer unlocks are never starved.
+      const failKey = `loaded:lock:fails:${lock.id}`;
+      const fails = Number((await redisConnection.get(failKey)) ?? 0);
+      if (fails >= 5) {
+        console.error(
+          `${PREFIX} lock #${lock.id} (${lock.tokenAmount} $LOADED for ${lock.userWallet}) has failed ` +
+          `${fails} times — skipping it so other unlocks proceed. NEEDS MANUAL RELEASE.`,
+        );
+        continue;
+      }
       try {
         // Execute on-chain unlock
         const unlockTx = await executeUnlock(lock.userWallet, lock.tokenAmount);
@@ -239,7 +373,9 @@ async function processUnlockCheck(_job: Job<UnlockCheckJobData>): Promise<void> 
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`${PREFIX} Error unlocking lock #${lock.id}: ${msg}`);
+        await redisConnection.call('INCRBY', failKey, '1');
+        await redisConnection.call('EXPIRE', failKey, String(90 * 24 * 3600));
+        console.error(`${PREFIX} Error unlocking lock #${lock.id} (failure ${fails + 1}/5): ${msg}`);
         // Continue to next lock
       }
     }

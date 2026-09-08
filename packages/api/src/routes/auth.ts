@@ -290,8 +290,10 @@ router.post('/withdraw', verifyWalletSignature, async (req, res) => {
     }
 
     // Block withdrawal if user has open positions
+    // 'opening' and 'closing' count as open: collateral has already moved in
+    // one and a payout is owed in the other, so both are capital in flight.
     const openPositionCount = await prisma.position.count({
-      where: { userWallet: user.walletAddress, status: 'open' },
+      where: { userWallet: user.walletAddress, status: { in: ['open', 'opening', 'closing'] } },
     });
     if (openPositionCount > 0) {
       throw new AuthError(

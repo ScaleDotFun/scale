@@ -245,6 +245,11 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
           ? ethReceived - protocolCapitalWei - flatFeeWei
           : 0n);
 
+    // What the pool actually got back out of the sale, against what it put in.
+    const poolRecoveredWei = ethReceived - userReturnWei;
+    const poolShortfallWei =
+      poolRecoveredWei < protocolCapitalWei ? protocolCapitalWei - poolRecoveredWei : 0n;
+
     // Determine final status
     const finalStatus = determineStatus(isProfitable, reason);
 
@@ -309,21 +314,29 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
         },
       }),
 
-      // Pool ledger: return protocol capital + pool share
+      // Pool ledger: credit what the wallet ACTUALLY retained from the sale.
+      // Crediting only the pool's 50% slice of the fee understated it: the
+      // creator's 30% and the burn's 20% never left at this moment, but both
+      // are debited later (burn-engine and the creator claim), so the ledger
+      // lost the protocol's entire retained fee revenue on every position.
+      // proceeds minus the user's payout is the exact delta, on wins and on
+      // losses where the pool did not recover in full.
       prisma.poolLedger.create({
         data: {
           type: 'position_close',
-          amount: protocolCapitalWei + poolReturnWei,
+          amount: ethReceived - userReturnWei,
           referenceId: positionId,
           txHash: closeTx,
         },
       }),
 
-      // Update token's total trading volume
+      // Atomic increment — the worker runs with concurrency 5 and this used to
+      // be a read-modify-write off a value read outside the transaction, so
+      // simultaneous closes on the same coin overwrote each other's volume.
       prisma.token.update({
         where: { id: position.token.id },
         data: {
-          totalTradingVolume: position.token.totalTradingVolume + userCapitalWei + protocolCapitalWei,
+          totalTradingVolume: { increment: userCapitalWei + protocolCapitalWei },
         },
       }),
     ]);
@@ -340,6 +353,7 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
       creatorWallet: position.token.creatorWallet,
       creatorPayoutWei,
       flatFeeWei,
+      poolShortfallWei,
     });
 
     const elapsed = Date.now() - startTime;

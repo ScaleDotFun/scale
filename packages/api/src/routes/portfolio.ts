@@ -138,7 +138,7 @@ router.get('/history', verifyWalletSignature, async (req, res) => {
       entryPriceUsd: await positionPriceToUsd(t.entryPrice ? Number(t.entryPrice) : null, t.token.address),
       exitPrice: t.exitPrice ? String(t.exitPrice) : null,
       exitPriceUsd: await positionPriceToUsd(t.exitPrice ? Number(t.exitPrice) : null, t.token.address),
-      pnlEth: t.pnlEth ? String(t.pnlEth) : null,
+      pnlWei: t.pnlEth ? String(t.pnlEth) : null,
       userProfit: t.userProfit ? String(t.userProfit) : null,
       openedAt: t.openedAt,
       closedAt: t.closedAt,

@@ -2,6 +2,7 @@
 // LOADED PROTOCOL — Position Routes (Robinhood Chain)
 // ──────────────────────────────────────────────
 
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { prisma } from '@loaded/database';
 import {
@@ -318,10 +319,18 @@ router.post(
           balanceBeforeTransfer - balanceAfter >= userCapital;
 
         if (moved) {
-          // The collateral really left the user. Keep the row in 'opening' with
-          // a marker so the recovery sweep owns it — 'failed' is never revisited
-          // and the funds would be stranded in the pool.
-          await persistMarker({ statusChangedAt: new Date() }, 'collateral-landed marker');
+          // The collateral really left the user. Keep the row in 'opening' and
+          // write a REAL collateralTx marker so the recovery sweep owns it —
+          // the sweep decides whether to refund by looking at that field, and a
+          // row with no marker is written off as "no funds moved". We have no
+          // hash (transferNative threw before returning one), so record the
+          // sentinel: it is not an explorer link, it is the fact that the pool
+          // was credited. 'failed' is never revisited, so getting this wrong
+          // strands the user's ETH in the pool permanently.
+          await persistMarker(
+            { collateralTx: 'unconfirmed', statusChangedAt: new Date() },
+            'collateral-landed marker',
+          );
           console.error(
             `[positions] CRITICAL: collateral for #${positionRowId} left the user wallet but confirmation failed (${reason}) — left in 'opening' for recovery`,
           );
@@ -607,9 +616,17 @@ router.post(
       // Marker: the sell is irreversible from here — persist it BEFORE the
       // payout so a crash or payout failure can never lead to a second sell
       // (the recovery sweep finalizes from this marker instead).
+      // statusChangedAt is refreshed with it: the reconcile sweep treats a
+      // 'closing' row whose statusChangedAt is over a minute old as abandoned
+      // and enqueues a finalize. It was last stamped when the close was
+      // claimed — before the sell — so a sell that takes longer than that
+      // window would have the sweep racing this handler's own payout.
       for (let i = 0; i < 5; i++) {
         try {
-          await prisma.position.update({ where: { id: positionId }, data: { closeTx, ethReceived } });
+          await prisma.position.update({
+            where: { id: positionId },
+            data: { closeTx, ethReceived, statusChangedAt: new Date() },
+          });
           break;
         } catch {
           await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
@@ -654,6 +671,20 @@ router.post(
 
       // 3. Transfer user's ETH back to their wallet
       if (userReturnWei > 0n) {
+        // Reserve the payout slot first. The recovery sweep can enqueue a
+        // 'finalize' for this same row while this handler is merely slow, and
+        // the closer's payout branch is guarded by `userReturnTx: null` — so
+        // without a reservation here both would read null and both would pay
+        // the user out of the pool. Claim the slot with a conditional update:
+        // only the writer that affects a row is allowed to move money.
+        const reservation = `pending:${randomUUID()}`;
+        const reserved = await prisma.position.updateMany({
+          where: { id: positionId, userReturnTx: null },
+          data: { userReturnTx: reservation },
+        });
+        if (reserved.count === 0) {
+          console.warn(`[positions] #${positionId}: payout already reserved elsewhere — not transferring again`);
+        } else {
         try {
           const returnSig = await transferNative(protocolAccount, wallet, userReturnWei);
           await prisma.position.update({
@@ -669,14 +700,21 @@ router.post(
             metadata: { amountWei: userReturnWei.toString() },
           });
           console.error(`[positions] CRITICAL: Failed to return ETH to user:`, returnErr);
+          console.error(
+            `[positions] payout for #${positionId} left reserved (${reservation}) — verify on-chain ` +
+            `whether ${userReturnWei} wei reached ${wallet} before clearing it`,
+          );
           // NEVER revert to 'open' here: the sell already landed, so a
           // reverted position would be re-sold on the next close — a double
           // spend from the shared pool. Leave it 'closing' with the closeTx
           // marker set; the recovery sweep pays out and settles forward.
+          // The reservation is deliberately NOT released: transferNative also
+          // throws on a confirmation timeout, where the ETH can still land.
           throw new ValidationError(
             'Your tokens were sold, but the ETH payout hit a network error. ' +
             'It will complete automatically within a few minutes — no action needed.',
           );
+        }
         }
       }
 
@@ -704,21 +742,25 @@ router.post(
         },
       });
 
-      // 5. Pool ledger: return protocol capital + pool revenue share
+      // 5. Pool ledger: credit what the wallet actually retained from the sale.
+      // The creator's 30% and the burn's 20% of the fee are debited later, when
+      // they are really paid, so crediting only the pool's 50% here lost the
+      // protocol's retained fee revenue on every close.
       await prisma.poolLedger.create({
         data: {
           type: 'position_close',
-          amount: protocolCapitalWei + poolReturnWei,
+          amount: ethReceived - userReturnWei,
           referenceId: positionId,
           txHash: closeTx,
         },
       });
 
-      // 6. Update token trading volume
+      // 6. Update token trading volume (atomic — concurrent closes on the same
+      // coin would otherwise clobber each other's read-modify-write)
       await prisma.token.update({
         where: { id: position.token.id },
         data: {
-          totalTradingVolume: position.token.totalTradingVolume + positionSize,
+          totalTradingVolume: { increment: positionSize },
         },
       });
 
@@ -735,6 +777,10 @@ router.post(
         creatorWallet: position.token.creatorWallet,
         creatorPayoutWei,
         flatFeeWei,
+        poolShortfallWei:
+          ethReceived - userReturnWei < protocolCapitalWei
+            ? protocolCapitalWei - (ethReceived - userReturnWei)
+            : 0n,
       });
 
       const pnlEth = Number(totalProfitWei) / 1e18; // ETH
@@ -747,6 +793,7 @@ router.post(
         status: closedPosition.status,
         message: `Position closed. ${isProfitable ? `Profit: +${pnlEth.toFixed(6)} ETH` : `Loss: ${pnlEth.toFixed(6)} ETH`}`,
         token: closedPosition.token,
+        pnlWei: totalProfitWei.toString(),
         pnlEth: pnlEth.toFixed(6),
         userReturn: (Number(userReturnWei) / 1e18).toFixed(6),
         closeTx,
@@ -884,7 +931,11 @@ router.get(
         entryPrice: pos.entryPrice ? String(pos.entryPrice) : null,
         exitPrice: pos.exitPrice ? String(pos.exitPrice) : null,
         tokensBought: pos.tokensBought ? String(pos.tokensBought) : null,
-        pnlEth: pos.pnlEth ? String(pos.pnlEth) : null,
+        // Named for its unit. The column is called pnlEth but holds WEI, and
+        // shipping that name meant the close response's `pnlEth` (a formatted
+        // ETH string) and this one (a wei string) collided under one key —
+        // every client that read it got one of the two wrong.
+        pnlWei: pos.pnlEth ? String(pos.pnlEth) : null,
         userProfit: pos.userProfit ? String(pos.userProfit) : null,
         protocolRevenue: pos.protocolRevenue ? String(pos.protocolRevenue) : null,
         openedAt: pos.openedAt,

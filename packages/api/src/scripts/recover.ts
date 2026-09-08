@@ -60,7 +60,11 @@ async function report(): Promise<void> {
       prisma.insuranceFund.aggregate({ _sum: { amount: true } }),
       prisma.poolLedger.aggregate({ _sum: { amount: true } }),
       prisma.creatorPayout.aggregate({ _sum: { amount: true }, where: { status: 'claimable' } }),
-      prisma.profitLock.aggregate({ _sum: { tokenAmount: true }, where: { isClaimed: false } }),
+      // isUnlocked, not isClaimed: the release path sets isUnlocked when the
+      // tokens actually leave the wallet, and nothing anywhere writes
+      // isClaimed — so filtering on it counted every lock ever created as
+      // still owed, including ones already paid out.
+      prisma.profitLock.aggregate({ _sum: { tokenAmount: true }, where: { isUnlocked: false } }),
     ]);
     console.log('\n  Claims recorded against that same wallet:');
     console.log(`    pool ledger        : ${fmt(ledger._sum.amount ?? 0n)}`);
@@ -70,17 +74,20 @@ async function report(): Promise<void> {
     console.log('    (ledgers are accounting only — the ETH itself is the balance above)');
   }
 
-  // Tokens the pool is holding, i.e. open positions mid-flight.
-  const openTokens = await prisma.position.findMany({
-    where: { status: { in: ['open', 'opening', 'closing'] } },
-    select: { id: true, tokensBought: true, token: { select: { address: true, symbol: true } } },
-  });
-  if (openTokens.length && pool) {
-    console.log('\n  ERC-20 held for open positions:');
-    for (const p of openTokens) {
-      const bal = await erc20Balance(p.token.address, pool).catch(() => 0n);
-      console.log(`    #${p.id} ${p.token.symbol ?? p.token.address}: ${bal} raw`);
+  // Every ERC-20 the pool could be holding — not just the ones attached to
+  // an open position. Locked $LOADED, tokens from a burn whose burn leg
+  // failed, and residue left on closed or failed rows all sit in this same
+  // wallet, and a report that cannot see them hides real money.
+  if (pool) {
+    const universe = await poolTokenUniverse();
+    const held: Array<{ address: string; symbol: string | null; bal: bigint }> = [];
+    for (const t of universe) {
+      const bal = await erc20Balance(t.address, pool).catch(() => 0n);
+      if (bal > 0n) held.push({ ...t, bal });
     }
+    console.log(`\n  ERC-20 held by the pool (${held.length} of ${universe.length} known tokens):`);
+    if (held.length === 0) console.log('    none');
+    for (const h of held) console.log(`    ${h.symbol ?? h.address}: ${h.bal} raw  (${h.address})`);
   }
 
   const users = await prisma.user.findMany({
@@ -104,10 +111,42 @@ async function report(): Promise<void> {
     console.log(`  recoverable only with ENCRYPTION_KEY + this database.`);
   }
 
+  const tg = await prisma.telegramUser.findMany({
+    select: { telegramId: true, walletAddress: true, encryptedKey: true },
+  });
+  console.log(`\nTELEGRAM BOT WALLETS  (${tg.length})`);
+  if (tg.length === 0) {
+    console.log('  none');
+  } else {
+    let total = 0n;
+    for (const t of tg) {
+      const bal = await getNativeBalance(t.walletAddress).catch(() => 0n);
+      total += bal;
+      if (bal > 0n) console.log(`  ${t.walletAddress}  ${fmt(bal)}  tg:${t.telegramId}`);
+    }
+    console.log(`  total: ${fmt(total)}   (same ENCRYPTION_KEY, swept by sweep-users)`);
+  }
+
   console.log('\n════ THE TWO SECRETS THAT MATTER ════');
   console.log(`  PROTOCOL_WALLET_PRIVATE_KEY : ${hasProtocolKey() ? 'loaded' : 'MISSING'}  → protocol funds`);
   console.log(`  ENCRYPTION_KEY              : ${process.env.ENCRYPTION_KEY ? 'loaded' : 'MISSING'}  → every user wallet`);
   console.log('  Back BOTH up outside Railway. Without them the funds above cannot be moved by anyone.\n');
+}
+
+/**
+ * Every ERC-20 the pool could plausibly hold. Enumerating only tokens attached
+ * to an open position misses locked $LOADED, tokens bought for a burn that
+ * never burned, and residue on closed rows — all of it real money in the same
+ * wallet.
+ */
+async function poolTokenUniverse(): Promise<Array<{ address: string; symbol: string | null }>> {
+  const rows = await prisma.token.findMany({ select: { address: true, symbol: true } });
+  const byAddr = new Map(rows.map((t) => [t.address.toLowerCase(), t]));
+  const loaded = (process.env.LOADED_TOKEN_MINT || '').trim();
+  if (loaded && isValidAddress(loaded) && !byAddr.has(loaded.toLowerCase())) {
+    byAddr.set(loaded.toLowerCase(), { address: loaded, symbol: 'LOADED' });
+  }
+  return [...byAddr.values()];
 }
 
 async function sweepPool(dest: string, execute: boolean): Promise<void> {
@@ -116,49 +155,93 @@ async function sweepPool(dest: string, execute: boolean): Promise<void> {
   const account = getProtocolAccount();
 
   // ERC-20 first: sending ETH away first would leave no gas to move tokens.
-  const held = await prisma.position.findMany({
-    where: { status: { in: ['open', 'opening', 'closing'] } },
-    select: { token: { select: { address: true, symbol: true } } },
-  });
-  const uniq = [...new Map(held.map((h) => [h.token.address.toLowerCase(), h.token])).values()];
-  for (const t of uniq) {
-    const bal = await erc20Balance(t.address, account.address).catch(() => 0n);
-    if (bal <= 0n) continue;
-    console.log(`  ${execute ? 'sending' : 'would send'} ${bal} raw ${t.symbol ?? t.address} → ${dest}`);
-    if (execute) console.log(`    tx ${await erc20Transfer(account, t.address, dest, bal)}`);
+  //
+  // Every transfer is isolated. A launchpad coin that pauses or blacklists
+  // transfers is routine, and an unguarded throw here used to abort the whole
+  // script before the ETH sweep below ever ran — so one honeypot could strand
+  // the insurance fund, every unclaimed creator payout and all collateral in
+  // flight, deterministically, on every retry.
+  const failed: string[] = [];
+  for (const t of await poolTokenUniverse()) {
+    try {
+      const bal = await erc20Balance(t.address, account.address).catch(() => 0n);
+      if (bal <= 0n) continue;
+      console.log(`  ${execute ? 'sending' : 'would send'} ${bal} raw ${t.symbol ?? t.address} → ${dest}`);
+      if (execute) console.log(`    tx ${await erc20Transfer(account, t.address, dest, bal)}`);
+    } catch (e) {
+      failed.push(`${t.symbol ?? t.address}: ${(e as Error).message}`);
+      console.error(`  FAILED ${t.symbol ?? t.address} — continuing: ${(e as Error).message}`);
+    }
   }
 
   const bal = await getNativeBalance(account.address);
   const amount = bal > GAS_RESERVE ? bal - GAS_RESERVE : 0n;
   if (amount <= 0n) {
     console.log(`  pool holds ${fmt(bal)} — nothing above the gas reserve to sweep`);
-    return;
+  } else {
+    console.log(`  ${execute ? 'sending' : 'would send'} ${fmt(amount)} → ${dest} (leaving ${fmt(GAS_RESERVE)} for gas)`);
+    if (execute) console.log(`    tx ${await transferNative(account, dest, amount)}`);
   }
-  console.log(`  ${execute ? 'sending' : 'would send'} ${fmt(amount)} → ${dest} (leaving ${fmt(GAS_RESERVE)} for gas)`);
-  if (execute) console.log(`    tx ${await transferNative(account, dest, amount)}`);
+
+  if (failed.length) {
+    console.error(`\n  ${failed.length} token transfer(s) failed — the ETH above still moved:`);
+    for (const f of failed) console.error(`    ${f}`);
+    process.exitCode = 1;
+  }
 }
 
 async function sweepUsers(dest: string, execute: boolean): Promise<void> {
   if (!isValidAddress(dest)) throw new Error(`destination is not a valid address: ${dest}`);
-  const users = await prisma.user.findMany({ select: { email: true, walletAddress: true, encryptedKey: true } });
+  // Telegram bot wallets are custodial wallets too — same generator, same
+  // ENCRYPTION_KEY, real deposits — and were previously invisible here.
+  const [webUsers, tgUsers] = await Promise.all([
+    prisma.user.findMany({ select: { email: true, walletAddress: true, encryptedKey: true } }),
+    prisma.telegramUser.findMany({ select: { telegramId: true, walletAddress: true, encryptedKey: true } }),
+  ]);
+  const users = [
+    ...webUsers,
+    ...tgUsers.map((t) => ({ email: `telegram:${t.telegramId}`, walletAddress: t.walletAddress, encryptedKey: t.encryptedKey })),
+  ];
   let moved = 0n;
+  // Isolated per user: one row with a corrupt or undecryptable key used to
+  // abort the process and strand every user after it in the list.
+  const failed: string[] = [];
   for (const u of users) {
-    const bal = await getNativeBalance(u.walletAddress).catch(() => 0n);
-    const amount = bal > GAS_RESERVE ? bal - GAS_RESERVE : 0n;
-    if (amount <= 0n) continue;
-    console.log(`  ${execute ? 'sweeping' : 'would sweep'} ${fmt(amount)} from ${u.walletAddress} (${u.email})`);
-    if (execute) {
-      const acct = loadCustodialWallet(u.encryptedKey);
-      console.log(`    tx ${await transferNative(acct, dest, amount)}`);
+    try {
+      const bal = await getNativeBalance(u.walletAddress).catch(() => 0n);
+      const amount = bal > GAS_RESERVE ? bal - GAS_RESERVE : 0n;
+      if (amount <= 0n) continue;
+      console.log(`  ${execute ? 'sweeping' : 'would sweep'} ${fmt(amount)} from ${u.walletAddress} (${u.email})`);
+      if (execute) {
+        const acct = loadCustodialWallet(u.encryptedKey);
+        console.log(`    tx ${await transferNative(acct, dest, amount)}`);
+      }
+      // Counted only once the transfer has actually landed, so the total is
+      // what moved rather than what was attempted.
+      moved += amount;
+    } catch (e) {
+      failed.push(`${u.walletAddress} (${u.email}): ${(e as Error).message}`);
+      console.error(`  FAILED ${u.walletAddress} — continuing: ${(e as Error).message}`);
     }
-    moved += amount;
   }
   console.log(`  total ${execute ? 'swept' : 'recoverable'}: ${fmt(moved)}`);
+  if (failed.length) {
+    console.error(`  ${failed.length} wallet(s) could not be swept:`);
+    for (const f of failed) console.error(`    ${f}`);
+    process.exitCode = 1;
+  }
 }
 
 async function exportKeys(path: string): Promise<void> {
   const fs = await import('node:fs');
-  const users = await prisma.user.findMany({ select: { email: true, walletAddress: true, encryptedKey: true } });
+  const [webUsers, tgUsers] = await Promise.all([
+    prisma.user.findMany({ select: { email: true, walletAddress: true, encryptedKey: true } }),
+    prisma.telegramUser.findMany({ select: { telegramId: true, walletAddress: true, encryptedKey: true } }),
+  ]);
+  const users = [
+    ...webUsers,
+    ...tgUsers.map((t) => ({ email: `telegram:${t.telegramId}`, walletAddress: t.walletAddress, encryptedKey: t.encryptedKey })),
+  ];
   // Decrypt separately so a failure on one row does not abort the export.
   const rows = users.map((u) => {
     try {

@@ -30,6 +30,8 @@ export interface PostCloseDispatch {
   /** 30% of flat-fee revenue — paid to the coin's creator. */
   creatorPayoutWei: bigint;
   flatFeeWei: bigint;
+  /** How much of the pool's own capital the sale failed to return, if any. */
+  poolShortfallWei?: bigint;
 }
 
 /**
@@ -69,22 +71,49 @@ export async function dispatchPostCloseJobs(d: PostCloseDispatch): Promise<void>
       );
     }
 
-    // Size the insurance top-up against real balances so it cannot over-deposit.
+    // Draw on the insurance fund when the pool did not get its capital back.
+    // This is the only producer of a 'withdrawal': the fund used to be
+    // write-only, accumulating against a promise ("the protocol should NEVER
+    // lose money") that no code path could keep. The fund is a ledger against
+    // the same wallet, so this books the loss where it belongs rather than
+    // leaving it silently absorbed by the pool.
+    if (d.poolShortfallWei && d.poolShortfallWei > 0n) {
+      await insuranceFundQueue.add(
+        'cover-shortfall',
+        {
+          type: 'withdrawal' as const,
+          amountWei: d.poolShortfallWei.toString(),
+          reason: 'slippage_coverage',
+          positionId,
+        },
+        { attempts: 3, backoff: { type: 'exponential', delay: 5_000 }, jobId: `insurance-cover-${positionId}` },
+      );
+    }
+
+    // Enqueue the RAW flat fee. The worker is the single authority on sizing:
+    // it applies INSURANCE_DEPOSIT_RATE_BPS itself and clamps to what the fund
+    // still needs. Pre-computing the deposit here and sending that meant the
+    // rate was applied twice — 10% of 10% — so the fund accrued at a tenth of
+    // its designed rate and would have topped out at 0.2% of the pool instead
+    // of 2%. Cheap to get wrong, invisible until the fund is actually needed.
+    //
+    // We still check whether anything is owed before queueing, to avoid a job
+    // per close once the fund is at target.
     const [insuranceAgg, poolAgg] = await Promise.all([
       prisma.insuranceFund.aggregate({ _sum: { amount: true } }),
       prisma.poolLedger.aggregate({ _sum: { amount: true } }),
     ]);
-    const deposit = calculateInsuranceDeposit(
+    const wouldDeposit = calculateInsuranceDeposit(
       d.flatFeeWei,
       insuranceAgg._sum.amount ?? 0n,
       calculateInsuranceFundTarget(poolAgg._sum.amount ?? 0n),
     );
-    if (deposit > 0n) {
+    if (wouldDeposit > 0n) {
       await insuranceFundQueue.add(
         'deposit-from-position',
         {
           type: 'deposit' as const,
-          amountWei: deposit.toString(),
+          amountWei: d.flatFeeWei.toString(),
           reason: 'position_close_fee',
           positionId,
         },

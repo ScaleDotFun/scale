@@ -57,11 +57,13 @@ async function processCreatorPayout(job: Job<CreatorPayoutJobData>): Promise<voi
         },
       }),
 
-      // Update token's total creator payouts
+      // Atomic increment. Read-modify-write off a value read outside the
+      // transaction lost updates under this worker's concurrency of 5:
+      // two payouts on the same coin at once, and one of them vanished.
       prisma.token.update({
         where: { id: tokenId },
         data: {
-          totalCreatorPayouts: token.totalCreatorPayouts + amount,
+          totalCreatorPayouts: { increment: amount },
         },
       }),
     ]);

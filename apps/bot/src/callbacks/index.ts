@@ -291,7 +291,7 @@ async function handleConfirmWithdraw(
     const result = await api.withdrawEth(telegramId, amountWei, toAddress);
 
     const amt = escapeMarkdown(formatEth(BigInt(result.amountWei)));
-    const addr = escapeMarkdown(formatAddress(result.toAddress));
+    const addr = escapeMarkdown(formatAddress(result.to));
     const txShort = escapeMarkdown(formatAddress(result.txHash));
 
     const msg = [

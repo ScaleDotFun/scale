@@ -1,5 +1,5 @@
 import { type FC, useState, useEffect, useCallback } from 'react';
-import { formatEth, formatTimeAgo, formatCountdown } from '../lib/format';
+import { formatEth, formatTimeAgo, formatCountdown, explorerTxUrl } from '../lib/format';
 import { getRecentLocks, getAuthToken, type ProfitLockEntry } from '../lib/api';
 
 // Use ProfitLockEntry from lib/api.ts as LockItem
@@ -9,7 +9,6 @@ export const Locks: FC = () => {
   const [locks, setLocks] = useState<LockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [claiming, setClaiming] = useState<number | null>(null);
 
   const fetchLocks = useCallback(async () => {
     try {
@@ -37,45 +36,29 @@ export const Locks: FC = () => {
     return () => clearInterval(interval);
   }, [fetchLocks]);
 
-  const activeLocks = locks.filter((l) => !l.isUnlocked);
-  const claimable = locks.filter((l) => l.isUnlocked || l.isExpired);
-
-  const totalLocked = activeLocks.reduce(
-    (sum, l) => sum + BigInt(l.tokenAmount),
-    0n,
+  // Classification follows what the backend flags actually mean.
+  //   isUnlocked  — the $LOADED has ALREADY been transferred to the user's
+  //                 wallet by the release sweep. Spent history, not a balance.
+  //   isExpired   — the 7 days are up. Computed independently of isUnlocked,
+  //                 so a matured-but-unreleased lock satisfies both.
+  // Treating isUnlocked as "claimable" listed delivered tokens as a pending
+  // balance forever, and the overlap double-counted matured locks in two
+  // stat cards at once.
+  //   tokenAmount 0 — booked but not yet bought (deferred until $LOADED is live).
+  const pendingBuy = locks.filter((l) => !l.isUnlocked && BigInt(l.tokenAmount) === 0n);
+  const activeLocks = locks.filter(
+    (l) => !l.isUnlocked && !l.isExpired && BigInt(l.tokenAmount) > 0n,
   );
-  const totalClaimable = claimable.reduce(
-    (sum, l) => sum + BigInt(l.tokenAmount),
-    0n,
+  const releasing = locks.filter(
+    (l) => !l.isUnlocked && l.isExpired && BigInt(l.tokenAmount) > 0n,
   );
+  const delivered = locks.filter((l) => l.isUnlocked);
 
-  const handleClaim = async (lockId: number) => {
-    setClaiming(lockId);
-    try {
-      const token = getAuthToken();
-      const BASE_URL = import.meta.env.VITE_API_URL
-        ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
-        : '/api';
-      const res = await fetch(`${BASE_URL}/locks/${lockId}/claim`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error('Claim failed');
-      }
-
-      // Refresh locks list
-      await fetchLocks();
-    } catch (err) {
-      console.error('Claim error:', err);
-    } finally {
-      setClaiming(null);
-    }
-  };
+  const sumTokens = (rows: typeof locks) => rows.reduce((sum, l) => sum + BigInt(l.tokenAmount), 0n);
+  const totalLocked = sumTokens(activeLocks);
+  const totalReleasing = sumTokens(releasing);
+  const totalDelivered = sumTokens(delivered);
+  const totalPendingEth = pendingBuy.reduce((sum, l) => sum + BigInt(l.ethAmount), 0n);
 
   if (loading) {
     return (
@@ -91,7 +74,8 @@ export const Locks: FC = () => {
       <div>
         <h2 style={{ marginBottom: 4 }}>$LOADED Locks</h2>
         <p style={{ fontSize: '0.86rem' }}>
-          30% of your trading profits auto-buy $LOADED and lock for 7 days. Claim here once unlocked.
+          30% of your trading profits auto-buy $LOADED and lock for 7 days. Release is automatic —
+          the tokens are sent to your wallet when the lock matures. Nothing to claim.
         </p>
       </div>
 
@@ -108,28 +92,42 @@ export const Locks: FC = () => {
           <div className="stat-card-value">{formatEth(totalLocked)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$LOADED</span></div>
           <div className="stat-card-sub">{activeLocks.length} active lock{activeLocks.length !== 1 ? 's' : ''}</div>
         </div>
-        <div className="stat-card" style={{ borderColor: claimable.length > 0 ? 'rgba(52, 211, 153, 0.2)' : undefined }}>
-          <div className="stat-card-label">Claimable</div>
-          <div className="stat-card-value" style={{ color: claimable.length > 0 ? 'var(--green)' : undefined }}>
-            {formatEth(totalClaimable)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$LOADED</span>
+        <div className="stat-card" style={{ borderColor: releasing.length > 0 ? 'rgba(52, 211, 153, 0.2)' : undefined }}>
+          <div className="stat-card-label">Releasing</div>
+          <div className="stat-card-value" style={{ color: releasing.length > 0 ? 'var(--green)' : undefined }}>
+            {formatEth(totalReleasing)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$LOADED</span>
           </div>
-          <div className="stat-card-sub">{claimable.length} ready to claim</div>
+          <div className="stat-card-sub">{releasing.length} matured, sending automatically</div>
         </div>
         <div className="stat-card">
-          <div className="stat-card-label">Total Locks</div>
-          <div className="stat-card-value">{locks.length}</div>
-          <div className="stat-card-sub">All time</div>
+          <div className="stat-card-label">Delivered</div>
+          <div className="stat-card-value">{formatEth(totalDelivered)} <span style={{ fontSize: '0.79rem', color: 'var(--primary)' }}>$LOADED</span></div>
+          <div className="stat-card-sub">{delivered.length} sent to your wallet</div>
         </div>
       </div>
 
-      {/* Claimable Locks */}
-      {claimable.length > 0 && (
+      {/* Pending buy — booked as owed, not yet converted */}
+      {pendingBuy.length > 0 && (
         <div>
-          <h3 style={{ marginBottom: 10, color: 'var(--green)' }}>
-            Ready to Claim
-          </h3>
+          <h3 style={{ marginBottom: 10 }}>Awaiting $LOADED launch</h3>
+          <div className="lock-card">
+            <div className="lock-card-info">
+              <div className="lock-card-amount">{formatEth(totalPendingEth)} ETH</div>
+              <div className="lock-card-detail">
+                Your locked profit share from {pendingBuy.length} trade{pendingBuy.length !== 1 ? 's' : ''} is
+                held by the protocol and converts to $LOADED automatically once the token is live.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Matured, being sent */}
+      {releasing.length > 0 && (
+        <div>
+          <h3 style={{ marginBottom: 10, color: 'var(--green)' }}>Releasing now</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {claimable.map((lock) => (
+            {releasing.map((lock) => (
               <div key={lock.id} className="lock-card lock-card-claimable">
                 <div className="lock-card-info">
                   <div className="lock-card-amount">
@@ -139,13 +137,39 @@ export const Locks: FC = () => {
                     From {lock.position?.tokenSymbol ?? 'token'} trade #{lock.position?.id ?? '?'} · Locked {formatTimeAgo(lock.lockedAt)}
                   </div>
                 </div>
-                <button
-                  className="btn btn-success"
-                  onClick={() => handleClaim(lock.id)}
-                  disabled={claiming === lock.id}
-                >
-                  {claiming === lock.id ? 'Claiming...' : 'Claim $LOADED'}
-                </button>
+                <div style={{ textAlign: 'right', color: 'var(--green)', fontSize: '0.8rem' }}>
+                  Sending to your wallet
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Delivered */}
+      {delivered.length > 0 && (
+        <div>
+          <h3 style={{ marginBottom: 10 }}>Delivered</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {delivered.slice(0, 10).map((lock) => (
+              <div key={lock.id} className="lock-card">
+                <div className="lock-card-info">
+                  <div className="lock-card-amount">
+                    {formatEth(BigInt(lock.tokenAmount))} $LOADED
+                  </div>
+                  <div className="lock-card-detail">
+                    From {lock.position?.tokenSymbol ?? 'token'} trade #{lock.position?.id ?? '?'} · Locked {formatTimeAgo(lock.lockedAt)}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  {lock.unlockTx ? (
+                    <a href={explorerTxUrl(lock.unlockTx)} target="_blank" rel="noreferrer" className="link-dim">
+                      In your wallet
+                    </a>
+                  ) : (
+                    <span className="lock-card-detail">In your wallet</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>

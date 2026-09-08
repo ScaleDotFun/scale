@@ -76,6 +76,9 @@ export function getWalletClient(account: PrivateKeyAccount): WalletClient {
   return createWalletClient({ account, chain: robinhoodChain, transport: http(ROBINHOOD_RPC) });
 }
 
+/** Re-exported so callers can canonicalise addresses without importing viem. */
+export { getAddress };
+
 /** Checksummed-address validation. Accepts any valid 20-byte hex address. */
 export function isValidAddress(addr: string): boolean {
   return typeof addr === 'string' && isAddress(addr.trim());
@@ -764,7 +767,6 @@ export const KNOWN_LAUNCHPADS = [
   'pons-v2-dex',
   'pons-dot-family',
   'hoodit',
-  'uniswap-pools-trade',
   'clanker',
   'bankr',
   'virtuals',
@@ -844,19 +846,9 @@ const TRANSFER_EVENT = parseAbiItem(
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 );
 
-/** Default log window. ~0.25s blocks on this L2, so this is roughly the last few hours. */
-export const DEFAULT_FEE_SCAN_BLOCKS = 50_000n;
-const MAX_FEE_SCAN_BLOCKS = 1_000_000n;
 const FEE_SCAN_TIMEOUT_MS = 20_000;
 
-function feeScanBlocks(): bigint {
-  const raw = Number(process.env.LOADED_FEE_SCAN_BLOCKS);
-  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_FEE_SCAN_BLOCKS;
-  const n = BigInt(Math.floor(raw));
-  return n > MAX_FEE_SCAN_BLOCKS ? MAX_FEE_SCAN_BLOCKS : n;
-}
-
-/** A stalled eth_getLogs must not hold the listing request open. */
+/** A stalled RPC call must not hold the listing request open. */
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
@@ -867,24 +859,25 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
-interface CreditScan {
-  /** The chain answered — a false `credited` is then a real negative, not ignorance. */
-  readable: boolean;
-  credited: boolean;
-  detail: string;
-}
-
 /**
  * Economic proof that this coin's PONS creator fees reach the pool wallet.
  *
- * PONS has setCreatorFeeRecipient(address) but publishes no getter for it, so the
- * redirect cannot be read off the curve — the only honest evidence is money
- * actually arriving FROM this coin's pool. Both filters matter: the pool wallet
- * also holds every leveraged position the protocol opens, so a bare "was this
- * wallet credited" query would pass any coin on the chain. Fees paid in native
- * ETH emit no log at all and therefore cannot be attributed here; those come back
- * as not_redirected rather than a guess.
+ * The proof is a direct read of contract state, not an inference from transfer
+ * history. Every PONS curve stores the address its creator-fee slice is paid to
+ * and exposes it as a getter; the curve's factory is the only caller allowed to
+ * change it, which is what the "Creator wallet" field in the PONS launch UI
+ * writes. So "has this creator redirected their fees to LOADED?" is answered by
+ * one eth_call: does that address equal our pool wallet?
+ *
+ * The previous approach — scanning for a Transfer from the curve to the pool
+ * wallet — was unsound and is gone. It proved nothing: any dust buy routed to
+ * the pool wallet produces that same log for the price of gas, and the pool's
+ * own leveraged buys produced it too, so a coin paying us nothing could certify
+ * itself. Contract state cannot be forged that way, and it is current rather
+ * than historical — a creator who points their fees away is caught on the very
+ * next re-verification sweep instead of coasting on an old log.
  */
+
 /** Resolved curve per token — a curve never moves, so cache it forever. */
 const _curveCache = new Map<string, Address | null>();
 
@@ -930,75 +923,74 @@ export async function findCurveForToken(token: string): Promise<Address | null> 
         break;
       }
     }
-  } catch {
-    // Leave it unresolved rather than caching a wrong answer; the caller
-    // reports 'unverifiable' and the next sweep retries.
-    return null;
+  } catch (err) {
+    // Throw rather than return null: a read failure and "this coin has no PONS
+    // curve" are different answers, and collapsing them turned an RPC blip
+    // into "not a PONS launch". Nothing is cached, so the next call retries.
+    throw new Error(`${LOG_PREFIX} could not resolve the curve for ${token}: ${(err as Error).message}`);
   }
 
   _curveCache.set(key, found);
   return found;
 }
 
-async function scanPoolCredits(
-  token: string,
-  poolWallet: string,
-  sources: Address[],
-): Promise<CreditScan> {
-  if (sources.length === 0) {
-    return {
-      readable: false,
-      credited: false,
-      detail: 'could not resolve this coin’s PONS curve — fee credits cannot be attributed yet',
-    };
-  }
+/** creatorFeeRecipient() on the PONS curve. */
+const CURVE_FEE_RECIPIENT_SELECTOR = '0x3cd1fb8f';
 
-  const client = getPublicClient();
-  const pool = getAddress(poolWallet);
-
-  let head: bigint;
+/**
+ * The address this coin's PONS creator fees are paid to.
+ *
+ * Defaults to the coin's deployer, and is repointed by the PONS factory when a
+ * creator sets a different Creator wallet or switches on holder fee sharing
+ * (which points it at a per-coin distributor contract). Returns null when the
+ * chain could not be read — never a guess, so callers can tell "not redirected"
+ * apart from "we could not tell".
+ */
+export async function readCreatorFeeRecipient(curve: Address): Promise<Address | null> {
   try {
-    head = await withTimeout(client.getBlockNumber(), FEE_SCAN_TIMEOUT_MS, 'getBlockNumber');
-  } catch (err) {
-    return { readable: false, credited: false, detail: `RPC unreachable: ${(err as Error).message}` };
+    const client = getPublicClient();
+    const raw = await withTimeout(
+      client.call({ to: curve, data: CURVE_FEE_RECIPIENT_SELECTOR as `0x${string}` }),
+      FEE_SCAN_TIMEOUT_MS,
+      'creatorFeeRecipient()',
+    );
+    const data = raw?.data;
+    if (!data || data.length !== 66) return null;
+    const addr = `0x${data.slice(26)}`;
+    if (/^0x0{40}$/i.test(addr)) return null;
+    return getAddress(addr);
+  } catch {
+    return null;
   }
+}
 
-  const span = feeScanBlocks();
-  const fromBlock = head > span ? head - span : 0n;
+/** deployer() on the PONS curve — the wallet that launched the coin. */
+const CURVE_DEPLOYER_SELECTOR = '0xd5f39488';
 
-  // One query per pool, settled independently so a single provider refusal
-  // does not discard the answers that did come back.
-  const scans = await Promise.allSettled(
-    sources.map((src) =>
-      withTimeout(
-        client.getLogs({ event: TRANSFER_EVENT, args: { from: src, to: pool }, fromBlock, toBlock: head }),
-        FEE_SCAN_TIMEOUT_MS,
-        `getLogs(${src})`,
-      ),
-    ),
-  );
-
-  let readable = false;
-  let hits = 0;
-  for (const s of scans) {
-    if (s.status === 'fulfilled') {
-      readable = true;
-      hits += s.value.length;
-    } else {
-      console.warn(`${LOG_PREFIX} fee-share log scan failed: ${(s.reason as Error)?.message}`);
-    }
+/**
+ * The coin's creator: the wallet that deployed it on PONS.
+ *
+ * Needed because once a creator redirects their fee stream to us, the fee
+ * recipient IS our pool wallet — so it can no longer stand in for "who is the
+ * creator". Booking the revenue share against the pool would make the protocol
+ * its own beneficiary; this is the address that should actually be paid.
+ */
+export async function readCurveDeployer(curve: Address): Promise<Address | null> {
+  try {
+    const client = getPublicClient();
+    const raw = await withTimeout(
+      client.call({ to: curve, data: CURVE_DEPLOYER_SELECTOR as `0x${string}` }),
+      FEE_SCAN_TIMEOUT_MS,
+      'deployer()',
+    );
+    const data = raw?.data;
+    if (!data || data.length !== 66) return null;
+    const addr = `0x${data.slice(26)}`;
+    if (/^0x0{40}$/i.test(addr)) return null;
+    return getAddress(addr);
+  } catch {
+    return null;
   }
-
-  if (hits > 0) {
-    return {
-      readable,
-      credited: true,
-      detail: `${hits} fee credit(s) from this coin's PONS pool to the pool wallet in blocks ${fromBlock}–${head}`,
-    };
-  }
-  return readable
-    ? { readable, credited: false, detail: `no fee credit to the pool wallet in blocks ${fromBlock}–${head}` }
-    : { readable, credited: false, detail: 'the chain could not be read over the scan window' };
 }
 
 /**
@@ -1050,26 +1042,53 @@ export async function verifyCreatorFeeShare(
   }
   info.launchpad = launchpad;
 
-  // Fee credits are attributed to the coin's own PONS bonding curve — the
-  // contract that charges the 1% and pays the creator's slice out.
-  //
-  // Pool ids are NOT usable here: PONS graduates into Uniswap V4, whose pools
-  // are 32-byte poolIds rather than contracts, so filtering them for a valid
-  // address discarded every source and left the gate permanently unverifiable.
-  const curve = await findCurveForToken(token);
-  const sources = curve ? [curve] : [];
+  // The whole gate: read who this coin's creator fees are paid to, straight off
+  // its bonding curve — the contract that charges the 1% and pays the creator's
+  // slice out. PONS represents that as ONE address, so "100% redirected" is not
+  // a threshold we have to police: either it is our pool wallet or it is not.
+  const pool = getAddress(poolWallet);
+  const base2 = { ...base, token: info, launchpad, poolWallet: pool, graduated };
 
-  const scan = await scanPoolCredits(token, poolWallet, sources);
+  let curve: Address | null;
+  try {
+    curve = await findCurveForToken(token);
+  } catch {
+    return {
+      ...base2,
+      status: 'unverifiable',
+      detail: 'Could not read this coin’s bonding curve on-chain right now — try again shortly.',
+    };
+  }
+  if (!curve) {
+    // The chain answered and there is no PONS curve behind this token. The dex
+    // id said "launchpad", but only a PONS curve carries a creator fee stream
+    // we can be pointed at, so no other venue can satisfy the deal.
+    return {
+      ...base2,
+      status: 'not_launchpad_token',
+      detail: 'No PONS bonding curve for this token — only PONS launches can be listed on LOADED.',
+    };
+  }
+
+  const recipient = await readCreatorFeeRecipient(curve);
+  if (!recipient) {
+    return {
+      ...base2,
+      status: 'unverifiable',
+      detail: `Could not read the creator fee recipient from curve ${curve} — the chain did not answer.`,
+    };
+  }
+
+  const redirected = recipient.toLowerCase() === pool.toLowerCase();
   const result: CreatorFeeResult = {
-    token: info,
-    launchpad,
-    poolWallet: getAddress(poolWallet),
-    graduated,
-    status: scan.credited ? 'verified' : scan.readable ? 'not_redirected' : 'unverifiable',
-    detail: scan.detail,
+    ...base2,
+    status: redirected ? 'verified' : 'not_redirected',
+    detail: redirected
+      ? `PONS creator fees for this coin are paid to the LOADED pool wallet (curve ${curve}).`
+      : `PONS creator fees for this coin are paid to ${recipient}, not the LOADED pool wallet.`,
   };
   console.log(
-    `${LOG_PREFIX} creator-fee gate ${token.slice(0, 10)}… → ${result.status} (${launchpad}): ${scan.detail}`,
+    `${LOG_PREFIX} creator-fee gate ${token.slice(0, 10)}… → ${result.status} (${launchpad}): ${result.detail}`,
   );
   return result;
 }
