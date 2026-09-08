@@ -359,7 +359,7 @@ export const Landing: FC = () => {
           {[0, 1].map((k) => (
             <div className="lp-marquee-seg" key={k} aria-hidden={k === 1}>
               <span>NO CEX</span><i>◆</i><span>PURE ON-CHAIN</span><i>◆</i><span>7X LEVERAGE</span><i>◆</i>
-              <span>Real on-chain swaps</span><i>◆</i><span>CREATORS GET PAID</span><i>◆</i><span>THE POOL NEVER LOSES</span><i>◆</i>
+              <span>Real on-chain swaps</span><i>◆</i><span>CREATORS GET PAID</span><i>◆</i><span>POOL PAID BACK FIRST</span><i>◆</i>
             </div>
           ))}
         </div>
@@ -480,7 +480,7 @@ export const Landing: FC = () => {
       <footer className="lp-footer">
         <div className="lp-footer-left">
           <span className="lp-logo-text">LOADED_</span>
-          <span className="lp-footer-dim">BUILT FOR DEGENS. THE POOL NEVER LOSES.</span>
+          <span className="lp-footer-dim">BUILT FOR DEGENS. THE POOL IS PAID BACK FIRST.</span>
         </div>
         <div className="lp-footer-links">
           <a href="https://x.com/LoadedDotFun" target="_blank" rel="noreferrer">TWITTER</a>

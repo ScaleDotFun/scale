@@ -135,7 +135,7 @@ export const Screener: FC = () => {
         <div>
           <h2>MARKET SCREENER</h2>
           <p className="scr-sub">
-            Trending PONS coins — live Robinhood Chain feed · refreshes every 30s ·{' '}
+            Trending on Robinhood Chain — live market feed · refreshes every 30s ·{' '}
             <span className="text-primary">j/k</span> move · <span className="text-primary">↵</span> trade ·{' '}
             <span className="text-primary">s</span> sort
           </p>

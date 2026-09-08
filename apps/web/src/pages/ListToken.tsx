@@ -313,6 +313,7 @@ export const ListToken: FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
           { title: 'Launch on PONS', desc: 'Create your coin on PONS — name, ticker, image, launch. Bonding curve or already graduated, both qualify.' },
+          { title: 'Liquidity Floor', desc: 'Once the market feed can see your coin, LOADED needs at least $5,000 of liquidity before it will front capital against it. A brand-new launch can list before the feed catches up, but it is delisted again if the depth never arrives — leverage on a book the pool cannot exit is how a lending pool dies.' },
           { title: 'Route the Creator Fee to the Pool', desc: 'Put the LOADED pool address in the Creator wallet field when you launch — this is your only chance, the recipient cannot be changed once the coin is live. PONS charges 1% per trade; your creator tax share of it is what you route, so set Creator tax as high as you are willing to go and leave Holder fee sharing off (it sends fees to a distributor instead of your wallet).' },
           { title: 'Paste the Contract Address', desc: 'Copy the 0x… CA from your coin\'s PONS page, paste it above, and LOADED lists it instantly with tier, name, and logo auto-detected.' },
           { title: 'Earn 30% of Flat Fees', desc: 'Traders take leveraged positions on your coin with real on-chain swaps, and 30% of every flat fee accrues to your launch wallet — usually worth far more than the creator fee you routed.' },
