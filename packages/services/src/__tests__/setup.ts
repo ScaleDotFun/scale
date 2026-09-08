@@ -85,6 +85,7 @@ vi.mock('@loaded/evm', () => ({
   getUsdPrices: vi.fn(() => Promise.resolve(new Map())),
   getEthUsd: vi.fn(() => Promise.resolve(2_500)),
   findCurveForToken: vi.fn(() => Promise.resolve(null)),
+  flushCurveFees: vi.fn(() => Promise.resolve(null)),
   readCurveDeployer: vi.fn(() => Promise.resolve(null)),
   readCreatorFeeRecipient: vi.fn(() => Promise.resolve(null)),
   readCurveGraduated: vi.fn(() => Promise.resolve(false)),

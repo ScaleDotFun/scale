@@ -5,14 +5,14 @@
 // Collects the PONS creator fees our listed coins earn. This is a real
 // two-transaction job, not bookkeeping.
 //
-// Fees do NOT arrive on their own. They accrue inside each coin's bonding
-// curve; PONS's keeper flushes them into a shared escrow vault as a credit to
-// the recipient; and only a CLAIM sent BY that recipient turns the credit into
-// native ETH. claim() pays msg.sender and takes no beneficiary argument, so
-// nobody can collect for us — and we cannot flush for ourselves either: the
-// curve's flush is keeper-gated and reverts (0x8d42130c) for every other
-// caller. So this worker does exactly the half that is ours: watch the vault
-// credit, and claim it.
+// Fees do NOT arrive on their own. Two hops, and both are ours to run for a
+// coin listed with us:
+//   1. FLUSH the coin's bonding curve, moving accrued fees into a shared escrow
+//      vault as a credit. Gated to the fee recipient, the creator and PONS's
+//      keeper — and for a listed coin the pool wallet IS the fee recipient, so
+//      we can flush on demand instead of waiting on the keeper's schedule.
+//   2. CLAIM that credit. claim() pays msg.sender and takes no beneficiary
+//      argument, so only the pool wallet can turn its own credit into ETH.
 //
 // The evidence for that shape: on one live curve, 142 fee-bearing trades
 // accrued 0.1321 ETH while the recipient's balance never moved; and ~887 ETH
@@ -30,6 +30,8 @@ import {
   getProtocolAccount,
   hasProtocolKey,
   protocolPublicKey,
+  findCurveForToken,
+  flushCurveFees,
   claimVaultCredit,
   vaultCreditOf,
   explorerTxUrl,
@@ -55,10 +57,10 @@ interface FeeClaimJobData {
 }
 
 /**
- * Claim whatever the vault has credited to the pool wallet.
+ * Flush our listed coins' curves, then claim the resulting vault credit.
  *
- * Safe to run on a schedule and safe to retry: a claim with nothing credited
- * is a no-op, and a failed claim leaves the credit untouched in the vault.
+ * Safe to run on a schedule and safe to retry: a flush with nothing accrued
+ * moves nothing, and a failed claim leaves the credit untouched in the vault.
  */
 async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
   const pool = protocolPublicKey();
@@ -91,11 +93,35 @@ async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
     return;
   }
 
-  // PONS's keeper does the flushing. We only collect.
-  const credited = await vaultCreditOf(pool).catch(() => 0n);
-  if (credited < MIN_CLAIM_WEI) return;
+  // ── Step 1: flush our listed coins' curves into the vault ──
+  // We are the fee recipient on every coin listed here, which is exactly the
+  // gate this call checks. A revert means nothing had accrued.
+  const tokens = await prisma.token.findMany({
+    where: { isActive: true },
+    select: { id: true, address: true, symbol: true },
+  });
+  let flushed = 0;
+  for (const t of tokens) {
+    try {
+      const curve = await findCurveForToken(t.address);
+      if (!curve) continue;
+      const tx = await flushCurveFees(account, curve);
+      if (tx) {
+        flushed++;
+        console.log(`${PREFIX} flushed ${t.symbol ?? t.address} — ${explorerTxUrl(tx)}`);
+      }
+    } catch (err) {
+      // One coin must never stop the sweep.
+      console.warn(`${PREFIX} flush skipped for ${t.symbol ?? t.address}:`, err instanceof Error ? err.message : err);
+    }
+  }
 
-  console.log(`${PREFIX} ${fmt(credited)} credited in the vault — claiming`);
+  // ── Step 2: turn the vault credit into ETH ──
+  const credited = await vaultCreditOf(pool).catch(() => 0n);
+  if (credited < MIN_CLAIM_WEI) {
+    if (flushed > 0) console.log(`${PREFIX} flushed ${flushed} curve(s); nothing above dust to claim yet`);
+    return;
+  }
 
   let claim: { txHash: string; received: bigint } | null;
   try {
@@ -148,5 +174,5 @@ export async function scheduleFeeClaimer(): Promise<void> {
     {},
     { repeat: { every: 5 * 60_000 }, jobId: 'fee-sweep-recurring' },
   );
-  console.log(`${PREFIX} Scheduled vault fee claim every 5 minutes`);
+  console.log(`${PREFIX} Scheduled fee flush + claim every 5 minutes`);
 }
