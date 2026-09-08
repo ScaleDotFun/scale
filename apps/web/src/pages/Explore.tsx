@@ -8,7 +8,6 @@ export const Explore: FC = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [listedTokens, setListedTokens] = useState<api.TokenInfo[]>([]);
-  const [launches, setLaunches] = useState<api.NewLaunch[]>([]);
   const [searchResults, setSearchResults] = useState<api.TokenInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -22,14 +21,6 @@ export const Explore: FC = () => {
       .catch(() => setListedTokens([]))
       .finally(() => setLoading(false));
 
-    // Coins that just came off a launchpad. Listings are earned (a creator has
-    // to redirect their PONS fees), so without this the Explorer would sit
-    // empty even while dozens of coins launch every hour.
-    const loadLaunches = () =>
-      api.getNewLaunches().then(setLaunches).catch(() => setLaunches([]));
-    loadLaunches();
-    const t = setInterval(loadLaunches, 45_000);
-    return () => clearInterval(t);
   }, []);
 
   // Search behavior
@@ -51,8 +42,7 @@ export const Explore: FC = () => {
     setSearching(true);
     const timer = setTimeout(() => {
       const lower = trimmed.toLowerCase();
-      const pool = [...listedTokens, ...(launches as unknown as api.TokenInfo[])];
-      const filtered = pool.filter(t =>
+      const filtered = listedTokens.filter(t =>
         (t.symbol && t.symbol.toLowerCase().includes(lower)) ||
         (t.name && t.name.toLowerCase().includes(lower))
       );
@@ -60,31 +50,18 @@ export const Explore: FC = () => {
       setSearching(false);
     }, 200);
     return () => clearTimeout(timer);
-  }, [search, listedTokens, launches, navigate]);
+  }, [search, listedTokens, navigate]);
 
-  // Listed coins are tradeable with leverage and lead the grid; fresh launches
-  // follow so the page is alive even before the first creator redirects fees.
-  const listedAddrs = new Set(listedTokens.map((t) => t.address.toLowerCase()));
-  const launchCards = launches
-    .filter((l) => !listedAddrs.has(l.address.toLowerCase()))
-    .map((l) => ({
-      address: l.address,
-      name: l.name,
-      symbol: l.symbol,
-      imageUri: l.logoURI ?? undefined,
-      tier: '',
-      priceUsd: l.price,
-      marketCapUsd: l.marketCap,
-      liquidityUsd: l.liquidity,
-      priceChange24hPct: l.priceChange24h,
-      isActive: true,
-      __new: true,
-      __createdAt: l.createdAt,
-      __dex: l.dex,
-    })) as unknown as api.TokenInfo[];
-
-  const displayTokens =
-    search.trim().length >= 2 ? searchResults : [...listedTokens, ...launchCards];
+  // Listed coins only.
+  //
+  // The grid used to be padded out with every fresh PONS launch, so the page
+  // would look alive before any creator had redirected fees. It works, but it
+  // makes the Explorer a launchpad feed: dozens of cards with no leverage, no
+  // fee, no tier, and nothing to do on them — and the one coin that IS on the
+  // protocol is a single card lost among them. Coins that have not pointed
+  // their creator fees here are on the Screener, which is what the Screener is
+  // for. This page answers one question: what can I trade on Loaded.
+  const displayTokens = search.trim().length >= 2 ? searchResults : listedTokens;
 
   /** "4m" / "2h" since launch. */
   const age = (iso?: string | null): string | null => {
@@ -133,7 +110,7 @@ export const Explore: FC = () => {
         <div>
           <h2 style={{ marginBottom: 4 }}>Explore Tokens</h2>
           <p style={{ fontSize: '0.86rem', color: '#66786a' }}>
-            Listed coins trade with leverage · fresh PONS launches are spot-only until their creator redirects fees
+            Every coin here has pointed its PONS creator fees at the protocol pool · that is what earns it leverage
           </p>
         </div>
       </div>
@@ -168,12 +145,12 @@ export const Explore: FC = () => {
           padding: '48px 16px', gap: 8,
         }}>
           <div style={{ fontSize: 14, fontWeight: 500, color: '#a3ad8d' }}>
-            {search ? 'No tokens found' : 'Nothing launching right now'}
+            {search ? 'No tokens found' : 'No coins listed yet'}
           </div>
           <div style={{ fontSize: 12, color: '#67704f' }}>
             {search
               ? 'Try a different search term or paste a token address'
-              : 'Creators: share your PONS creator rewards with the pool and get listed in minutes — guide at /list. Browse trending coins on the Screener meanwhile.'}
+              : 'A coin lists by pointing its PONS creator fee at the protocol pool — guide at /list. Every PONS launch is on the Screener meanwhile.'}
           </div>
         </div>
       ) : (
