@@ -40,11 +40,16 @@ export const Docs: FC = () => {
           and fees generate revenue for creators, the protocol, and $LOADED token holders.
         </p>
         <div className="docs-callout">
-          <div className="docs-callout-title">Core Guarantee</div>
+          <div className="docs-callout-title">How the pool is protected</div>
           <p>
-            The protocol is designed with strict risk management. All positions have strict auto-close thresholds, safety buffers,
-            position size caps relative to liquidity, and a maximum 24-hour duration. The protocol always recovers
-            its capital plus fees before any loss scenario can materialize.
+            Every position carries an auto-close threshold with a 5% safety buffer, a size cap relative to the
+            token's liquidity, and a hard 24-hour maximum duration. When a position closes, the pool's capital
+            comes out of the proceeds before anything reaches you.
+          </p>
+          <p>
+            That ordering is the protection, and it is not the same thing as a guarantee. These are memecoins:
+            a gap through the threshold, or a book too thin to absorb the exit, can return less than the pool
+            put in. The buffer is sized to make that unlikely, not impossible.
           </p>
         </div>
       </section>
@@ -94,13 +99,23 @@ export const Docs: FC = () => {
           absorption reaches the exit threshold. The threshold varies by tier:
         </p>
         <ul className="docs-list">
-          <li>Bonded: auto-close at <span className="mono text-red">-15%</span> portfolio loss</li>
-          <li>Rising: auto-close at <span className="mono text-red">-12%</span> portfolio loss</li>
-          <li>Degen: auto-close at <span className="mono text-red">-10%</span> portfolio loss</li>
+          <li>Bonded: auto-close at <span className="mono text-red">-10%</span> of your collateral</li>
+          <li>Rising: auto-close at <span className="mono text-red">-15%</span> of your collateral</li>
+          <li>Degen: auto-close at <span className="mono text-red">-25%</span> of your collateral</li>
         </ul>
         <p>
-          The 5% safety buffer ensures that even with slippage during the sell, the protocol always recovers 100% of its capital.
-          You lose your collateral (or a portion of it), but the protocol's lending pool remains whole.
+          Those are the numbers the monitor actually fires on. Each tier has a raw threshold
+          (<span className="mono">-15%</span>, <span className="mono">-20%</span>, <span className="mono">-30%</span>)
+          and the closer adds a <strong>5% safety buffer</strong> before comparing — so it always closes
+          earlier than the raw number, never later. A deeper tier gets a wider threshold because it is
+          capped at lower leverage, so the same percentage of your collateral takes a much larger price
+          move to reach.
+        </p>
+        <p>
+          The buffer exists so there is room left for slippage when the pool sells. It is a margin, not a
+          guarantee: on a thin book or a violent move the exit can still land below where the buffer
+          assumed. The pool is repaid first out of whatever the sale returns, which is why it can front
+          capital to a stranger — but "first" is an ordering, not a promise that the money is always there.
         </p>
       </section>
 
@@ -118,7 +133,7 @@ export const Docs: FC = () => {
                 <th>Tier</th>
                 <th>Max Leverage</th>
                 <th>Flat Fee</th>
-                <th>Exit Threshold</th>
+                <th>Auto-close at</th>
                 <th>Requirements</th>
               </tr>
             </thead>
@@ -127,21 +142,21 @@ export const Docs: FC = () => {
                 <td><span className="badge badge-bonded">Bonded</span></td>
                 <td className="mono">7x</td>
                 <td className="mono">2%</td>
-                <td className="mono">-15%</td>
+                <td className="mono">-10%</td>
                 <td>Graduated on PONS, $1M+ market cap, $50K+ liquidity</td>
               </tr>
               <tr>
                 <td><span className="badge badge-rising">Rising</span></td>
                 <td className="mono">5x</td>
                 <td className="mono">3%</td>
-                <td className="mono">-12%</td>
+                <td className="mono">-15%</td>
                 <td>$100K+ market cap, $10K+ liquidity</td>
               </tr>
               <tr>
                 <td><span className="badge badge-degen">Degen</span></td>
                 <td className="mono">3x</td>
                 <td className="mono">5%</td>
-                <td className="mono">-10%</td>
+                <td className="mono">-25%</td>
                 <td>Any PONS coin with $5K+ liquidity</td>
               </tr>
             </tbody>

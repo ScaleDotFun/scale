@@ -14,6 +14,7 @@ import {
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, NotFoundError, InsufficientFundsError } from '../lib/errors';
+import { withdrawalBlockReason } from '../lib/withdrawalGuard';
 
 const router = Router();
 
@@ -94,19 +95,11 @@ router.post('/withdraw', verifyWalletSignature, async (req, res) => {
       );
     }
 
-    // ── Block withdrawal while capital is committed ──
-    // /auth/withdraw enforces this; this route is a second implementation of
-    // the same operation behind the same auth, so without the guard here the
-    // check was defeated by changing the path. 'opening' and 'closing' count
-    // too: funds are in flight in both, and a refund or payout is owed.
-    const openPositionCount = await prisma.position.count({
-      where: { userWallet: walletAddress, status: { in: ['open', 'opening', 'closing'] } },
-    });
-    if (openPositionCount > 0) {
-      throw new ValidationError(
-        `Cannot withdraw while you have ${openPositionCount} open position(s). Close them first.`,
-      );
-    }
+    // ── Block withdrawal only while collateral is mid-transfer ──
+    // See withdrawalGuard: an open position commits nothing that lives in this
+    // wallet, so refusing there froze the user's own money for no protection.
+    const blocked = await withdrawalBlockReason(walletAddress);
+    if (blocked) throw new ValidationError(blocked);
 
     // ── Load the user's custodial wallet ──
     const user = await prisma.user.findFirst({

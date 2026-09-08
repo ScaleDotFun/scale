@@ -821,6 +821,36 @@
 
 .rs-stats { grid-template-columns: repeat(3, 1fr); }
 
+/* Tier picker — the sim is only honest if you can see which tier's rules
+   it is replaying, since fee, max leverage and auto-close all move with it. */
+.rs-tier-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rs-tier-btn {
+  padding: 7px 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-1);
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+
+.rs-tier-btn:hover { color: var(--text-0); border-color: var(--primary); }
+
+.rs-tier-active {
+  color: var(--bg-0);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
 .rs-result { margin: 22px; justify-content: center; }
 
 @media (max-width: 860px) {

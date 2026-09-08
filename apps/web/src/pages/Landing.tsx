@@ -312,7 +312,7 @@ export const Landing: FC = () => {
           <Typewriter
             className="lp-sub"
             delay={1300}
-            text="Up to 7x on any PONS coin. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
+            text="Up to 7x on bonded PONS coins, 3x on the rest. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
           />
 
           <motion.div

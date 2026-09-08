@@ -24,6 +24,7 @@ vi.mock('@loaded/database', () => ({
     },
     poolLedger: {
       create: vi.fn(),
+      findFirst: vi.fn(() => Promise.resolve(null)),
       aggregate: vi.fn(() => ({ _sum: { amount: 0n } })),
     },
     burn: { create: vi.fn() },
@@ -91,6 +92,7 @@ vi.mock('@loaded/evm', () => ({
   readCurveGraduated: vi.fn(() => Promise.resolve(false)),
   claimVaultCredit: vi.fn(() => Promise.resolve(null)),
   vaultCreditOf: vi.fn(() => Promise.resolve(0n)),
+  unwrapWrappedNative: vi.fn(() => Promise.resolve(null)),
   poolReserveFor: vi.fn((n: number) => 3_000_000_000_000_000n + 1_000_000_000_000_000n * BigInt(n)),
   explorerTxUrl: vi.fn((h: string) => `https://explorer.chain.robinhood.com/tx/${h}`),
 }));

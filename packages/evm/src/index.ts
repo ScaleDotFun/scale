@@ -50,6 +50,36 @@ export const LIFI_API = process.env.LIFI_API_URL?.trim() || 'https://li.quest/v1
 /** Native ETH sentinel used by LI.FI (and most aggregators) for the gas token. */
 export const NATIVE_TOKEN = '0x0000000000000000000000000000000000000000' as Address;
 
+/**
+ * Wrapped native (WETH) on Robinhood Chain.
+ *
+ * Every sell routes to THIS instead of native ETH, and the pool unwraps
+ * afterwards. The reason is measurement: a native payout emits no log, so the
+ * only way to size it was to diff the wallet's balance across the mined block
+ * — and blocks here routinely carry other pool movements, above all a
+ * different user's collateral arriving while this close settles. That reading
+ * credited one user with another's deposit. An ERC-20 payout emits a Transfer
+ * naming this wallet and the exact amount, so the proceeds become a property
+ * of the transaction and nothing else in the block can touch them.
+ *
+ * The route is identical either way — the aggregator quotes token→WETH and
+ * token→ETH through the same pools for the same output — so this costs one
+ * cheap unwrap and no slippage.
+ */
+export const WRAPPED_NATIVE = getAddress(
+  process.env.WRAPPED_NATIVE_ADDRESS?.trim() || '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
+);
+
+const WETH_ABI = [
+  {
+    type: 'function',
+    name: 'withdraw',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'wad', type: 'uint256' }],
+    outputs: [],
+  },
+] as const;
+
 /** Canonical burn sink — ERC-20s without burn() are sent here instead. */
 export const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD' as Address;
 
@@ -480,22 +510,14 @@ export async function confirmedNativeDelta(
   owner: string,
 ): Promise<bigint | null> {
   try {
-    const client = getPublicClient();
-    const receipt = await client.getTransactionReceipt({ hash: txHash as Hex });
+    const receipt = await getPublicClient().getTransactionReceipt({ hash: txHash as Hex });
     if (receipt.status !== 'success') return null;
-    const addr = getAddress(owner);
-    // Native ETH movement emits no log, so diff the owner's balance across the
-    // block that mined the tx and add back the gas it paid.
-    const [after, before] = await Promise.all([
-      client.getBalance({ address: addr, blockNumber: receipt.blockNumber }),
-      client.getBalance({ address: addr, blockNumber: receipt.blockNumber - 1n }),
-    ]);
-    const gas = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
-    const paidGas = receipt.from.toLowerCase() === addr.toLowerCase() ? gas : 0n;
-    const delta = after - before + paidGas;
-    return delta > 0n ? delta : null;
+    // Sells settle in wrapped native precisely so this is answerable from the
+    // transaction's own logs. A balance diff would count whatever else the
+    // block did to this wallet — most often another user's collateral.
+    const credited = tokenCreditedInReceipt(receipt, WRAPPED_NATIVE, owner);
+    return credited > 0n ? credited : null;
   } catch {
-    // Historical balance lookups are not guaranteed on every RPC provider.
     return null;
   }
 }
@@ -543,33 +565,6 @@ async function executeQuote(
   return receipt;
 }
 
-/**
- * Native ETH credited to `owner` by a specific transaction.
- *
- * Measured across the mined block boundary rather than "latest", so the answer
- * is a property of that transaction instead of whatever the wallet happens to
- * hold when the query runs.
- */
-async function nativeCreditedByTx(
-  receipt: TransactionReceipt,
-  owner: Address,
-): Promise<bigint | null> {
-  try {
-    const client = getPublicClient();
-    const [after, before] = await Promise.all([
-      client.getBalance({ address: owner, blockNumber: receipt.blockNumber }),
-      client.getBalance({ address: owner, blockNumber: receipt.blockNumber - 1n }),
-    ]);
-    const gas = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
-    const paidGas = receipt.from.toLowerCase() === owner.toLowerCase() ? gas : 0n;
-    const delta = after - before + paidGas;
-    return delta > 0n ? delta : null;
-  } catch {
-    // Historical balance lookups are not guaranteed on every provider.
-    return null;
-  }
-}
-
 /** Buy `token` with native ETH. amountIn is wei. */
 export async function swapNativeForToken(
   account: PrivateKeyAccount,
@@ -601,7 +596,51 @@ export async function swapNativeForToken(
   });
 }
 
-/** Sell `token` for native ETH. amountIn is raw token units. */
+/**
+ * Unwrap the wallet's entire wrapped-native balance back to ETH.
+ *
+ * Called after every sell, and deliberately unwraps the whole balance rather
+ * than just this trade's output: if an earlier unwrap failed after its swap
+ * landed, that ETH is sitting here as WETH and the pool is short by exactly
+ * that much. Sweeping the balance makes the next close repair the last one.
+ *
+ * Returns the amount unwrapped, or null when there was nothing to do.
+ */
+export async function unwrapWrappedNative(
+  account: PrivateKeyAccount,
+): Promise<{ txHash: string; amount: bigint } | null> {
+  const client = getPublicClient();
+  const balance = (await client.readContract({
+    address: WRAPPED_NATIVE,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [account.address],
+  })) as bigint;
+  if (balance === 0n) return null;
+
+  const hash = await getWalletClient(account).writeContract({
+    account,
+    chain: robinhoodChain,
+    address: WRAPPED_NATIVE,
+    abi: WETH_ABI,
+    functionName: 'withdraw',
+    args: [balance],
+  });
+  const receipt = await client.waitForTransactionReceipt({ hash, confirmations: 1 });
+  if (receipt.status !== 'success') {
+    throw new Error(`${LOG_PREFIX} unwrap reverted on-chain: ${hash}`);
+  }
+  return { txHash: hash, amount: balance };
+}
+
+/**
+ * Sell `token` for ETH. amountIn is raw token units.
+ *
+ * Routes through wrapped native and unwraps, so the proceeds are read off a
+ * Transfer log addressed to this wallet instead of a balance difference. See
+ * WRAPPED_NATIVE for why that distinction is the difference between crediting
+ * a user with their own money and crediting them with somebody else's.
+ */
 export async function swapTokenForNative(
   account: PrivateKeyAccount,
   token: string,
@@ -610,36 +649,58 @@ export async function swapTokenForNative(
 ): Promise<SwapResult> {
   const quote = await aggregatorQuote(
     getAddress(token),
-    NATIVE_TOKEN,
+    WRAPPED_NATIVE,
     amountIn,
     account.address,
     slippageBps,
   );
   const spender = quote.approvalAddress ?? quote.to;
 
-  // Serialized: the proceeds below are derived from this wallet's balance, so
-  // no other pool transaction may be in flight while this one settles.
+  // Serialized for nonce safety — several workers trade from this one wallet.
   return withWalletLock(account.address, async () => {
     await ensureAllowance(account, token, spender, amountIn);
     const receipt = await executeQuote(account, quote);
 
-    // Native output emits no Transfer log, so measure the credit across this
-    // transaction's own block boundary. Falling back to the quoted minimum
-    // under-records rather than inventing proceeds the pool never received.
-    const credited = await nativeCreditedByTx(receipt, account.address);
-    const amountOut = credited ?? quote.toAmountMin;
-    if (credited === null) {
-      console.warn(
-        `${LOG_PREFIX} could not measure ETH credited by ${receipt.transactionHash}; using toAmountMin`,
+    // Past this point the tokens are GONE. The caller treats a throw from here
+    // as "the sell did not land" and releases the position back to 'open' for
+    // another attempt — which would try to sell tokens the pool no longer
+    // holds. So nothing below may throw: every remaining failure degrades to a
+    // conservative number and a loud log instead.
+    let amountOut = tokenCreditedInReceipt(receipt, WRAPPED_NATIVE, account.address);
+    if (amountOut === 0n) {
+      // ERC-20 semantics make this essentially impossible — a credit without a
+      // Transfer — but if it happens, under-record rather than invent. The
+      // pool keeps the difference and the log names the tx for repair.
+      amountOut = quote.toAmountMin;
+      console.error(
+        `${LOG_PREFIX} CRITICAL: sell ${receipt.transactionHash} credited no wrapped native in its logs; ` +
+          `booking the quoted minimum ${amountOut} — needs manual review`,
       );
     }
 
+    // Turn it back into ETH — payouts and gas are native.
+    let unwrapped: { txHash: string; amount: bigint } | null = null;
+    try {
+      unwrapped = await unwrapWrappedNative(account);
+    } catch (err) {
+      // The ETH exists, it is just still wrapped. Settlement continues on the
+      // measured amount; the next sell's sweep, or the fee claimer's, unwraps
+      // it. Failing the close here would re-sell tokens that are already sold.
+      console.error(
+        `${LOG_PREFIX} CRITICAL: sell ${receipt.transactionHash} landed but the unwrap failed — ` +
+          `${amountOut} wei is held as wrapped native and will be swept: ${(err as Error).message}`,
+      );
+    }
     console.log(
-      `${LOG_PREFIX} sell ${amountIn} ${token.slice(0, 10)}… → ${Number(amountOut) / 1e18} ETH via ${quote.tool} ${receipt.transactionHash.slice(0, 16)}…`,
+      `${LOG_PREFIX} sell ${amountIn} ${token.slice(0, 10)}… → ${Number(amountOut) / 1e18} ETH via ${quote.tool} ${receipt.transactionHash.slice(0, 16)}…` +
+        (unwrapped && unwrapped.amount !== amountOut
+          ? ` (unwrapped ${Number(unwrapped.amount) / 1e18} — includes a stranded earlier balance)`
+          : ''),
     );
     return { txHash: receipt.transactionHash, amountIn, amountOut, tool: quote.tool };
   });
 }
+
 
 // ── Token metadata & market data (GeckoTerminal) ─────────────
 /**

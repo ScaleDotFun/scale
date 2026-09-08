@@ -19,6 +19,32 @@ interface Feed {
 
 interface Candle { t: number; o: number; h: number; l: number; c: number }
 
+/* The protocol's own numbers, not the simulator's.
+
+   Each tier's raw exit threshold lives in @loaded/core's TIER_CONFIGS, and the
+   closer adds SAFETY_BUFFER_BPS (5%) before comparing — so `autoCloseAt` below
+   is the effective figure the monitor actually fires on, and the one a trader
+   needs. `maxLeverage` and `feePct` are the same values the open route
+   enforces, which is why the sliders stop where they stop.
+
+   This component sits on the landing page under a promise that it replays what
+   the protocol would really have done, so anything invented here is a false
+   claim about a leveraged financial product. It previously auto-closed at
+   -(100/leverage) x 0.85, charged a flat 0.5%, offered 10x and 10 ETH, and
+   counted only 70% of a winning trade. None of those were real. */
+const TIERS = {
+  bonded: { label: 'BONDED', maxLeverage: 7, feePct: 2, autoCloseAt: -10 },
+  rising: { label: 'RISING', maxLeverage: 5, feePct: 3, autoCloseAt: -15 },
+  degen:  { label: 'DEGEN',  maxLeverage: 3, feePct: 5, autoCloseAt: -25 },
+} as const;
+type TierKey = keyof typeof TIERS;
+
+/** validatePositionOpen's bounds, in ETH. */
+const MIN_COLLATERAL = 0.01;
+const MAX_COLLATERAL = 1;
+/** MAX_POSITION_DURATION_MS, in 1H candles. */
+const MAX_HOURS = 24;
+
 
 function fmtPrice(p: number): string {
   if (p >= 1000) return p.toFixed(0);
@@ -32,10 +58,22 @@ export const ReplaySim: FC = () => {
   const [feedIdx, setFeedIdx] = useState(0);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'offline'>('loading');
+  // RETRY FEED used to call setFeedIdx((v) => v), which React treats as no
+  // change — the button re-rendered and fetched nothing. A transient feed
+  // failure was therefore permanent until a full page reload.
+  const [reloadTick, setReloadTick] = useState(0);
 
-  const [collateral, setCollateral] = useState(1);
+  const [tier, setTier] = useState<TierKey>('bonded');
+  const [collateral, setCollateral] = useState(0.25);
   const [leverage, setLeverage] = useState(5);
   const [entryIdx, setEntryIdx] = useState(40);
+
+  const tierCfg = TIERS[tier];
+  // Dialling down a tier has to pull leverage with it — the open route rejects
+  // 7x on a degen coin, so offering it here would be offering a rejected trade.
+  useEffect(() => {
+    setLeverage((l) => Math.min(l, tierCfg.maxLeverage));
+  }, [tierCfg.maxLeverage]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -82,32 +120,58 @@ export const ReplaySim: FC = () => {
       })
       .catch(() => { if (!dead) setState('offline'); });
     return () => { dead = true; };
-  }, [feeds, feedIdx]);
+  }, [feeds, feedIdx, reloadTick]);
 
   // ── Replay the protocol against the real path ──────────────
   const result = useMemo(() => {
     if (candles.length < 2) return null;
     const idx = Math.min(Math.max(entryIdx, 0), candles.length - 2);
     const entry = candles[idx].c;
-    const liqPct = -(100 / leverage) * 0.85;
-    const liqPrice = entry * (1 + liqPct / 100);
     const position = collateral * leverage;
-    const fee = position * 0.005;
+    const protocolCapital = position - collateral;
+    // Charged on the whole position, at the tier rate, out of the user's return.
+    const fee = position * (tierCfg.feePct / 100);
 
+    // shouldAutoClose compares LEVERAGED PnL against the tier threshold, so the
+    // price move that triggers it is the threshold divided by leverage.
+    const liqPct = tierCfg.autoCloseAt;
+    const liqPrice = entry * (1 + liqPct / (100 * leverage));
+
+    // A position also dies of old age at 24h, whatever the price is doing.
+    const timeoutIdx = Math.min(idx + MAX_HOURS, candles.length - 1);
     let liquidatedAt: number | null = null;
-    for (let i = idx + 1; i < candles.length; i++) {
+    for (let i = idx + 1; i <= timeoutIdx; i++) {
       if (candles[i].l <= liqPrice) { liquidatedAt = i; break; }
     }
 
-    const exitIdx = liquidatedAt ?? candles.length - 1;
+    const exitIdx = liquidatedAt ?? timeoutIdx;
     const exit = liquidatedAt != null ? liqPrice : candles[exitIdx].c;
-    const gross = position * (exit / entry - 1);
-    const userPnl = liquidatedAt != null ? -collateral : gross > 0 ? gross * 0.7 : gross;
+    const timedOut = liquidatedAt == null && exitIdx === idx + MAX_HOURS;
+
+    // Settlement, in the order the closer actually does it: the sale proceeds
+    // repay the pool first, the flat fee comes off, and what is left is yours.
+    const exitValue = position * (exit / entry);
+    const profit = exitValue - position;
+    let userReturn: number;
+    let userLock = 0;
+    if (profit > 0) {
+      // 70% of profit lands as ETH, 30% buys $LOADED locked for 7 days —
+      // deferred, but still the user's. Counting only the 70% understated
+      // every winning trade by nearly a third.
+      userLock = profit * 0.3;
+      userReturn = collateral + profit * 0.7 - fee;
+    } else {
+      userReturn = Math.max(0, exitValue - protocolCapital - fee);
+    }
+    const userPnl = userReturn + userLock - collateral;
     const hoursHeld = exitIdx - idx;
     const movePct = (exit / entry - 1) * 100;
 
-    return { idx, entry, liqPrice, liqPct, position, fee, liquidatedAt, exitIdx, userPnl, hoursHeld, movePct };
-  }, [candles, entryIdx, leverage, collateral]);
+    return {
+      idx, entry, liqPrice, liqPct, position, fee, liquidatedAt, timedOut,
+      exitIdx, userPnl, userLock, userReturn, hoursHeld, movePct,
+    };
+  }, [candles, entryIdx, leverage, collateral, tierCfg]);
 
   // Crossing into liquidation on real history: shake the tube, sound the alarm
   useEffect(() => {
@@ -287,7 +351,7 @@ export const ReplaySim: FC = () => {
         <div className="rs-offline">
           <span className="rs-offline-tag">[ FEED OFFLINE ]</span>
           <p>The simulator replays real price history — no feed, no sim. No fake charts here.</p>
-          <button className="btn btn-outline btn-sm" onClick={() => setFeedIdx((v) => v)}>RETRY FEED</button>
+          <button className="btn btn-outline btn-sm" onClick={() => setReloadTick((v) => v + 1)}>RETRY FEED</button>
         </div>
       ) : (
         <>
@@ -307,10 +371,27 @@ export const ReplaySim: FC = () => {
             <div className="pg-controls rs-controls">
               <div className="pg-field">
                 <div className="pg-row">
-                  <span>COLLATERAL</span>
-                  <span className="pg-val mono">{collateral.toFixed(1)} ETH</span>
+                  <span>TIER</span>
+                  <span className="pg-val mono">{tierCfg.feePct}% FEE / {tierCfg.maxLeverage}X MAX</span>
                 </div>
-                <input type="range" min="0.1" max="10" step="0.1" value={collateral}
+                <div className="rs-tier-row">
+                  {(Object.keys(TIERS) as TierKey[]).map((k) => (
+                    <button
+                      key={k}
+                      className={`rs-tier-btn${tier === k ? ' rs-tier-active' : ''}`}
+                      onClick={() => setTier(k)}
+                    >
+                      {TIERS[k].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="pg-field">
+                <div className="pg-row">
+                  <span>COLLATERAL</span>
+                  <span className="pg-val mono">{collateral.toFixed(2)} ETH</span>
+                </div>
+                <input type="range" min={MIN_COLLATERAL} max={MAX_COLLATERAL} step="0.01" value={collateral}
                   onChange={(e) => setCollateral(parseFloat(e.target.value))} className="pg-slider" />
               </div>
               <div className="pg-field">
@@ -318,7 +399,7 @@ export const ReplaySim: FC = () => {
                   <span>LEVERAGE</span>
                   <span className="pg-val pg-lev mono">{leverage}X</span>
                 </div>
-                <input type="range" min="2" max="10" step="1" value={leverage}
+                <input type="range" min="2" max={tierCfg.maxLeverage} step="1" value={leverage}
                   onChange={(e) => setLeverage(parseInt(e.target.value))} className="pg-slider" />
               </div>
               {result && (
@@ -332,8 +413,8 @@ export const ReplaySim: FC = () => {
                     <b className="mono">{result.position.toFixed(2)} ETH</b>
                   </div>
                   <div className="pg-stat">
-                    <span>LIQ AT</span>
-                    <b className="mono" style={{ color: 'var(--red)' }}>{result.liqPct.toFixed(1)}%</b>
+                    <span>AUTO-CLOSE</span>
+                    <b className="mono" style={{ color: 'var(--red)' }}>{result.liqPct}% @ {fmtPrice(result.liqPrice)}</b>
                   </div>
                 </div>
               )}
@@ -343,21 +424,29 @@ export const ReplaySim: FC = () => {
               <div className={`pg-result rs-result ${result.liquidatedAt != null ? 'pg-rekt' : result.userPnl >= 0 ? 'pg-win' : 'pg-loss'}`}>
                 {result.liquidatedAt != null ? (
                   <>
-                    <span className="pg-result-label">■ LIQUIDATED AFTER {result.hoursHeld}H ■</span>
-                    <span className="pg-result-num mono">-{collateral.toFixed(2)} ETH</span>
+                    <span className="pg-result-label">■ AUTO-CLOSED AFTER {result.hoursHeld}H ■</span>
+                    <span className="pg-result-num mono">{result.userPnl.toFixed(4)} ETH</span>
                     <span className="pg-result-sub">
-                      price hit {fmtPrice(result.liqPrice)} on real history · pool stays whole
+                      price hit {fmtPrice(result.liqPrice)} on real history · you keep{' '}
+                      {result.userReturn.toFixed(4)} of your {collateral.toFixed(2)} ETH
                     </span>
                   </>
                 ) : (
                   <>
                     <span className="pg-result-label">
-                      {result.userPnl >= 0 ? `SURVIVED ${result.hoursHeld}H — PROFIT (70%)` : `HELD ${result.hoursHeld}H — DRAWDOWN`}
+                      {result.timedOut
+                        ? 'CLOSED AT THE 24H LIMIT'
+                        : result.userPnl >= 0
+                          ? `SURVIVED ${result.hoursHeld}H — PROFIT`
+                          : `HELD ${result.hoursHeld}H — DRAWDOWN`}
                     </span>
-                    <span className="pg-result-num mono">{result.userPnl >= 0 ? '+' : ''}{result.userPnl.toFixed(2)} ETH</span>
+                    <span className="pg-result-num mono">{result.userPnl >= 0 ? '+' : ''}{result.userPnl.toFixed(4)} ETH</span>
                     <span className="pg-result-sub">
-                      real move {result.movePct >= 0 ? '+' : ''}{result.movePct.toFixed(1)}% ·
-                      {result.userPnl >= 0 ? ' 30% auto-buys $LOADED · locked 7 days' : ' above liquidation — you lived'}
+                      real move {result.movePct >= 0 ? '+' : ''}{result.movePct.toFixed(1)}% · {tierCfg.feePct}% fee ={' '}
+                      {result.fee.toFixed(4)} ETH
+                      {result.userLock > 0
+                        ? ` · ${result.userLock.toFixed(4)} ETH of it auto-buys $LOADED, locked 7 days`
+                        : ''}
                     </span>
                   </>
                 )}

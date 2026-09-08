@@ -629,6 +629,21 @@
 
 .exec-lev-row { display: flex; gap: 4px; }
 
+/* Why this coin caps where it caps. An unexplained "3x max" reads as a limit
+   the protocol chose for this coin; usually it means the coin has no tier. */
+.exec-lev-note {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.exec-lev-btn:disabled,
+.leverage-slider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .exec-lev-btn {
   flex: 1;
   padding: 7px 0;

@@ -13,6 +13,7 @@ import { sendSuccess, sendError } from '../lib/response';
 import { ValidationError, AuthError } from '../lib/errors';
 import { authLimiter } from '../middleware/rateLimit';
 import { signupIdentity, assertSignupAllowed } from '../lib/signupGuard';
+import { withdrawalBlockReason } from '../lib/withdrawalGuard';
 
 const router = Router();
 
@@ -289,17 +290,10 @@ router.post('/withdraw', verifyWalletSignature, async (req, res) => {
       throw new AuthError('User not found');
     }
 
-    // Block withdrawal if user has open positions
-    // 'opening' and 'closing' count as open: collateral has already moved in
-    // one and a payout is owed in the other, so both are capital in flight.
-    const openPositionCount = await prisma.position.count({
-      where: { userWallet: user.walletAddress, status: { in: ['open', 'opening', 'closing'] } },
-    });
-    if (openPositionCount > 0) {
-      throw new AuthError(
-        `Cannot withdraw while you have ${openPositionCount} open position(s). Close them first.`,
-      );
-    }
+    // Block withdrawal only while collateral is mid-transfer out of this
+    // wallet. An open position holds none of this balance — see withdrawalGuard.
+    const blocked = await withdrawalBlockReason(user.walletAddress);
+    if (blocked) throw new ValidationError(blocked);
 
 
     const userAccount = loadCustodialWallet(user.encryptedKey);

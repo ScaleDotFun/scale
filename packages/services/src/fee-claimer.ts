@@ -34,6 +34,7 @@ import {
   flushCurveFees,
   claimVaultCredit,
   vaultCreditOf,
+  unwrapWrappedNative,
   explorerTxUrl,
 } from '@loaded/evm';
 import { redisConnection, QUEUE_NAMES, feeClaimsQueue } from './queues.js';
@@ -93,6 +94,20 @@ async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
     return;
   }
 
+  // ── Step 0: recover any ETH still sitting wrapped ──
+  // Closes route their sell through wrapped native and unwrap immediately, but
+  // an unwrap that fails is deliberately not allowed to fail the close (the
+  // tokens are already sold). That leaves real pool ETH held as WETH, and the
+  // pool spends native. This is the sweep that brings it back.
+  try {
+    const swept = await unwrapWrappedNative(account);
+    if (swept) {
+      console.log(`${PREFIX} unwrapped ${fmt(swept.amount)} of stranded wrapped native — ${explorerTxUrl(swept.txHash)}`);
+    }
+  } catch (err) {
+    console.warn(`${PREFIX} wrapped-native sweep failed:`, err instanceof Error ? err.message : err);
+  }
+
   // ── Step 1: flush our listed coins' curves into the vault ──
   // We are the fee recipient on every coin listed here, which is exactly the
   // gate this call checks. A revert means nothing had accrued.
@@ -132,13 +147,42 @@ async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
   }
   if (!claim) return;
 
-  await prisma.poolLedger.create({
-    data: {
-      type: 'fee_claim',
-      amount: claim.received,
-      txHash: claim.txHash,
-    },
-  });
+  // The claim is irreversible and already landed. A throw from here would send
+  // BullMQ round again, and the retry finds the vault credit gone and books
+  // nothing — so the ETH would sit in the wallet with no ledger row behind it
+  // and every pool figure derived from the ledger would understate it. Retry
+  // the write on its own terms instead, and never rethrow past the claim.
+  let booked = false;
+  for (let attempt = 0; attempt < 4 && !booked; attempt++) {
+    try {
+      const already = await prisma.poolLedger.findFirst({
+        where: { type: 'fee_claim', txHash: claim.txHash },
+        select: { id: true },
+      });
+      if (!already) {
+        await prisma.poolLedger.create({
+          data: {
+            type: 'fee_claim',
+            amount: claim.received,
+            txHash: claim.txHash,
+          },
+        });
+      }
+      booked = true;
+    } catch (err) {
+      if (attempt === 3) {
+        console.error(
+          `${PREFIX} CRITICAL: claimed ${fmt(claim.received)} in ${claim.txHash} but could not write the ` +
+          `ledger row after 4 attempts — the ETH is in the pool wallet and needs a manual ledger entry: `,
+          err instanceof Error ? err.message : err,
+        );
+      } else {
+        // Short, bounded backoff: this runs inside the worker, and the claim
+        // tx hash in the log above is enough to reconcile by hand if it loses.
+        await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));
+      }
+    }
+  }
 
   console.log(
     `${PREFIX} 💰 Claimed ${fmt(claim.received)} of PONS creator fees into the pool — ` +

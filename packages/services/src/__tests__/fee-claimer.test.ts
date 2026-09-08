@@ -23,6 +23,7 @@ import {
   flushCurveFees,
   claimVaultCredit,
   vaultCreditOf,
+  unwrapWrappedNative,
 } from '@loaded/evm';
 import { feeClaimerWorker } from '../fee-claimer.js';
 
@@ -42,6 +43,8 @@ describe('fee claimer', () => {
     vi.mocked(flushCurveFees).mockResolvedValue('0xflush' as never);
     vi.mocked(vaultCreditOf).mockResolvedValue(WEI / 10n); // 0.1 ETH credited
     vi.mocked(claimVaultCredit).mockResolvedValue({ txHash: '0xclaim', received: WEI / 10n } as never);
+    vi.mocked(unwrapWrappedNative).mockResolvedValue(null as never);
+    vi.mocked(prisma.poolLedger.findFirst).mockResolvedValue(null as never);
   });
 
   it('flushes each listed curve, then claims the vault credit', async () => {
@@ -96,5 +99,49 @@ describe('fee claimer', () => {
     vi.mocked(getNativeBalance).mockResolvedValue(0n);
     await run();
     expect(flushCurveFees).not.toHaveBeenCalled();
+  });
+
+  // ── Recovering ETH that is stuck in its wrapped form ──────────
+  //
+  // Closes route their sell to wrapped native so the proceeds can be read off a
+  // Transfer log instead of a balance difference, then unwrap. An unwrap that
+  // fails is deliberately NOT allowed to fail the close — the tokens are
+  // already sold, and throwing there would send the closer round again to sell
+  // tokens the pool no longer holds. The cost of that choice is real pool ETH
+  // sitting as WETH while the pool spends native. This sweep is what brings it
+  // back, so it has to run before the claim rather than after it.
+
+  it('sweeps stranded wrapped native back to ETH', async () => {
+    vi.mocked(unwrapWrappedNative).mockResolvedValue({ txHash: '0xunwrap', amount: WEI / 4n } as never);
+    await run();
+    expect(unwrapWrappedNative).toHaveBeenCalledTimes(1);
+  });
+
+  it('still collects fees when the sweep itself fails', async () => {
+    vi.mocked(unwrapWrappedNative).mockRejectedValue(new Error('rpc down') as never);
+    await run();
+    expect(claimVaultCredit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not try to unwrap before it knows it can pay gas', async () => {
+    vi.mocked(getNativeBalance).mockResolvedValue(0n);
+    await run();
+    expect(unwrapWrappedNative).not.toHaveBeenCalled();
+  });
+
+  // ── The ledger row behind an irreversible claim ───────────────
+
+  it('does not rethrow when the ledger write fails — the claim already landed', async () => {
+    // A throw here sends BullMQ round again; the retry finds the vault credit
+    // gone and books nothing, so the ETH would sit in the wallet with no row
+    // behind it and every pool figure derived from the ledger would understate.
+    vi.mocked(prisma.poolLedger.create).mockRejectedValue(new Error('db down') as never);
+    await expect(run()).resolves.toBeUndefined();
+  });
+
+  it('will not book the same claim twice', async () => {
+    vi.mocked(prisma.poolLedger.findFirst).mockResolvedValue({ id: 7 } as never);
+    await run();
+    expect(prisma.poolLedger.create).not.toHaveBeenCalled();
   });
 });

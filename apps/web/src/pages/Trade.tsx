@@ -218,6 +218,13 @@ export const Trade: FC = () => {
   const hasTierConfig = selectedToken?.flatFeePct != null && selectedToken?.exitThresholdPct != null;
   // The cap is per tier — 7x bonded, 5x rising, 3x degen — and the API sends it
   // with the coin. Offering 10x let the user dial a position the server rejects.
+  //
+  // A coin the protocol has not listed carries NO tier, and the terminal will
+  // happily open on one: with nothing listed yet the page features the deepest
+  // trending market instead. The old fallback quietly answered "3x" there,
+  // which reads as a tier decision the protocol never made — a user asking why
+  // their coin caps at 3x was being shown the default, not their coin. Say so.
+  const isListed = selectedToken?.maxLeverage != null;
   const maxLeverage = selectedToken?.maxLeverage ?? 3;
   useEffect(() => {
     setLeverage((l) => (l > maxLeverage ? maxLeverage : l));
@@ -688,14 +695,16 @@ export const Trade: FC = () => {
                     max={maxLeverage}
                     step="1"
                     value={leverage}
+                    disabled={!isListed}
                     onChange={(e) => setLeverage(Number(e.target.value))}
                     className="leverage-slider"
                   />
                   <div className="exec-lev-row">
-                    {[2, 3, 5, 7, 10].filter((lev) => lev <= maxLeverage).map((lev) => (
+                    {[2, 3, 5, 7].filter((lev) => lev <= maxLeverage).map((lev) => (
                       <motion.button
                         key={lev}
                         className={`exec-lev-btn ${leverage === lev ? 'exec-lev-active' : ''}`}
+                        disabled={!isListed}
                         onClick={() => setLeverage(lev)}
                         whileHover={{ scale: 1.06 }}
                         whileTap={{ scale: 0.94 }}
@@ -703,6 +712,16 @@ export const Trade: FC = () => {
                         {lev}x
                       </motion.button>
                     ))}
+                  </div>
+                  <div className="exec-lev-note">
+                    {isListed ? (
+                      <>
+                        {selectedToken?.tierLabel ?? 'Tier'} tier — capped at {maxLeverage}x.
+                        {maxLeverage < 7 && ' Bonded coins go to 7x: graduated on PONS, $1M+ market cap, $50K+ liquidity.'}
+                      </>
+                    ) : (
+                      <>This coin is not listed on LOADED, so there is no leverage on it. A coin lists by pointing its PONS creator fees at the protocol pool — then it gets a tier, from 3x (Degen) up to 7x (Bonded).</>
+                    )}
                   </div>
                 </div>
 
