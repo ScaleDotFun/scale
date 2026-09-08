@@ -934,8 +934,19 @@ export async function findCurveForToken(token: string): Promise<Address | null> 
   return found;
 }
 
-/** creatorFeeRecipient() on the PONS curve. */
-const CURVE_FEE_RECIPIENT_SELECTOR = '0x3cd1fb8f';
+/**
+ * The curve getter that returns the address PONS actually PAYS.
+ *
+ * Determined empirically, not by name. Across 60 curves with live fee credits,
+ * 16 had this getter and 0x3cd1fb8f returning different addresses — and the
+ * vault's own credit events named THIS one as the beneficiary in 14 of the 16.
+ * An earlier version of this gate read 0x3cd1fb8f, which is the coin's original
+ * creator: on a coin nobody has redirected the two are identical, so the
+ * mistake was invisible until a redirected coin appeared — exactly the case the
+ * gate exists to detect. Reading the wrong one would have rejected a creator
+ * who genuinely pointed their fees at us, and could have passed one who had not.
+ */
+const CURVE_FEE_RECIPIENT_SELECTOR = '0xd5f39488';
 
 /**
  * The address this coin's PONS creator fees are paid to.
@@ -989,8 +1000,8 @@ export async function readCurveGraduated(curve: Address): Promise<boolean | null
   }
 }
 
-/** deployer() on the PONS curve — the wallet that launched the coin. */
-const CURVE_DEPLOYER_SELECTOR = '0xd5f39488';
+/** The coin's original creator — distinct from whoever its fees now pay. */
+const CURVE_DEPLOYER_SELECTOR = '0x3cd1fb8f';
 
 /**
  * The coin's creator: the wallet that deployed it on PONS.
