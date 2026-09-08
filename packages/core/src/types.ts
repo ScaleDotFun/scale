@@ -94,7 +94,7 @@ export interface PnLResult {
   isProfitable: boolean;
   // User side
   userGrossProfitWei: bigint;  // 70% of profit → ETH to user
-  userLockWei: bigint;         // 30% of profit → buy & lock $FRONT
+  userLockWei: bigint;         // 30% of profit → buy & lock $LOADED
   userCashoutWei: bigint;      // 70% of profit (same as gross, all cash)
   // Protocol side
   protocolProfitShareWei: bigint; // 0% — protocol earns from fees, not profit
@@ -215,18 +215,18 @@ export const REVENUE_SPLIT = {
 } as const;
 
 /**
- * Profit split between user and $FRONT lock
+ * Profit split between user and $LOADED lock
  *
  * When a position is profitable:
  *   70% of profit → ETH directly to user (cash out)
- *   30% of profit → auto-buy $FRONT, locked for 7 days, then claimable by user
+ *   30% of profit → auto-buy $LOADED, locked for 7 days, then claimable by user
  *
  * The protocol does NOT take a cut of profit — it earns from flat fees and
  * creator reward inflows only. This keeps the protocol trustless and aligned.
  */
 export const PROFIT_SPLIT = {
   USER_CASH: 7_000,   // 70% → ETH to user
-  USER_LOCK: 3_000,   // 30% → buy $FRONT & lock 7 days for user
+  USER_LOCK: 3_000,   // 30% → buy $LOADED & lock 7 days for user
 } as const;
 
 /**

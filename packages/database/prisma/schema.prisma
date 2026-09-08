@@ -117,7 +117,7 @@ model Position {
   creatorPayout    BigInt?   @map("creator_payout")     // 30% of flat fee
   burnAmount       BigInt?   @map("burn_amount")        // 20% of flat fee
   poolReturn       BigInt?   @map("pool_return")        // 50% of flat fee
-  lockAmount       BigInt?   @map("lock_amount")        // 30% of profit → buy $FRONT
+  lockAmount       BigInt?   @map("lock_amount")        // 30% of profit → buy $LOADED
   openedAt         DateTime  @default(now()) @map("opened_at")
   closedAt         DateTime? @map("closed_at")
   closeTx          String?   @map("close_tx") @db.VarChar(66)
@@ -144,12 +144,12 @@ model Position {
 }
 
 // ──────────────────────────────────────────────
-// $FRONT token burns
+// $LOADED token burns
 // ──────────────────────────────────────────────
 model Burn {
   id          Int      @id @default(autoincrement())
   ethAmount   BigInt   @map("eth_amount")   // wei spent
-  tokenAmount BigInt   @map("token_amount") // $FRONT burned (raw units)
+  tokenAmount BigInt   @map("token_amount") // $LOADED burned (raw units)
   txHash String   @map("tx_hash") @db.VarChar(66)
   positionId  Int?     @map("position_id")
   burnedAt    DateTime @default(now()) @map("burned_at")
@@ -160,13 +160,13 @@ model Burn {
 }
 
 // ──────────────────────────────────────────────
-// Profit locks — $FRONT locked for 7 days
+// Profit locks — $LOADED locked for 7 days
 // ──────────────────────────────────────────────
 model ProfitLock {
   id          Int       @id @default(autoincrement())
   userWallet  String    @map("user_wallet") @db.VarChar(42)
   ethAmount   BigInt    @map("eth_amount")                 // wei
-  tokenAmount BigInt    @map("token_amount") // $FRONT locked (raw units)
+  tokenAmount BigInt    @map("token_amount") // $LOADED locked (raw units)
   positionId  Int?      @map("position_id")
   buyTx       String    @map("buy_tx") @db.VarChar(66)
   lockTx      String?   @map("lock_tx") @db.VarChar(66)

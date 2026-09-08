@@ -150,7 +150,7 @@ async function executeUnlock(
 }
 
 /**
- * Process a lock job: buy $FRONT and lock it for 7 days.
+ * Process a lock job: buy $LOADED and lock it for 7 days.
  */
 async function processLockJob(job: Job<LockJobData>): Promise<void> {
   const { userWallet, ethAmountWei: ethAmountStr, positionId } = job.data;

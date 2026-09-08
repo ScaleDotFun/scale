@@ -5,11 +5,11 @@
 // Protocol revenue comes from FLAT FEES only (not profit sharing).
 // The flat fee revenue from trades on a specific coin is split:
 //   30% → Creator of that coin (incentivizes devs to list)
-//   20% → Buy back & burn $FRONT
+//   20% → Buy back & burn $LOADED
 //   50% → Capital Pool (grows the lending pool)
 //
 // Separately, from the user's trade profit:
-//   30% of profit → Auto-buy & lock $FRONT for 7 days (given to user)
+//   30% of profit → Auto-buy & lock $LOADED for 7 days (given to user)
 //   70% of profit → ETH directly to user
 //
 
@@ -26,7 +26,7 @@ import {
  * Split protocol revenue (flat fees) into creator / burn / pool portions.
  *
  *   30% → Creator payout
- *   20% → Buy & burn $FRONT
+ *   20% → Buy & burn $LOADED
  *   50% → Capital Pool
  */
 export function splitRevenue(totalRevenueWei: bigint): RevenueBreakdown {

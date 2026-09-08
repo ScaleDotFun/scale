@@ -38,7 +38,7 @@ describe('lock-engine logic', () => {
     });
   });
 
-  describe('$FRONT buy estimation (simulation mode)', () => {
+  describe('$LOADED buy estimation (simulation mode)', () => {
     it('simulation estimates 500 tokens per ETH', () => {
       const ethAmount = WEI_PER_ETH; // 1 ETH
       const estimatedTokens = ethAmount * 500n;

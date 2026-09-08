@@ -13,7 +13,7 @@ const router = Router();
 /**
  * GET /locks
  *
- * Return the authenticated user's locked $FRONT with unlock dates.
+ * Return the authenticated user's locked $LOADED with unlock dates.
  */
 router.get('/', verifyWalletSignature, async (req, res) => {
   try {

@@ -15,7 +15,7 @@ import type { Tier } from './types.js';
  *
  * Profit distribution:
  *   70% of profit → ETH directly to user
- *   30% of profit → auto-buy $FRONT, locked 7 days, then claimable by user
+ *   30% of profit → auto-buy $LOADED, locked 7 days, then claimable by user
  *
  * The protocol does NOT take a percentage of profit.
  * Protocol revenue comes from flat fees and creator reward inflows only.
@@ -86,7 +86,7 @@ export function calculatePnL(
 
   // Profit split:
   //   70% → user gets as ETH immediately
-  //   30% → auto-buy $FRONT & lock for 7 days, user claims after unlock
+  //   30% → auto-buy $LOADED & lock for 7 days, user claims after unlock
   const userCashoutWei =
     (totalProfitWei * BigInt(PROFIT_SPLIT.USER_CASH)) / BigInt(BPS.FULL);
   const userLockWei =
