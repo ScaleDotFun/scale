@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestApp } from './setup';
 import { prisma } from '@loaded/database';
-import { verifyCreatorFeeShare, erc20TotalSupply, getTokenInfo, isValidAddress } from '@loaded/evm';
+import { verifyCreatorFeeShare, erc20TotalSupply, getTokenInfo, isValidAddress, findCurveForToken, readCurveDeployer } from '@loaded/evm';
 
 const TOKEN = '0x9f2a0c7d54b1e3a86d5f0b17c2e8934ab6d1f705';
 const POOL = '0x1f4b7d9e2c6a80351fbb0d47e9c8a2136d5f0e11';
@@ -153,17 +153,43 @@ describe('POST /tokens/list — PONS creator-fee gate', () => {
     expect(res.body.data).toMatchObject({
       symbol: 'CASHCAT',
       feeVerified: true,
-      creatorWallet: POOL,
       marketCapUsd: 1_000_000,
       liquidityUsd: 250_000,
     });
     expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({
       address: TOKEN,
-      creatorWallet: POOL,
       name: 'Cash Cat',
       symbol: 'CASHCAT',
       imageUri: TOKEN_INFO.imageUri,
     });
+  });
+
+  it('records the coin’s real creator — the wallet that deployed it', async () => {
+    const CURVE = '0x5555555555555555555555555555555555555555';
+    const DEPLOYER = '0x6666666666666666666666666666666666666666';
+    vi.mocked(findCurveForToken).mockResolvedValue(CURVE as never);
+    vi.mocked(readCurveDeployer).mockResolvedValue(DEPLOYER as never);
+    vi.mocked(prisma.token.create).mockResolvedValue({ id: 3, address: TOKEN } as never);
+
+    const { agent } = createTestApp();
+    await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({
+      creatorWallet: DEPLOYER,
+    });
+  });
+
+  it('never books the protocol as its own creator when the lookup fails', async () => {
+    // Falling back to the pool wallet turned the 30% creator revenue share into
+    // a liability owed to ourselves, payable on claim. An empty payee means no
+    // payout is dispatched at all, which is the honest outcome.
+    vi.mocked(findCurveForToken).mockRejectedValue(new Error('rpc down') as never);
+    vi.mocked(prisma.token.create).mockResolvedValue({ id: 4, address: TOKEN } as never);
+
+    const { agent } = createTestApp();
+    await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    const booked = vi.mocked(prisma.token.create).mock.calls[0][0].data as { creatorWallet: string };
+    expect(booked.creatorWallet).toBe('');
+    expect(booked.creatorWallet).not.toBe(POOL);
   });
 
   it('lists a coin with no market data yet, without inventing metadata', async () => {

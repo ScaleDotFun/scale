@@ -1105,6 +1105,118 @@ export async function verifyCreatorFeeShare(
   return result;
 }
 
+/**
+ * ETH the pool must keep liquid to unwind what it already owes.
+ *
+ * Every open position is an obligation to run a sell, a payout and the
+ * downstream jobs, all paid in gas by this wallet. The base fee on this chain
+ * has spiked ~10x for minutes at a time, and at those prices one swap needs
+ * ~0.0024 ETH of liquid balance before the node will accept it. Any path that
+ * moves ETH out of the pool has to respect this, or it can leave open
+ * positions unclosable — which strands user collateral in tokens the pool
+ * cannot sell.
+ */
+export const POOL_UNWIND_RESERVE_WEI = 3_000_000_000_000_000n; // 0.003 ETH
+export const POOL_RESERVE_PER_POSITION_WEI = 1_000_000_000_000_000n; // 0.001 ETH
+
+/** Reserve required right now, given how many positions are still open. */
+export function poolReserveFor(openPositions: number): bigint {
+  return POOL_UNWIND_RESERVE_WEI + POOL_RESERVE_PER_POSITION_WEI * BigInt(Math.max(0, openPositions));
+}
+
+// ── PONS creator fees ──────────────────────────────────
+/**
+ * Creator fees are NOT pushed to the recipient on each trade. They accrue
+ * inside the bonding curve and reach a wallet only after two transactions:
+ *
+ *   1. FLUSH  — anyone sends `0x3729bb9a` (one zero word of calldata) to the
+ *      curve. That drains everything accrued since the last flush and CREDITS
+ *      it inside a shared escrow vault, keyed by beneficiary. Permissionless,
+ *      so LOADED can flush its own coins and pay the gas.
+ *   2. CLAIM  — the beneficiary sends `claim()` to the vault. It pays
+ *      msg.sender and takes no beneficiary argument, so nobody can collect on
+ *      our behalf: the pool wallet has to sign this itself.
+ *
+ * Verified on-chain: on one curve, 142 fee-bearing trades accrued 0.1321 ETH
+ * while the recipient's balance did not move once; seven flushes each moved
+ * exactly the accrued pot to the wei; and 887 ETH sits credited-but-unclaimed
+ * in the vault right now, which is what happens when nobody runs step 2.
+ */
+export const PONS_FEE_VAULT = '0xd3afeb2a57f70ef218aa82451c51b2fb0416ac9e' as Address;
+const CURVE_FLUSH_SELECTOR = '0x3729bb9a';
+const VAULT_CLAIM_SELECTOR = '0x4e71d92d';
+
+/** What the vault has credited to `beneficiary` but not yet paid out. */
+export async function vaultCreditOf(beneficiary: string): Promise<bigint> {
+  return getPublicClient().readContract({
+    address: PONS_FEE_VAULT,
+    abi: ERC20_ABI, // balanceOf(address) — same selector, same shape
+    functionName: 'balanceOf',
+    args: [getAddress(beneficiary)],
+  });
+}
+
+/**
+ * Move a coin's accrued fees off its curve and into the vault.
+ *
+ * Permissionless and idempotent: flushing a curve with nothing accrued moves
+ * nothing. Returns the tx hash, or null when the call reverts — a revert here
+ * is normal (nothing to flush) and must never abort a sweep.
+ */
+export async function flushCurveFees(
+  from: PrivateKeyAccount,
+  curve: string,
+): Promise<string | null> {
+  return withWalletLock(from.address, async () => {
+    try {
+      const wallet = getWalletClient(from);
+      const hash = await wallet.sendTransaction({
+        account: from,
+        chain: robinhoodChain,
+        to: getAddress(curve),
+        data: `${CURVE_FLUSH_SELECTOR}${'0'.repeat(64)}` as Hex,
+      });
+      const receipt = await getPublicClient().waitForTransactionReceipt({ hash, confirmations: 1 });
+      return receipt.status === 'success' ? hash : null;
+    } catch {
+      return null;
+    }
+  });
+}
+
+/**
+ * Collect everything the vault has credited to this wallet.
+ *
+ * Returns the tx hash and the ETH actually received, measured across the
+ * transaction's own block boundary and adjusted for the gas it burned, so the
+ * figure booked into the ledger is what really arrived rather than what the
+ * vault said was owed.
+ */
+export async function claimVaultCredit(
+  from: PrivateKeyAccount,
+): Promise<{ txHash: string; received: bigint } | null> {
+  return withWalletLock(from.address, async () => {
+    const credited = await vaultCreditOf(from.address);
+    if (credited <= 0n) return null;
+
+    const wallet = getWalletClient(from);
+    const hash = await wallet.sendTransaction({
+      account: from,
+      chain: robinhoodChain,
+      to: PONS_FEE_VAULT,
+      data: VAULT_CLAIM_SELECTOR as Hex,
+    });
+    const receipt = await getPublicClient().waitForTransactionReceipt({ hash, confirmations: 1 });
+    if (receipt.status !== 'success') {
+      throw new Error(`${LOG_PREFIX} vault claim reverted: ${hash}`);
+    }
+    const measured = await nativeCreditedByTx(receipt, from.address);
+    // Fall back to what the vault said was owed when the measurement is
+    // unavailable — never report zero for a claim that actually paid.
+    return { txHash: hash, received: measured != null && measured > 0n ? measured : credited };
+  });
+}
+
 // ── Prices ───────────────────────────────────────────────────
 export interface TokenPrice {
   address: string;

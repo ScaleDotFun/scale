@@ -2,95 +2,144 @@
 // LOADED PROTOCOL — Fee Claimer Worker (Robinhood Chain)
 // ──────────────────────────────────────────────
 //
-// Keeps the pool ledger honest about money that arrives on its own.
+// Collects the PONS creator fees our listed coins earn. This is a real
+// two-transaction job, not bookkeeping.
 //
-// There is no "claim" step on PONS: a creator who points their Creator wallet
-// at the LOADED pool wallet redirects the fee stream at the protocol level, so
-// their share simply lands as ordinary ETH credits from the coin's bonding
-// curve. Nothing to call, and no event log tying a credit to a coin.
+// Fees do NOT arrive on their own. They accrue inside each coin's bonding
+// curve; a permissionless FLUSH moves them into a shared escrow vault as a
+// credit to the recipient; and only a CLAIM sent BY that recipient turns the
+// credit into native ETH. claim() pays msg.sender and takes no beneficiary
+// argument, so nobody can collect for us — the pool wallet signs its own.
 //
-// So instead of trying to claim or attribute, this worker reconciles: every
-// deliberate flow writes a poolLedger row, so whatever the wallet holds beyond
-// the ledger's sum is income that arrived by itself. It books the difference.
-// Set FEE_WALLET to watch a separate address instead of the pool.
+// The evidence for that shape: on one live curve, 142 fee-bearing trades
+// accrued 0.1321 ETH while the recipient's balance never moved; and ~887 ETH
+// sits credited-but-unclaimed in the vault, which is exactly what accumulates
+// when a beneficiary never runs step 2. An earlier version of this worker
+// assumed fees simply landed and only compared balances — against a wallet
+// that will never move on its own, it would have booked nothing, forever.
 //
 
 import { Worker, type Job } from 'bullmq';
 import { prisma } from '@loaded/database';
 import { WEI_PER_ETH } from '@loaded/core';
-import { getNativeBalance, isValidAddress, protocolPublicKey } from '@loaded/evm';
+import {
+  getNativeBalance,
+  getProtocolAccount,
+  hasProtocolKey,
+  protocolPublicKey,
+  findCurveForToken,
+  flushCurveFees,
+  claimVaultCredit,
+  vaultCreditOf,
+  explorerTxUrl,
+} from '@loaded/evm';
 import { redisConnection, QUEUE_NAMES, feeClaimsQueue } from './queues.js';
 
 const PREFIX = '[fee-claimer]';
 
-/** Ignore dust below 0.00001 ETH (a few cents — below any real fee claim) */
-const MIN_INFLOW_WEI = WEI_PER_ETH / 100_000n;
+/** Ignore dust below 0.00001 ETH — below any real fee claim. */
+const MIN_CLAIM_WEI = WEI_PER_ETH / 100_000n;
+
+/**
+ * Gas floor. A flush costs ~0.00002 ETH and a claim ~0.000009 ETH, but the
+ * base fee on this chain has spiked ~10x for minutes at a time, so keep enough
+ * headroom that a spike cannot leave the pool unable to run its own collection.
+ */
+const MIN_GAS_TO_OPERATE = WEI_PER_ETH / 2_000n; // 0.0005 ETH
+
+const fmt = (wei: bigint) => `${(Number(wei) / 1e18).toFixed(6)} ETH`;
 
 interface FeeClaimJobData {
   tokenId?: number;
 }
 
-function feeWallet(): string | null {
-  const addr = (process.env.FEE_WALLET ?? '').trim();
-  return addr && isValidAddress(addr) ? addr : null;
-}
-
 /**
- * Reconcile the pool wallet against the pool ledger.
+ * Flush every listed coin's curve, then claim the whole vault credit at once.
  *
- * There is nothing to "claim" from PONS. A creator who points their Creator
- * wallet at us is redirecting the fee stream at the protocol level, so the
- * money simply arrives — as plain ETH credits from each coin's bonding curve,
- * with no claim call to make and no event log to match against a coin.
- *
- * What was missing was recording it. Every deliberate flow already writes a
- * poolLedger row, so anything the wallet holds beyond the ledger's sum is
- * income that arrived on its own: creator fees, mostly. Booking the difference
- * keeps the ledger honest without inventing a per-coin attribution the chain
- * cannot support.
- *
- * This replaces a Redis balance watermark, which lost any inflow that shared a
- * polling window with an outflow (a balance snapshot cannot tell those apart)
- * and silently dropped an interval whenever the key was evicted. A difference
- * recomputed from durable state each tick has neither failure mode.
+ * Flushing is idempotent — a curve with nothing accrued moves nothing — so
+ * this is safe to run on a schedule and safe to retry.
  */
-async function processFeeWatch(_job: Job<FeeClaimJobData>): Promise<void> {
-  // An explicitly configured fee wallet still takes precedence, for setups
-  // that route fees somewhere separate from the trading pool.
-  const watched = feeWallet() ?? protocolPublicKey();
-  if (!watched) return;
+async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
+  const pool = protocolPublicKey();
+  if (!pool) return;
 
-  const [onchain, ledgerAgg] = await Promise.all([
-    getNativeBalance(watched),
-    prisma.poolLedger.aggregate({ _sum: { amount: true } }),
-  ]);
-  const ledger = ledgerAgg._sum.amount ?? 0n;
-  const unaccounted = onchain - ledger;
-
-  if (unaccounted < MIN_INFLOW_WEI) {
-    if (unaccounted < 0n) {
-      // The wallet holds LESS than the books say. Never book a negative here:
-      // an in-flight transaction looks exactly like this for a few seconds.
-      // Worth saying out loud if it persists, though.
-      console.warn(
-        `${PREFIX} pool wallet is ${(Number(-unaccounted) / 1e18).toFixed(6)} ETH below the ledger — ` +
-        `expected briefly while a transaction settles, investigate if it persists`,
+  if (!hasProtocolKey()) {
+    // Read-only: we can still say what is waiting, which is worth knowing.
+    const credited = await vaultCreditOf(pool).catch(() => 0n);
+    if (credited > 0n) {
+      console.error(
+        `${PREFIX} CRITICAL: ${fmt(credited)} of creator fees are credited to the pool wallet but ` +
+        `PROTOCOL_WALLET_PRIVATE_KEY is not set, so they cannot be claimed.`,
       );
     }
     return;
   }
 
+  const account = getProtocolAccount();
+  const gas = await getNativeBalance(account.address);
+
+  if (gas < MIN_GAS_TO_OPERATE) {
+    const credited = await vaultCreditOf(pool).catch(() => 0n);
+    // The bootstrap trap, stated plainly: claiming costs gas, and only the
+    // beneficiary can claim, so a wallet at zero cannot fund itself.
+    console.warn(
+      `${PREFIX} pool wallet holds ${fmt(gas)} — below the ${fmt(MIN_GAS_TO_OPERATE)} needed to run a ` +
+      `flush + claim. ${credited > 0n ? `${fmt(credited)} of fees are waiting in the vault. ` : ''}` +
+      `Send the pool wallet a small amount of ETH to unblock collection.`,
+    );
+    return;
+  }
+
+  // ── Step 1: flush each listed coin's curve into the vault ──
+  const tokens = await prisma.token.findMany({
+    where: { isActive: true },
+    select: { id: true, address: true, symbol: true },
+  });
+
+  let flushed = 0;
+  for (const t of tokens) {
+    try {
+      const curve = await findCurveForToken(t.address);
+      if (!curve) continue;
+      const tx = await flushCurveFees(account, curve);
+      if (tx) {
+        flushed++;
+        console.log(`${PREFIX} flushed ${t.symbol ?? t.address} (curve ${curve}) — ${explorerTxUrl(tx)}`);
+      }
+    } catch (err) {
+      // One coin's curve must never stop the sweep, and a revert here just
+      // means there was nothing accrued to move.
+      console.warn(`${PREFIX} flush skipped for ${t.symbol ?? t.address}:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  // ── Step 2: turn the vault credit into ETH ──
+  const credited = await vaultCreditOf(pool).catch(() => 0n);
+  if (credited < MIN_CLAIM_WEI) {
+    if (flushed > 0) console.log(`${PREFIX} flushed ${flushed} curve(s); nothing above dust to claim yet`);
+    return;
+  }
+
+  let claim: { txHash: string; received: bigint } | null;
+  try {
+    claim = await claimVaultCredit(account);
+  } catch (err) {
+    console.error(`${PREFIX} vault claim failed:`, err instanceof Error ? err.message : err);
+    throw err; // let BullMQ retry — the credit stays in the vault, nothing is lost
+  }
+  if (!claim) return;
+
   await prisma.poolLedger.create({
     data: {
-      type: 'pool_reconcile',
-      amount: unaccounted,
-      txHash: null, // arrived as ordinary credits; no single transaction to cite
+      type: 'fee_claim',
+      amount: claim.received,
+      txHash: claim.txHash,
     },
   });
 
   console.log(
-    `${PREFIX} 💰 Booked ${(Number(unaccounted) / 1e18).toFixed(6)} ETH of unaccounted pool income ` +
-    `(creator fees) — ledger now matches the wallet at ${(Number(onchain) / 1e18).toFixed(6)} ETH`,
+    `${PREFIX} 💰 Claimed ${fmt(claim.received)} of PONS creator fees into the pool ` +
+    `(${flushed} curve(s) flushed) — ${explorerTxUrl(claim.txHash)}`,
   );
 }
 
@@ -100,7 +149,7 @@ async function processFeeWatch(_job: Job<FeeClaimJobData>): Promise<void> {
 
 export const feeClaimerWorker = new Worker<FeeClaimJobData>(
   QUEUE_NAMES.FEE_CLAIMS,
-  processFeeWatch,
+  processFeeClaim,
   {
     connection: redisConnection,
     concurrency: 1,
@@ -115,25 +164,12 @@ feeClaimerWorker.on('error', (err) => {
   console.error(`${PREFIX} Worker error: ${err.message}`);
 });
 
-// ──────────────────────────────────────────────
-// Repeatable job setup
-// ──────────────────────────────────────────────
-
-/** Schedule the fee watch every 5 minutes. */
+/** Schedule the recurring fee sweep. */
 export async function scheduleFeeClaimer(): Promise<void> {
-  const existing = await feeClaimsQueue.getRepeatableJobs();
-  for (const job of existing) {
-    await feeClaimsQueue.removeRepeatableByKey(job.key);
-  }
-
   await feeClaimsQueue.add(
-    'watch-fees',
+    'sweep-fees',
     {},
-    {
-      repeat: { every: 5 * 60 * 1000 },
-      attempts: 1,
-    },
+    { repeat: { every: 5 * 60_000 }, jobId: 'fee-sweep-recurring' },
   );
-
-  console.log(`${PREFIX} Scheduled fee watch every 5 minutes`);
+  console.log(`${PREFIX} Scheduled fee flush + claim every 5 minutes`);
 }

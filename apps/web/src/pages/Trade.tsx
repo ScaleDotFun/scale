@@ -216,6 +216,12 @@ export const Trade: FC = () => {
   // nothing, because the user sizes a real trade against them. Every token
   // endpoint now returns these, so a missing value means "still loading".
   const hasTierConfig = selectedToken?.flatFeePct != null && selectedToken?.exitThresholdPct != null;
+  // The cap is per tier — 7x bonded, 5x rising, 3x degen — and the API sends it
+  // with the coin. Offering 10x let the user dial a position the server rejects.
+  const maxLeverage = selectedToken?.maxLeverage ?? 3;
+  useEffect(() => {
+    setLeverage((l) => (l > maxLeverage ? maxLeverage : l));
+  }, [maxLeverage]);
   const flatFeePct = selectedToken?.flatFeePct ?? 0;
   const flatFee = positionSize * (flatFeePct / 100);
   // The threshold the protocol ACTUALLY closes at — the raw tier threshold
@@ -679,14 +685,14 @@ export const Trade: FC = () => {
                   <input
                     type="range"
                     min="2"
-                    max="10"
+                    max={maxLeverage}
                     step="1"
                     value={leverage}
                     onChange={(e) => setLeverage(Number(e.target.value))}
                     className="leverage-slider"
                   />
                   <div className="exec-lev-row">
-                    {[2, 3, 5, 7, 10].map((lev) => (
+                    {[2, 3, 5, 7, 10].filter((lev) => lev <= maxLeverage).map((lev) => (
                       <motion.button
                         key={lev}
                         className={`exec-lev-btn ${leverage === lev ? 'exec-lev-active' : ''}`}

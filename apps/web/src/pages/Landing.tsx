@@ -212,7 +212,7 @@ const LiveStats: FC = () => {
   // back to a protocol fact that is true on day one and swaps itself out
   // for the live number the moment there is one.
   const items = [
-    { k: 'MAX LEVERAGE', v: '10.0X' },
+    { k: 'MAX LEVERAGE', v: '7.0X' },
     {
       k: pool > 0 ? 'LENDING POOL' : 'EXECUTION',
       v: pool > 0 ? `${pool.toFixed(2)} ETH` : 'ON-CHAIN',
@@ -312,7 +312,7 @@ export const Landing: FC = () => {
           <Typewriter
             className="lp-sub"
             delay={1300}
-            text="Up to 10x on any PONS coin. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
+            text="Up to 7x on any PONS coin. You post collateral, the pool fronts the rest, everything executes on-chain. No order books. No wallet extension. No mercy."
           />
 
           <motion.div
@@ -358,7 +358,7 @@ export const Landing: FC = () => {
         <div className="lp-marquee-track">
           {[0, 1].map((k) => (
             <div className="lp-marquee-seg" key={k} aria-hidden={k === 1}>
-              <span>NO CEX</span><i>◆</i><span>PURE ON-CHAIN</span><i>◆</i><span>10X LEVERAGE</span><i>◆</i>
+              <span>NO CEX</span><i>◆</i><span>PURE ON-CHAIN</span><i>◆</i><span>7X LEVERAGE</span><i>◆</i>
               <span>Real on-chain swaps</span><i>◆</i><span>CREATORS GET PAID</span><i>◆</i><span>THE POOL NEVER LOSES</span><i>◆</i>
             </div>
           ))}
@@ -387,7 +387,7 @@ export const Landing: FC = () => {
         <div className="lp-steps">
           {[
             { n: '01', t: 'DEPOSIT', d: 'Sign in with email. A custodial Robinhood Chain wallet is generated — no extension, no seed-phrase anxiety. Fund it with ETH.' },
-            { n: '02', t: 'PICK & SIZE', d: 'Choose any listed PONS coin. Set collateral and dial leverage 2–10x. The lending pool fronts the rest — instantly.' },
+            { n: '02', t: 'PICK & SIZE', d: 'Choose any listed PONS coin. Set collateral and dial leverage up to the coin’s tier cap — 7x bonded, 5x rising, 3x degen. The lending pool fronts the rest — instantly.' },
             { n: '03', t: 'RIDE OR DIE', d: 'Position executes as a real on-chain swap. Take profit, stop loss, or 24h auto-close. Profits split 70/30 with $LOADED buybacks.' },
           ].map((c, i) => (
             <Reveal delay={i * 0.1} key={c.n}>
@@ -417,9 +417,9 @@ export const Landing: FC = () => {
               <span>CLASS</span><span>MAX LEV</span><span>LIQ. AT</span><span>DESCRIPTION</span>
             </div>
             {[
-              { name: 'BONDED', lev: '10X', liq: '-15%', desc: 'Graduated on PONS. Deep liquidity, maximum send.', cls: 'lp-tier-bonded' },
-              { name: 'RISING', lev: '5X', liq: '-12%', desc: '$100K+ market cap and climbing. Balanced degen.', cls: 'lp-tier-rising' },
-              { name: 'DEGEN', lev: '3X', liq: '-10%', desc: 'Fresh off the curve. Tight leash, pure adrenaline.', cls: 'lp-tier-degen' },
+              { name: 'BONDED', lev: '7X', liq: '-10%', desc: 'Graduated on PONS. Deep liquidity, maximum send.', cls: 'lp-tier-bonded' },
+              { name: 'RISING', lev: '5X', liq: '-15%', desc: '$100K+ market cap and climbing. Balanced degen.', cls: 'lp-tier-rising' },
+              { name: 'DEGEN', lev: '3X', liq: '-25%', desc: 'Fresh off the curve. Tight leash, pure adrenaline.', cls: 'lp-tier-degen' },
             ].map((t) => (
               <div className={`lp-tier-row ${t.cls}`} key={t.name}>
                 <span className="lp-tier-name">■ {t.name}</span>

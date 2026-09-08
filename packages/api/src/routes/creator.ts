@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import { prisma } from '@loaded/database';
 import { WEI_PER_ETH, getTierConfig, type Tier } from '@loaded/core';
-import { isValidAddress, transferNative, getProtocolAccount, hasProtocolKey } from '@loaded/evm';
+import { isValidAddress, transferNative, getProtocolAccount, hasProtocolKey, getNativeBalance, poolReserveFor } from '@loaded/evm';
 import { verifyWalletSignature, type AuthenticatedRequest } from '../middleware/auth';
 import { publicLimiter } from '../middleware/rateLimit';
 import { sendSuccess, sendError, sendPaginated } from '../lib/response';
@@ -319,7 +319,23 @@ router.post('/claim', verifyWalletSignature, async (req, res) => {
     // rows were flipped to 'claimed' and the money never left the pool.)
     let claimTx: string;
     try {
-      claimTx = await transferNative(getProtocolAccount(), wallet, totalAmount);
+      // Never drain below what open positions need to unwind. A creator claim
+      // is not urgent; a position that cannot be sold is. Without this the
+      // claim could empty the wallet past sell-gas while positions are open.
+      const account = getProtocolAccount();
+      const [poolBal, openCount] = await Promise.all([
+        getNativeBalance(account.address),
+        prisma.position.count({ where: { status: { in: ['open', 'opening', 'closing'] } } }),
+      ]);
+      const reserve = poolReserveFor(openCount);
+      if (poolBal < totalAmount + reserve) {
+        throw new InsufficientFundsError(
+          `The pool cannot release ${(Number(totalAmount) / 1e18).toFixed(6)} ETH right now without ` +
+          `dropping below the reserve it needs to close ${openCount} open position(s). ` +
+          `Your payout stays claimable — try again shortly.`,
+        );
+      }
+      claimTx = await transferNative(account, wallet, totalAmount);
     } catch (xferErr) {
       // Transfer failed — release the batch so the creator can retry.
       await prisma.creatorPayout.updateMany({

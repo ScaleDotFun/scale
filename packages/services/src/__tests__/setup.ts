@@ -84,6 +84,15 @@ vi.mock('@loaded/evm', () => ({
   verifyCreatorFeeShare: vi.fn(() => Promise.resolve({ status: 'not_found', walletPct: 0, shareholders: [] })),
   getUsdPrices: vi.fn(() => Promise.resolve(new Map())),
   getEthUsd: vi.fn(() => Promise.resolve(2_500)),
+  findCurveForToken: vi.fn(() => Promise.resolve(null)),
+  readCurveDeployer: vi.fn(() => Promise.resolve(null)),
+  readCreatorFeeRecipient: vi.fn(() => Promise.resolve(null)),
+  readCurveGraduated: vi.fn(() => Promise.resolve(false)),
+  flushCurveFees: vi.fn(() => Promise.resolve(null)),
+  claimVaultCredit: vi.fn(() => Promise.resolve(null)),
+  vaultCreditOf: vi.fn(() => Promise.resolve(0n)),
+  poolReserveFor: vi.fn((n: number) => 3_000_000_000_000_000n + 1_000_000_000_000_000n * BigInt(n)),
+  explorerTxUrl: vi.fn((h: string) => `https://explorer.chain.robinhood.com/tx/${h}`),
 }));
 
 // ─── Mock BullMQ ──────────────────────────────
@@ -97,8 +106,9 @@ vi.mock('bullmq', () => {
   // arrow-function mock is not a constructor, so importing one threw.
   return {
     Queue: vi.fn(function () { return mockQueue; }),
-    Worker: vi.fn(function () {
-      return { on: vi.fn(), close: vi.fn(() => Promise.resolve()) };
+    // Keep a handle on the processor so tests can drive a worker directly.
+    Worker: vi.fn(function (_name: string, processor: unknown) {
+      return { on: vi.fn(), close: vi.fn(() => Promise.resolve()), __processor: processor };
     }),
   };
 });

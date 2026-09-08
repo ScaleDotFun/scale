@@ -79,8 +79,18 @@ async function fetchSnapshot(): Promise<OnchainStats | null> {
 }
 
 /**
- * Cached on-chain snapshot. Returns null only if the chain read fails
- * and no previous snapshot exists — callers degrade honestly.
+ * How stale a snapshot may get before it stops being usable at all.
+ *
+ * The cache used to be returned indefinitely once a refresh started failing,
+ * so a balance read minutes or hours out of date could keep authorising
+ * positions against money the wallet no longer had. Past this ceiling the
+ * honest answer is "unknown", and the trading gate refuses rather than guesses.
+ */
+const CACHE_HARD_MAX_MS = 10 * 60_000;
+
+/**
+ * Cached on-chain snapshot. Returns null when the chain read fails and the
+ * last snapshot is too old to stand in for it — callers degrade honestly.
  */
 export async function getOnchainStats(): Promise<OnchainStats | null> {
   if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) return cache;
@@ -88,6 +98,17 @@ export async function getOnchainStats(): Promise<OnchainStats | null> {
     inFlight = fetchSnapshot().finally(() => { inFlight = null; });
   }
   const fresh = await inFlight;
-  if (fresh) cache = fresh;
-  return cache;
+  if (fresh) {
+    cache = fresh;
+    return cache;
+  }
+  if (cache && Date.now() - cache.fetchedAt < CACHE_HARD_MAX_MS) return cache;
+  if (cache) {
+    console.error(
+      `[onchain] discarding a snapshot ${Math.round((Date.now() - cache.fetchedAt) / 1000)}s old — ` +
+      `the chain has been unreadable for too long to keep quoting it`,
+    );
+    cache = null;
+  }
+  return null;
 }

@@ -456,13 +456,19 @@ router.post('/list', async (req, res) => {
     // redirects, that recipient IS our pool wallet, so booking payouts against
     // it would make the protocol the beneficiary of its own creator revenue
     // share. Fall back to the pool only when the chain would not tell us.
-    let creatorWallet = poolWalletAddress() ?? canonicalAddress;
+    // Empty when the chain will not tell us, never the pool wallet: booking the
+    // protocol as its own creator turns the 30% revenue share into a liability
+    // owed to itself, which is then payable on claim. An empty creatorWallet
+    // means no payout is dispatched at all — the honest outcome. Never the
+    // token address either; nobody can sign for a token contract.
+    let creatorWallet = '';
     try {
       const curve = await findCurveForToken(canonicalAddress);
       const deployer = curve ? await readCurveDeployer(curve) : null;
       if (deployer) creatorWallet = deployer;
+      else console.warn(`[tokens] no creator resolved for ${canonicalAddress} — listing with no payee`);
     } catch {
-      // best-effort — a listing must not fail because the creator lookup did
+      console.warn(`[tokens] creator lookup failed for ${canonicalAddress} — listing with no payee`);
     }
 
     // Create token record

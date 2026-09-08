@@ -254,6 +254,22 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
     const finalStatus = determineStatus(isProfitable, reason);
 
     // ── Payout (exactly-once) ────────────────────────
+    // A reservation that is still 'pending:' means an earlier attempt started a
+    // payout and never confirmed it. That is NOT a paid position. Settling it
+    // would mark the row closed and credit the ledger as though the user had
+    // been paid, while their ETH may never have left the pool — and no sweep
+    // revisits a terminal row. Stop here instead: the row stays in 'closing',
+    // stays visible to `recover.js stuck`, and can be resolved deliberately.
+    if (userReturnWei > 0n && position.userReturnTx?.startsWith('pending:')) {
+      console.error(
+        `${PREFIX} CRITICAL: #${positionId} holds an unresolved payout reservation ` +
+        `(${position.userReturnTx}). ${userReturnWei} wei may or may not have reached ` +
+        `${position.userWallet}. NOT settling — run 'node dist/scripts/recover.js stuck' and ` +
+        `check the pool wallet's history before releasing it.`,
+      );
+      throw new Error(`#${positionId}: unresolved payout reservation — refusing to settle`);
+    }
+
     // Reading userReturnTx and then acting on it is not enough: the recovery
     // sweep can enqueue a 'finalize' while the original close is merely slow,
     // and both would read null and both pay from pool funds. Reserve the payout

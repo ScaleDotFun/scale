@@ -260,6 +260,25 @@ router.post('/admin/fund-wallet', authLimiter, async (req, res) => {
     const protocolAccount = getProtocolAccount();
     const amount = BigInt(amountWei);
 
+    // Respect the unwind reserve. This route had no balance check at all and
+    // would happily empty the wallet while positions were open, leaving them
+    // unclosable. `force: true` is the deliberate override for a real drain.
+    const { getNativeBalance, poolReserveFor } = await import('@loaded/evm');
+    const [poolBal, openCount] = await Promise.all([
+      getNativeBalance(protocolAccount.address),
+      prisma.position.count({ where: { status: { in: ['open', 'opening', 'closing'] } } }),
+    ]);
+    const reserve = poolReserveFor(openCount);
+    if (req.body.force !== true && poolBal < amount + reserve) {
+      return res.status(409).json({
+        success: false,
+        error:
+          `Refusing to send ${(Number(amount) / 1e18).toFixed(6)} ETH: it would leave the pool below the ` +
+          `${(Number(reserve) / 1e18).toFixed(6)} ETH needed to close ${openCount} open position(s). ` +
+          `Resend with force: true to override.`,
+      });
+    }
+
     const txSig = await transferNative(protocolAccount, destinationAddress, amount);
 
     // Record the outflow. Without this a successful call moved pool ETH with

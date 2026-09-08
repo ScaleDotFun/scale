@@ -191,9 +191,12 @@ export const ListToken: FC = () => {
           style={guideImg}
         />
         <span style={guideCap}>
-          Already launched? Call{' '}
-          <code style={codeStyle}>setCreatorFeeRecipient(address)</code> on your
-          coin's curve from the deploying wallet — only the deployer can set it.
+          <strong>Set this at launch — it cannot be changed afterwards.</strong>{' '}
+          The fee recipient lives on your coin's bonding curve, and only the PONS
+          factory can write it. Verified on-chain: the setter reverts for the
+          deploying wallet, for the current recipient and for everyone else, on
+          bonding-curve and graduated coins alike. A coin that is already live
+          cannot be repointed at LOADED — ask PONS directly if you need that.
         </span>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
@@ -310,7 +313,7 @@ export const ListToken: FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
           { title: 'Launch on PONS', desc: 'Create your coin on PONS — name, ticker, image, launch. Bonding curve or already graduated, both qualify.' },
-          { title: 'Route the Creator Fee to the Pool', desc: 'Put the LOADED pool address in the Creator wallet field at launch, or call setCreatorFeeRecipient on your curve afterwards. PONS charges 1% per trade; your creator tax share of it is what you route.' },
+          { title: 'Route the Creator Fee to the Pool', desc: 'Put the LOADED pool address in the Creator wallet field when you launch — this is your only chance, the recipient cannot be changed once the coin is live. PONS charges 1% per trade; your creator tax share of it is what you route, so set Creator tax as high as you are willing to go and leave Holder fee sharing off (it sends fees to a distributor instead of your wallet).' },
           { title: 'Paste the Contract Address', desc: 'Copy the 0x… CA from your coin\'s PONS page, paste it above, and LOADED lists it instantly with tier, name, and logo auto-detected.' },
           { title: 'Earn 30% of Flat Fees', desc: 'Traders take leveraged positions on your coin with real on-chain swaps, and 30% of every flat fee accrues to your launch wallet — usually worth far more than the creator fee you routed.' },
         ].map((step, i) => (

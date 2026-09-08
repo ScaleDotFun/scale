@@ -42,3 +42,6 @@ coverage/
 .railway-config-pull-*
 .fuse_hidden*
 .env*
+
+# agent scratch files
+packages/evm/_*

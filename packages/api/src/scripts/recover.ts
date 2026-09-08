@@ -38,8 +38,15 @@ import {
 
 const fmt = (wei: bigint) => `${(Number(wei) / 1e18).toFixed(6)} ETH`;
 
-/** Gas the sweep itself needs; sending the entire balance would strand the tx. */
-const GAS_RESERVE = 200_000_000_000_000n; // 0.0002 ETH
+/**
+ * Gas left behind by a sweep.
+ *
+ * 0.0002 ETH was below the ~0.00024 ETH a single LI.FI swap needs up front at
+ * baseline fees — so after a sweep the wallet could not submit even one swap,
+ * and any still-open position became unclosable. Leave enough for a real
+ * unwind instead. `sweep-pool` is a recovery tool, not a profit-taking one.
+ */
+const GAS_RESERVE = 3_000_000_000_000_000n; // 0.003 ETH
 
 async function report(): Promise<void> {
   console.log('\n════ WHERE THE MONEY IS ════\n');
@@ -147,6 +154,89 @@ async function poolTokenUniverse(): Promise<Array<{ address: string; symbol: str
     byAddr.set(loaded.toLowerCase(), { address: loaded, symbol: 'LOADED' });
   }
   return [...byAddr.values()];
+}
+
+/**
+ * Positions whose money is mid-flight and needs a human decision.
+ *
+ * A payout or refund reserves its slot as `pending:<uuid>` before it moves ETH
+ * and deliberately does NOT release that reservation on failure, because
+ * transferNative also throws on a confirmation timeout — where the transfer
+ * can still land. Failing closed is right, but it leaves rows that nothing
+ * revisits. This lists them so they can be resolved deliberately instead of
+ * being written off or paid twice.
+ */
+async function stuck(): Promise<void> {
+  const pool = protocolPublicKey();
+  const rows = await prisma.position.findMany({
+    where: {
+      OR: [
+        { userReturnTx: { startsWith: 'pending:' } },
+        { status: { in: ['opening', 'closing'] } },
+      ],
+    },
+    select: {
+      id: true, status: true, userWallet: true, userCapital: true, protocolCapital: true,
+      collateralTx: true, openTx: true, closeTx: true, userReturnTx: true,
+      ethReceived: true, statusChangedAt: true,
+      token: { select: { symbol: true, address: true } },
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  if (rows.length === 0) {
+    console.log('\n════ NOTHING STUCK ════\n  Every position is settled.\n');
+    return;
+  }
+
+  console.log(`\n════ POSITIONS NEEDING ATTENTION (${rows.length}) ════\n`);
+  for (const r of rows) {
+    const held = r.userReturnTx?.startsWith('pending:');
+    const age = Math.round((Date.now() - r.statusChangedAt.getTime()) / 60_000);
+    console.log(`  #${r.id}  ${r.token.symbol ?? r.token.address}  status=${r.status}  ${age}m in this state`);
+    console.log(`     user            : ${r.userWallet}`);
+    console.log(`     user capital    : ${fmt(r.userCapital)}`);
+    if (r.collateralTx) console.log(`     collateral tx   : ${r.collateralTx}`);
+    if (r.openTx) console.log(`     buy tx          : ${r.openTx}`);
+    if (r.closeTx) console.log(`     sell tx         : ${r.closeTx}  proceeds ${fmt(r.ethReceived ?? 0n)}`);
+    if (held) {
+      console.log(`     PAYOUT RESERVED : ${r.userReturnTx}`);
+      console.log(`     → an ETH transfer to the user was started and never confirmed.`);
+      console.log(`       Check whether it landed: ${pool ? explorerAddressUrl(pool) : '(pool wallet unknown)'}`);
+      console.log(`       If it did NOT land, clear it so the closer can pay:`);
+      console.log(`         node dist/scripts/recover.js release ${r.id} --execute`);
+    } else if (r.userReturnTx) {
+      console.log(`     paid            : ${r.userReturnTx}`);
+    }
+    console.log('');
+  }
+  console.log('  Never release a reservation without checking the chain first — releasing one');
+  console.log('  whose transfer DID land pays the user a second time out of the pool.${BS}n'.replace('${BS}n',''));
+  console.log('');
+}
+
+/**
+ * Clear an unresolved payout reservation so the normal close path can retry.
+ * Only ever run this after confirming on-chain that the transfer did not land.
+ */
+async function release(idRaw: string, execute: boolean): Promise<void> {
+  const id = Number(idRaw);
+  if (!Number.isInteger(id)) throw new Error(`not a position id: ${idRaw}`);
+  const row = await prisma.position.findUnique({
+    where: { id },
+    select: { id: true, status: true, userReturnTx: true, userWallet: true },
+  });
+  if (!row) throw new Error(`position #${id} not found`);
+  if (!row.userReturnTx?.startsWith('pending:')) {
+    console.log(`  #${id} holds no pending reservation (userReturnTx = ${row.userReturnTx ?? 'null'}) — nothing to release`);
+    return;
+  }
+  console.log(`  ${execute ? 'releasing' : 'would release'} the payout reservation on #${id} (${row.userReturnTx})`);
+  console.log(`  the closer will then be free to pay ${row.userWallet} again — be certain the first transfer did not land`);
+  if (execute) {
+    await prisma.position.update({ where: { id }, data: { userReturnTx: null } });
+    console.log('  released.');
+  }
 }
 
 async function sweepPool(dest: string, execute: boolean): Promise<void> {
@@ -260,16 +350,18 @@ async function exportKeys(path: string): Promise<void> {
 async function main(): Promise<void> {
   const [cmd, arg] = process.argv.slice(2);
   const execute = process.argv.includes('--execute');
-  if (!execute && (cmd === 'sweep-pool' || cmd === 'sweep-users')) {
+  if (!execute && (cmd === 'sweep-pool' || cmd === 'sweep-users' || cmd === 'release')) {
     console.log('\n*** DRY RUN — pass --execute to actually move funds ***');
   }
   switch (cmd) {
     case 'report': await report(); break;
+    case 'stuck': await stuck(); break;
+    case 'release': await release(arg!, execute); break;
     case 'sweep-pool': await sweepPool(arg!, execute); break;
     case 'sweep-users': await sweepUsers(arg!, execute); break;
     case 'export-keys': await exportKeys(arg ?? './wallet-export.json'); break;
     default:
-      console.log('commands: report | sweep-pool <dest> | sweep-users <dest> | export-keys [path]');
+      console.log('commands: report | stuck | release <positionId> | sweep-pool <dest> | sweep-users <dest> | export-keys [path]');
   }
   await prisma.$disconnect();
 }

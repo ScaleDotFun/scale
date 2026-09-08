@@ -95,6 +95,13 @@ router.post(
       }
 
       const tier = token.tier as Tier;
+      // Validate leverage before it reaches any arithmetic. A non-numeric or
+      // fractional value used to fall through into the position maths and
+      // surface as an opaque 500 rather than a message the user can act on.
+      const leverageNum = Number(leverage);
+      if (!Number.isInteger(leverageNum) || leverageNum < 1 || leverageNum > 100) {
+        throw new ValidationError('Leverage must be a whole number between 1 and the tier maximum');
+      }
       let userCapital: bigint;
       try {
         userCapital = BigInt(userCapitalWei);
@@ -103,21 +110,49 @@ router.post(
       }
 
       // Pool capacity — the protocol wallet's REAL on-chain ETH balance is
-      // what actually fronts the swap, so that's the gate. The DB ledger
-      // is internal accounting and starts empty (no fees yet), so it must
-      // never block a position the funded wallet can genuinely fill. Keep
-      // a small fee reserve so the pool can always pay for its own txs.
-      const [poolAgg, onchain] = await Promise.all([
-        prisma.poolLedger.aggregate({ _sum: { amount: true } }),
+      // what actually fronts the swap, so that is the gate.
+      const [onchain, liveCount] = await Promise.all([
         (await import('../lib/onchain')).getOnchainStats(),
+        prisma.position.count({ where: { status: { in: ['open', 'opening', 'closing'] } } }),
       ]);
-      const ledgerBalance = poolAgg._sum.amount ?? 0n;
-      const POOL_GAS_RESERVE = WEI_PER_ETH / 1_000n; // 0.001 ETH — L2 gas is cheap
-      const poolBalance = onchain
-        ? (BigInt(onchain.poolWalletWei) > POOL_GAS_RESERVE
-            ? BigInt(onchain.poolWalletWei) - POOL_GAS_RESERVE
-            : 0n)
-        : ledgerBalance;
+
+      // Gas reserve. Every open position is an obligation to run a sell, a
+      // payout and the downstream jobs later, and all of that is paid in gas by
+      // this same wallet — so the reserve has to scale with how many are open,
+      // not sit at a flat constant. A measured full close cycle costs ~5.2e-4
+      // ETH at baseline, but the base fee on this chain has spiked ~10x for
+      // minutes at a time, and at those prices a single swap needs ~2.4e-3 ETH
+      // of liquid balance before the node will even accept it. The old flat
+      // 0.001 ETH guaranteed a post-open balance too small to close during a
+      // spike: the position was openable and not closeable, leaving the user's
+      // collateral stuck in tokens the pool could not sell.
+      const GAS_BASE = WEI_PER_ETH / 333n;          // ~0.003 ETH — one swap at spike prices
+      const GAS_PER_OPEN_POSITION = WEI_PER_ETH / 1_000n; // 0.001 ETH per unwind obligation
+      const POOL_GAS_RESERVE = GAS_BASE + GAS_PER_OPEN_POSITION * BigInt(liveCount);
+
+      // Only the real on-chain balance can front a swap. The DB ledger is
+      // internal accounting: trusting it when the chain is unreadable would
+      // grant capacity the wallet does not have and take the user's collateral
+      // for a position the pool cannot fill.
+      if (!onchain) {
+        throw new ValidationError(
+          'Cannot read the pool wallet on-chain right now, so new positions are paused. Try again shortly.',
+        );
+      }
+      const poolWalletWei = BigInt(onchain.poolWalletWei);
+
+      // The reserve must hold regardless of leverage. At 1x the protocol fronts
+      // nothing, so the capacity check below passes even against an empty pool
+      // — but the pool still has to pay gas for the buy, the sell and the
+      // payout. Opening there took the user's collateral into a wallet that
+      // could not trade it back out.
+      if (poolWalletWei < POOL_GAS_RESERVE) {
+        throw new ValidationError(
+          'The pool is below the gas reserve it needs to open and later close a position, so trading ' +
+          'is paused. This clears as soon as creator fees are collected.',
+        );
+      }
+      const poolBalance = poolWalletWei - POOL_GAS_RESERVE;
 
       // Validate position params
       const validation = validatePositionOpen(

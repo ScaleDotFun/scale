@@ -133,7 +133,7 @@ export const Auth: FC = () => {
           {/* Stats */}
           <div style={{ display: 'flex', gap: 40 }}>
             {[
-              { label: 'Max Leverage', value: '10x' },
+              { label: 'Max Leverage', value: '7x' },
               { label: 'Trading Fee', value: '2–5%' },
               { label: 'Creator Revenue', value: '30%' },
             ].map((s) => (
