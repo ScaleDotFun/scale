@@ -50,7 +50,7 @@ describe('Position Routes', () => {
     });
 
     it('rejects when token is not found', async () => {
-      vi.mocked(prisma.token.findUnique).mockResolvedValue(null);
+      vi.mocked(prisma.token.findFirst).mockResolvedValue(null);
 
       const { agent } = createTestApp();
       const res = await agent
@@ -67,7 +67,7 @@ describe('Position Routes', () => {
     });
 
     it('rejects inactive tokens', async () => {
-      vi.mocked(prisma.token.findUnique).mockResolvedValue({
+      vi.mocked(prisma.token.findFirst).mockResolvedValue({
         id: 1,
         address: 'TestToken1234567890123456789012345678',
         tier: 'bonded',
@@ -90,7 +90,7 @@ describe('Position Routes', () => {
     });
 
     it('rejects duplicate position on same token', async () => {
-      vi.mocked(prisma.token.findUnique).mockResolvedValue({
+      vi.mocked(prisma.token.findFirst).mockResolvedValue({
         id: 1,
         address: 'TestToken1234567890123456789012345678',
         tier: 'bonded',

@@ -269,3 +269,45 @@ describe('POST /tokens/list — PONS creator-fee gate', () => {
     expect(verifyCreatorFeeShare).not.toHaveBeenCalled();
   });
 });
+
+// ──────────────────────────────────────────────
+// Address casing
+// ──────────────────────────────────────────────
+//
+// Addresses are stored EIP-55 checksummed and arrive in whatever casing the
+// caller holds — a lowercase paste from an explorer, a ?token= query param, the
+// lowercase form the market feed returns. findUnique on the raw string 404'd
+// those, and a 404 does not read as "wrong casing" anywhere downstream: the
+// terminal reads it as "not listed" and refuses to trade. A listed, fee-paying
+// coin displayed "Trading is not available for unlisted tokens" because of it.
+
+describe('token lookup is case-insensitive', () => {
+  const CHECKSUMMED = '0x578D881dE70405CeF7e8901d92cb332bFBe578dF';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('finds a listed coin when the address is passed in lowercase', async () => {
+    vi.mocked(prisma.position.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.position.aggregate).mockResolvedValue({
+      _sum: { userCapital: 0n, protocolCapital: 0n }, _count: 0,
+    } as never);
+    vi.mocked(prisma.token.findFirst).mockResolvedValue({
+      id: 1, address: CHECKSUMMED, name: 'Loaded', symbol: 'LOADED',
+      tier: 'degen', isActive: true, listedAt: new Date(),
+      totalFeesClaimed: 0n, totalTradingVolume: 0n, totalCreatorPayouts: 0n,
+    } as never);
+
+    const { agent } = createTestApp();
+    const res = await agent.get(`/api/tokens/${CHECKSUMMED.toLowerCase()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.isActive).toBe(true);
+    // The query must not compare raw strings.
+    const where = vi.mocked(prisma.token.findFirst).mock.calls.at(-1)?.[0]?.where as {
+      address: { mode?: string };
+    };
+    expect(where.address.mode).toBe('insensitive');
+  });
+});

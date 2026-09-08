@@ -395,8 +395,10 @@ router.get('/volume/:tokenAddress', verifyWalletSignature, async (req, res) => {
     const wallet = authReq.wallet!;
     const tokenAddress = req.params.tokenAddress as string;
 
-    const token = await prisma.token.findUnique({
-      where: { address: tokenAddress },
+    // Case-insensitive — see the note in routes/tokens.ts. A creator pasting
+    // their own address in lowercase was told they had no such coin.
+    const token = await prisma.token.findFirst({
+      where: { address: { equals: tokenAddress, mode: 'insensitive' } },
     });
 
     if (!token) {

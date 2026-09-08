@@ -251,8 +251,18 @@ router.get('/:address', publicLimiter, async (req, res) => {
   try {
     const address = req.params.address as string;
 
-    const token = await prisma.token.findUnique({
-      where: { address },
+      // Case-insensitive, and it has to be.
+    //
+    // Addresses are stored EIP-55 checksummed, but they arrive here in
+    // whatever casing the caller happens to hold: a lowercase address pasted
+    // from a block explorer or a wallet, a ?token= query param, the lowercase
+    // form GeckoTerminal returns. findUnique on the raw string made those
+    // 404, and a 404 here does not read as "wrong casing" anywhere
+    // downstream — it reads as "this coin is not listed", which is how a
+    // listed, fee-paying coin ended up showing "Trading is not available for
+    // unlisted tokens" in the terminal.
+    const token = await prisma.token.findFirst({
+      where: { address: { equals: address, mode: 'insensitive' } },
     });
 
     if (!token) {

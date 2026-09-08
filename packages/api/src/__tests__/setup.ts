@@ -24,6 +24,8 @@ vi.mock('@loaded/database', () => ({
       update: vi.fn(),
       delete: vi.fn(),
       count: vi.fn(),
+      aggregate: vi.fn(() => ({ _sum: { userCapital: 0n, protocolCapital: 0n }, _count: 0 })),
+      updateMany: vi.fn(),
     },
     token: {
       findUnique: vi.fn(),
