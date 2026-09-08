@@ -964,6 +964,31 @@ export async function readCreatorFeeRecipient(curve: Address): Promise<Address |
   }
 }
 
+/** graduated() on the PONS curve — true once it has migrated to Uniswap V4. */
+const CURVE_GRADUATED_SELECTOR = '0xe7c2b772';
+
+/**
+ * Whether this coin has left its bonding curve for Uniswap V4.
+ *
+ * Read from the curve rather than inferred from which venues an indexer has
+ * seen, so it is right for a coin the indexer has never heard of.
+ */
+export async function readCurveGraduated(curve: Address): Promise<boolean | null> {
+  try {
+    const client = getPublicClient();
+    const raw = await withTimeout(
+      client.call({ to: curve, data: CURVE_GRADUATED_SELECTOR as `0x${string}` }),
+      FEE_SCAN_TIMEOUT_MS,
+      'graduated()',
+    );
+    const data = raw?.data;
+    if (!data || data.length !== 66) return null;
+    return BigInt(data) !== 0n;
+  } catch {
+    return null;
+  }
+}
+
 /** deployer() on the PONS curve — the wallet that launched the coin. */
 const CURVE_DEPLOYER_SELECTOR = '0xd5f39488';
 
@@ -1013,62 +1038,49 @@ export async function verifyCreatorFeeShare(
     return { ...base, status: 'unverifiable', detail: 'Pool wallet is not a valid address.' };
   }
 
-  const info = await getTokenInfo(token);
-  if (!info) {
-    return { ...base, status: 'not_found', detail: 'No token at this address on Robinhood Chain.' };
-  }
-
-  const pools = await fetchTokenPools(token);
-  if (pools === null) {
-    return { ...base, token: info, status: 'unverifiable', detail: 'Market data is unavailable right now.' };
-  }
-
-  const dexes = pools.map((p) => p.dex).filter((d): d is string => !!d);
-  const launchpad =
-    dexes.find((d) => isPonsDex(d)) ?? dexes.find((d) => isLaunchpadToken(token, d)) ?? null;
-  // PONS graduates into Uniswap V4; a pool on any non-launchpad venue means it left the curve.
-  const graduated = dexes.some((d) => !isPonsDex(d) && !isLaunchpadToken(token, d));
-
-  if (!launchpad) {
-    return {
-      ...base,
-      token: info,
-      graduated,
-      status: 'not_launchpad_token',
-      detail: dexes.length
-        ? `Only trades on ${[...new Set(dexes)].join(', ')} — no launchpad pool.`
-        : 'No indexed pool for this token.',
-    };
-  }
-  info.launchpad = launchpad;
-
-  // The whole gate: read who this coin's creator fees are paid to, straight off
-  // its bonding curve — the contract that charges the 1% and pays the creator's
-  // slice out. PONS represents that as ONE address, so "100% redirected" is not
-  // a threshold we have to police: either it is our pool wallet or it is not.
   const pool = getAddress(poolWallet);
-  const base2 = { ...base, token: info, launchpad, poolWallet: pool, graduated };
 
+  // ── The gate is on-chain, and nothing else gates ──
+  //
+  // Resolve the coin's PONS bonding curve FIRST. This used to run last, behind
+  // a GeckoTerminal lookup that required the coin to already be indexed on a
+  // recognised dex — so a coin still on its bonding curve, which is every
+  // brand-new PONS launch, was turned away as "not a PONS launch" before the
+  // chain was ever consulted. A third-party index decides nothing here now.
   let curve: Address | null;
   try {
     curve = await findCurveForToken(token);
   } catch {
     return {
-      ...base2,
+      ...base,
       status: 'unverifiable',
       detail: 'Could not read this coin’s bonding curve on-chain right now — try again shortly.',
     };
   }
   if (!curve) {
-    // The chain answered and there is no PONS curve behind this token. The dex
-    // id said "launchpad", but only a PONS curve carries a creator fee stream
-    // we can be pointed at, so no other venue can satisfy the deal.
     return {
-      ...base2,
+      ...base,
       status: 'not_launchpad_token',
-      detail: 'No PONS bonding curve for this token — only PONS launches can be listed on LOADED.',
+      detail: 'No PONS bonding curve behind this token — only PONS launches can be listed on LOADED.',
     };
   }
+
+  // ── Enrichment: nice to have, never load-bearing ──
+  // Metadata and venue come from the market feed when it knows the coin, and
+  // are simply absent when it does not. `graduated` is read from the curve
+  // itself so it is right for a coin no indexer has seen yet.
+  const [info, pools, graduatedOnChain] = await Promise.all([
+    getTokenInfo(token).catch(() => null),
+    fetchTokenPools(token).catch(() => null),
+    readCurveGraduated(curve),
+  ]);
+  const dexes = (pools ?? []).map((p) => p.dex).filter((d): d is string => !!d);
+  const launchpad = dexes.find((d) => isPonsDex(d)) ?? 'pons';
+  const graduated =
+    graduatedOnChain ?? dexes.some((d) => !isPonsDex(d) && !isLaunchpadToken(token, d));
+  if (info) info.launchpad = launchpad;
+
+  const base2 = { ...base, token: info, launchpad, poolWallet: pool, graduated };
 
   const recipient = await readCreatorFeeRecipient(curve);
   if (!recipient) {
