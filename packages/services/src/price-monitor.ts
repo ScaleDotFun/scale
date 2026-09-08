@@ -143,7 +143,15 @@ export async function reconcileStalePositions(): Promise<void> {
     try {
       if (row.openTx) {
         const pool = getProtocolAccount().address;
-        const tokens = await confirmedTokenDelta(row.openTx, pool, row.token.address);
+        // 'unconfirmed' is the API's marker for a swap that verifiably landed
+        // (the pool's token balance grew) but whose receipt never confirmed, so
+        // there is no hash to re-read. The measured delta was recorded on the
+        // row instead — trust it, and never refund a row carrying it: the pool
+        // is holding those tokens.
+        const tokens =
+          row.openTx === 'unconfirmed'
+            ? row.tokensBought ?? null
+            : await confirmedTokenDelta(row.openTx, pool, row.token.address);
         if (tokens && tokens > 0n) {
           const positionSize = row.userCapital + row.protocolCapital;
           const entryPrice = Number(positionSize) / Number(tokens);

@@ -282,7 +282,14 @@ async function processPositionClose(job: Job<PositionCloseJobData>): Promise<voi
         data: { userReturnTx: reservation },
       });
       if (reserved.count === 0) {
-        console.warn(`${PREFIX} #${positionId}: payout already reserved by another worker, skipping transfer`);
+        // Losing the reservation race means another worker owns this payout.
+        // Falling through would settle the row and write a second
+        // position_close credit for a payout we did not make — the ledger has
+        // no unique constraint to catch it, and if the winner failed the row
+        // goes terminal unpaid. Stop, and let the owner finish or retry.
+        throw new Error(
+          `${PREFIX} #${positionId}: payout reserved by another worker — not settling here`,
+        );
       } else {
         try {
           const protocolAccount = getProtocolAccount();

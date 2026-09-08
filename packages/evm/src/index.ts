@@ -1209,6 +1209,36 @@ export async function flushCurveFees(
 }
 
 /**
+ * The vault's own "credit paid out" event: topic1 is the beneficiary, the first
+ * data word is the amount in wei. Verified against three live claim()
+ * transactions, each of which emitted exactly one of these.
+ */
+const VAULT_CLAIMED_EVENT = '0xd8138f8a3f377c5259ca548e70e4c2de94f129f5a11036a15b69513cba2b426a';
+
+/**
+ * How much the vault actually paid this wallet in a given claim transaction.
+ *
+ * Read from the transaction's OWN log rather than a balance diff. A balance
+ * diff spans a whole block, and blocks on this chain routinely carry other
+ * movements of the pool wallet — a user's collateral arriving, a swap
+ * settling — so a diff can silently attribute someone else's money to this
+ * claim. The event is exact and cannot be contaminated by a neighbour.
+ */
+function vaultPaidInReceipt(receipt: TransactionReceipt, owner: Address): bigint | null {
+  let total: bigint | null = null;
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== PONS_FEE_VAULT.toLowerCase()) continue;
+    if (log.topics[0]?.toLowerCase() !== VAULT_CLAIMED_EVENT) continue;
+    const beneficiary = log.topics[1];
+    if (!beneficiary || `0x${beneficiary.slice(26)}`.toLowerCase() !== owner.toLowerCase()) continue;
+    const word = log.data.slice(2, 66);
+    if (word.length !== 64) continue;
+    total = (total ?? 0n) + BigInt(`0x${word}`);
+  }
+  return total;
+}
+
+/**
  * Collect everything the vault has credited to this wallet.
  *
  * Returns the tx hash and the ETH actually received, measured across the
@@ -1234,10 +1264,12 @@ export async function claimVaultCredit(
     if (receipt.status !== 'success') {
       throw new Error(`${LOG_PREFIX} vault claim reverted: ${hash}`);
     }
-    const measured = await nativeCreditedByTx(receipt, from.address);
-    // Fall back to what the vault said was owed when the measurement is
-    // unavailable — never report zero for a claim that actually paid.
-    return { txHash: hash, received: measured != null && measured > 0n ? measured : credited };
+    // Exact, from this transaction's own event. Only fall back to the credit
+    // we read before broadcasting if the event is somehow absent — never a
+    // block-wide balance diff, which would let a neighbouring transaction's
+    // ETH be booked as fee income.
+    const paid = vaultPaidInReceipt(receipt, from.address);
+    return { txHash: hash, received: paid != null && paid > 0n ? paid : credited };
   });
 }
 

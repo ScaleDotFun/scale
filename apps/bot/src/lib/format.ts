@@ -38,12 +38,16 @@ export function mono(text: string): string {
  * Example: `1_500_000_000n` → `"1.500 ETH"`
  */
 export function formatEth(wei: bigint | number): string {
-  const lamps = typeof wei === 'number' ? BigInt(Math.round(wei)) : wei;
-  const whole = lamps / WEI_PER_ETH;
-  const frac = lamps % WEI_PER_ETH;
-  // Pad fraction to 9 digits then take the first 3 for display
-  const fracStr = frac.toString().padStart(9, '0').slice(0, 3);
-  return `${whole}.${fracStr} ETH`;
+  const amount = typeof wei === 'number' ? BigInt(Math.round(wei)) : wei;
+  const neg = amount < 0n;
+  const abs = neg ? -amount : amount;
+  const whole = abs / WEI_PER_ETH;
+  const frac = abs % WEI_PER_ETH;
+  // 18 digits, not 9. This padded to lamport width against an 18-decimal unit,
+  // so every fractional value was shifted nine places: 0.001 ETH rendered as
+  // "0.100 ETH", a 100x overstatement on every figure the bot printed.
+  const fracStr = frac.toString().padStart(18, '0').slice(0, 4);
+  return `${neg ? '-' : ''}${whole}.${fracStr} ETH`;
 }
 
 /**

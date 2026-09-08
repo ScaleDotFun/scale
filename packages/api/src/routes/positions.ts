@@ -423,7 +423,19 @@ router.post(
             `[positions] CRITICAL: swap for #${positionRowId} reported failure but the pool received ` +
             `${poolTokensAfter - poolTokensBeforeSwap} raw tokens — NOT refunding; left in 'opening' for reconciliation`,
           );
-          await persistMarker({ statusChangedAt: new Date() }, 'swap-landed marker');
+          // Record openTx AND the measured token delta. Without an openTx the
+          // row is indistinguishable from one where no swap ever happened, and
+          // the reconcile sweep refunds the user while the pool silently keeps
+          // the tokens it bought — down userCapital + protocolCapital with no
+          // position_open ledger row to show for it.
+          await persistMarker(
+            {
+              openTx: 'unconfirmed',
+              tokensBought: poolTokensAfter - poolTokensBeforeSwap,
+              statusChangedAt: new Date(),
+            },
+            'swap-landed marker',
+          );
           throw new ValidationError(
             'Your position is being confirmed on-chain — the network did not respond in time. ' +
             'Do not retry; it will appear in your positions shortly.',
@@ -432,13 +444,29 @@ router.post(
 
         // Nothing arrived — the swap really did not land. Refund and fail.
         console.error(`[positions] LI.FI swap failed, refunding user:`, swapErr);
+        // Reserve before moving anything. This was the only ETH mover left that
+        // transferred without claiming the slot: on a throw — or when the marker
+        // write below exhausted its retries after a SUCCESSFUL refund — the
+        // column stayed null and the reconcile sweep paid the same collateral a
+        // second time.
         let refundSuccess = false;
         let refundSig: string | undefined;
-        try {
-          refundSig = await transferNative(protocolAccount, userAccount.address, userCapital);
-          refundSuccess = true;
-        } catch (refundErr) {
-          console.error(`[positions] CRITICAL: Refund failed!`, refundErr);
+        const refundReservation = `pending:${randomUUID()}`;
+        const refundClaim = await prisma.position.updateMany({
+          where: { id: positionRowId, userReturnTx: null },
+          data: { userReturnTx: refundReservation },
+        });
+        if (refundClaim.count === 0) {
+          console.warn(`[positions] #${positionRowId}: refund already reserved — leaving it to the owner`);
+        } else {
+          try {
+            refundSig = await transferNative(protocolAccount, userAccount.address, userCapital);
+            refundSuccess = true;
+          } catch (refundErr) {
+            // Deliberately not released: transferNative also throws on a
+            // confirmation timeout, where the ETH can still land.
+            console.error(`[positions] CRITICAL: refund for #${positionRowId} left reserved (${refundReservation}):`, refundErr);
+          }
         }
         await persistMarker(
           { status: refundSuccess ? 'failed' : 'opening', userReturnTx: refundSig, statusChangedAt: new Date() },
@@ -718,7 +746,15 @@ router.post(
           data: { userReturnTx: reservation },
         });
         if (reserved.count === 0) {
-          console.warn(`[positions] #${positionId}: payout already reserved elsewhere — not transferring again`);
+          // Another writer owns this payout. Do not fall through and settle —
+          // that would credit the pool a second time for money this request
+          // never sent, and mark the position closed whether or not the owner
+          // succeeded. The recovery sweep finishes it from the closeTx marker.
+          console.warn(`[positions] #${positionId}: payout reserved elsewhere — leaving settlement to the owner`);
+          throw new ValidationError(
+            'Your tokens were sold and the payout is already in flight. ' +
+            'It will complete automatically — no action needed.',
+          );
         } else {
         try {
           const returnSig = await transferNative(protocolAccount, wallet, userReturnWei);

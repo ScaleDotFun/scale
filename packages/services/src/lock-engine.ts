@@ -187,6 +187,17 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
     return;
   }
 
+  // Claim the buy exactly once per position, BEFORE spending anything.
+  // executeFrontBuy moves real pool ETH, and this job runs with attempts: 3 —
+  // so without a claim a transient failure after a confirmed swap re-bought
+  // the same user's withheld profit on every retry, and completeDeferredLocks
+  // would keep re-buying hourly on top of that. The ETH is gone the moment the
+  // swap confirms; only a claim taken first can bound it.
+  if (!(await claimLockBuy(positionId))) {
+    console.warn(`${PREFIX} position #${positionId} lock buy already claimed — not buying again`);
+    return;
+  }
+
   try {
     // Step 1: Buy $LOADED with the ETH amount
     const { buyTx, tokensPurchased } = await executeFrontBuy(ethAmount);
@@ -226,13 +237,22 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
     // On the LAST attempt, book the debt instead of letting the job die
     // silently in the failed set. A retry is worth having; losing the user's
     // 30% with no record of it is not.
-    const maxAttempts = job.opts?.attempts ?? 1;
-    if (job.attemptsMade + 1 >= maxAttempts) {
-      await recordDeferredLock(userWallet, ethAmount, positionId, msg);
-      return;
-    }
-    throw err;
+    // Never rethrow: the claim above is already spent, so a retry could not buy
+    // again anyway, and letting the job die in the failed set would lose the
+    // record of what the user is owed. Book the debt and finish.
+    await recordDeferredLock(userWallet, ethAmount, positionId, msg);
   }
+}
+
+/**
+ * Claim the right to spend pool ETH on this position's lock, exactly once.
+ * Survives retries and process restarts; the key long outlives any backoff.
+ */
+async function claimLockBuy(positionId: number): Promise<boolean> {
+  const res = await redisConnection.set(
+    `loaded:lock:bought:${positionId}`, '1', 'EX', 90 * 24 * 3600, 'NX',
+  );
+  return res === 'OK';
 }
 
 /**
@@ -284,6 +304,12 @@ async function completeDeferredLocks(): Promise<void> {
     take: 25,
   });
   for (const lock of deferred) {
+    // Same claim as the live path: this sweep runs hourly and would otherwise
+    // re-buy a row that never manages to finish, forever.
+    if (lock.positionId != null && !(await claimLockBuy(lock.positionId))) {
+      console.warn(`${PREFIX} deferred lock #${lock.id} already claimed a buy — skipping`);
+      continue;
+    }
     try {
       const { buyTx, tokensPurchased } = await executeFrontBuy(lock.ethAmount);
       const lockTx = await executeLock(lock.userWallet, tokensPurchased);
