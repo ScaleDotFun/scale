@@ -21,6 +21,7 @@ import {
 } from '@loaded/evm';
 const fmtSol = (wei: bigint): string => (Number(wei) / Number(WEI_PER_ETH)).toFixed(4);
 import { redisConnection, QUEUE_NAMES, lockQueue } from './queues.js';
+import { canSpendFromPool } from './pool-guard.js';
 
 const PREFIX = '[lock-engine]';
 
@@ -184,6 +185,18 @@ async function processLockJob(job: Job<LockJobData>): Promise<void> {
   if (!isLockConfigured()) {
     await recordDeferredLock(userWallet, ethAmount, positionId,
       '$LOADED is not configured yet');
+    return;
+  }
+
+  // Same reserve the open route enforces. The user has already been paid their
+  // 70%; the 30% is a debt we owe them either way, so record it and buy on the
+  // next sweep rather than spending ETH an open position needs to be unwound.
+  // This has to come BEFORE the claim below — taking the claim without buying
+  // would mark the buy as done and it would never happen.
+  const spendable = await canSpendFromPool(ethAmount);
+  if (!spendable.ok) {
+    await recordDeferredLock(userWallet, ethAmount, positionId,
+      `pool is at its unwind reserve (${spendable.reason})`);
     return;
   }
 

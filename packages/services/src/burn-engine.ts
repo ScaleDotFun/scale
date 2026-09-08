@@ -21,6 +21,7 @@ import {
 } from '@loaded/evm';
 const fmtSol = (wei: bigint): string => (Number(wei) / Number(WEI_PER_ETH)).toFixed(4);
 import { redisConnection, QUEUE_NAMES } from './queues.js';
+import { canSpendFromPool } from './pool-guard.js';
 
 const PREFIX = '[burn-engine]';
 
@@ -165,6 +166,16 @@ async function processBurnJob(job: Job<BurnJobData>): Promise<void> {
 
     // Execute burn with accumulated amount
     const burnAmount = newPending;
+
+    // A burn is never urgent; an unwind always is. If spending this would drop
+    // the wallet below what the currently open positions need to be closed,
+    // leave the amount in the accumulator and let a later job burn it — the
+    // pending total is Redis state, so nothing is lost by waiting.
+    const spendable = await canSpendFromPool(burnAmount);
+    if (!spendable.ok) {
+      console.warn(`${PREFIX} burn of ${fmtSol(burnAmount)} ETH deferred — ${spendable.reason}`);
+      return;
+    }
 
     console.log(`${PREFIX} Threshold reached! Executing burn of ${fmtSol(burnAmount)} ETH`);
 

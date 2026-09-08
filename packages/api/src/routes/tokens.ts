@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '@loaded/database';
-import { getTierConfig, determineTier, BLOCKED_LIQUIDITY_THRESHOLD_USD, SAFETY_BUFFER_BPS, type Tier } from '@loaded/core';
+import { getTierConfig, determineTier, SAFETY_BUFFER_BPS, type Tier } from '@loaded/core';
 import {
   erc20TotalSupply,
   verifyCreatorFeeShare,
@@ -434,21 +434,24 @@ router.post('/list', async (req, res) => {
     const liquidityUsd = tokenInfo?.liquidity ?? 0;
 
     // Determine tier from market data.
+    //
     // determineTier returns null for exactly one reason: liquidity is under
-    // BLOCKED_LIQUIDITY_THRESHOLD_USD, i.e. "do not trade this". Falling back
-    // to 'degen' turned that hard block into a listing, and opened leveraged
-    // trading on a book too thin for the pool to exit. Honour the block —
-    // but only when the feed actually told us something. A coin so new that
-    // it has no market data yet is unknown, not disqualified, and the
-    // auto-lister re-tiers it as soon as data appears.
+    // BLOCKED_LIQUIDITY_THRESHOLD_USD. That is a reason not to TRADE the coin —
+    // the pool could not exit a leveraged position through a book that thin —
+    // and it used to be enforced here, by refusing the listing outright.
+    //
+    // Refusing the listing was the wrong lever, and it broke the thing the
+    // protocol runs on. Listing is also what puts a coin in the fee claimer's
+    // sweep, and every PONS coin is born with near-zero liquidity: a creator who
+    // pointed their fee stream at the pool on launch day was told to come back
+    // later, and until they did, the fees they had already redirected accrued in
+    // the curve with nobody flushing or claiming them. The pool's only income
+    // was gated behind a depth test the coin cannot pass on day one.
+    //
+    // So: list it, collect its fees, show it. The floor is enforced where it
+    // actually matters, at position open, against liquidity read at that moment
+    // rather than whatever it happened to be the day someone listed.
     const tierConfig = determineTier(marketCapUsd, liquidityUsd, isBonded);
-    if (!tierConfig && tokenInfo) {
-      throw new ValidationError(
-        `This coin has $${Math.round(liquidityUsd).toLocaleString()} of liquidity — LOADED needs at least ` +
-        `$${BLOCKED_LIQUIDITY_THRESHOLD_USD.toLocaleString()} before it can front capital on it. ` +
-        `List again once the pool is deeper.`,
-      );
-    }
     const resolvedTier: Tier = tierConfig ? tierConfig.tier as Tier : 'degen';
 
     // The creator on record is the wallet that launched the coin, read off its

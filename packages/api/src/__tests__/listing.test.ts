@@ -210,6 +210,25 @@ describe('POST /tokens/list — PONS creator-fee gate', () => {
     });
   });
 
+  it('lists a launch-day coin whose book is still too thin to trade', async () => {
+    // Every PONS coin is born with near-zero liquidity. Refusing the listing
+    // told a creator who had ALREADY redirected their fee stream to come back
+    // later — and until they did, the fees they were sending accrued in the
+    // curve with nobody listed to flush or claim them. The protocol's only
+    // source of income was gated behind a depth test no new coin can pass.
+    // Listing is how a coin enters the fee sweep; the depth test belongs at
+    // position open, where the pool actually has to sell.
+    vi.mocked(getTokenInfo).mockResolvedValue({ ...TOKEN_INFO, liquidity: 400, marketCap: 9_000 } as never);
+    vi.mocked(prisma.token.create).mockResolvedValue({
+      id: 9, address: TOKEN, symbol: 'CASHCAT', tier: 'degen', listedAt: new Date(),
+    } as never);
+
+    const { agent } = createTestApp();
+    const res = await agent.post('/api/tokens/list').send({ tokenAddress: TOKEN });
+    expect(res.status).toBe(201);
+    expect(vi.mocked(prisma.token.create).mock.calls[0][0].data).toMatchObject({ tier: 'degen' });
+  });
+
   it('honours the LOADED_VERIFIED_TOKENS admin override, case-insensitively', async () => {
     process.env.LOADED_VERIFIED_TOKENS = ` ${TOKEN.toUpperCase().replace('0X', '0x')} `;
     vi.mocked(prisma.token.create).mockResolvedValue({

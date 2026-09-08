@@ -13,6 +13,7 @@ import {
   calculatePositionSize,
   calculateFlatFee,
   getExitThresholdPercent,
+  BLOCKED_LIQUIDITY_THRESHOLD_USD,
   WEI_PER_ETH,
   type Tier,
 } from '@loaded/core';
@@ -91,6 +92,27 @@ router.post(
       if (existingPosition) {
         throw new ValidationError(
           `You already have an open position on ${token.symbol}. Close it before opening a new one.`,
+        );
+      }
+
+      // ── Is there enough of a book to get back out? ──
+      // The pool has to be able to SELL this position, and a token's depth on
+      // the day it was listed says nothing about its depth now. Coins are
+      // listed as soon as their fee stream points here — deliberately, since
+      // that is how the pool earns — so a listed coin is not automatically a
+      // tradable one, and this is the check that separates the two.
+      //
+      // Read live, and only block on a reading we actually got: if the market
+      // feed is down we do not know the depth is bad, and a feed outage should
+      // not silently halt trading on coins that are fine.
+      const liveInfo = await getTokenInfo(token.address).catch(() => null);
+      const liveLiquidity = liveInfo?.liquidity ?? null;
+      if (liveLiquidity != null && liveLiquidity < BLOCKED_LIQUIDITY_THRESHOLD_USD) {
+        throw new ValidationError(
+          `${token.symbol ?? 'This coin'} has $${Math.round(liveLiquidity).toLocaleString()} of liquidity right now. ` +
+          `LOADED needs $${BLOCKED_LIQUIDITY_THRESHOLD_USD.toLocaleString()} before it will front capital, because ` +
+          `the pool has to be able to sell back out of the position. It is listed and earning fees — ` +
+          `trading opens by itself once the book is deep enough.`,
         );
       }
 
