@@ -359,9 +359,21 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
         .then((older) => {
           if (cancelled) return;
           if (older.length === 0) { noMoreOlderRef.current = true; return; }
+          const before = barsRef.current.length;
           const merged = [...older, ...barsRef.current.filter((b) => b.time > older[older.length - 1].time)];
+          const added = merged.length - before;
+          if (added <= 0) { noMoreOlderRef.current = true; return; }
           barsRef.current = merged;
           applyBars(merged);
+          // setData resets the viewport. Without shifting the logical range by
+          // the number of prepended bars, the view slides left into the older
+          // (often sparse) region — on a wide screen it lands in a gap between
+          // pages and the chart renders empty, and because the range stays at
+          // the left edge it immediately paginates again.
+          const r = timeScale?.getVisibleLogicalRange();
+          if (r) {
+            timeScale?.setVisibleLogicalRange({ from: r.from + added, to: r.to + added });
+          }
         })
         .catch(() => { /* transient — user can scroll again */ })
         .finally(() => { loadingOlderRef.current = false; });

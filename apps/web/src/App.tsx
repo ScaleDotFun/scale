@@ -15,6 +15,7 @@ import { Burns } from './pages/Burns';
 import { Creator } from './pages/Creator';
 import { Stats } from './pages/Stats';
 import { Docs } from './pages/Docs';
+import { Legal } from './pages/Legal';
 import { Rewards } from './pages/Rewards';
 import { Auth } from './pages/Auth';
 import AuthCallback from './pages/AuthCallback';
@@ -47,6 +48,8 @@ export function App() {
               <Route path="/stats" element={<Stats />} />
               <Route path="/rewards" element={<Rewards />} />
               <Route path="/docs" element={<Docs />} />
+              <Route path="/privacy" element={<Legal />} />
+              <Route path="/terms" element={<Legal />} />
             </Route>
 
             {/* Catch-all 404 — redirect to landing */}
