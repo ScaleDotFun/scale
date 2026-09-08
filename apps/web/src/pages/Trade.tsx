@@ -100,7 +100,15 @@ export const Trade: FC = () => {
       } catch { /* fall through */ }
       try {
         const trending = await api.getMarketTrending();
-        if (trending.length > 0) return setFeaturedToken(trending[0].address);
+        // Feature the DEEPEST market, not whatever ranks first: the upstream
+        // trending order regularly leads with a collapsing micro-cap, which
+        // opens the terminal on a dead chart. Fall back to the raw first pick
+        // only if nothing clears the floor.
+        const best =
+          [...trending]
+            .filter((t) => (t.liquidity ?? 0) >= 25_000)
+            .sort((a, b) => (b.liquidity ?? 0) - (a.liquidity ?? 0))[0] ?? trending[0];
+        if (best) return setFeaturedToken(best.address);
       } catch { /* nothing to feature — empty state stands */ }
       setFeaturedToken(null);
     })();
