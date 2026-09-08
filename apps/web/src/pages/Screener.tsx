@@ -44,6 +44,12 @@ export const Screener: FC = () => {
   const [cursor, setCursor] = useState(0);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  // The refresh effect runs with [] deps, so anything it reads from state is
+  // frozen at first render. It read `rows.length` to decide whether a failure
+  // was fatal — and that value is always 0 in there, so ONE hiccup on the 30s
+  // refresh replaced a full, working table with the FEED OFFLINE panel. A ref
+  // is the value as it is now, not as it was on mount.
+  const rowsRef = useRef<typeof rows>([]);
 
   // Live market data — refresh every 30s
   useEffect(() => {
@@ -53,13 +59,16 @@ export const Screener: FC = () => {
       api.getMarketTrending()
         .then((data) => {
           if (dead) return;
+          rowsRef.current = data;
           setRows(data);
           setUpdatedAt(new Date());
           setState('ready');
         })
         .catch(() => {
           if (dead) return;
-          if (rows.length === 0) setState('offline');
+          // Only go offline if we have nothing to show. With rows on screen,
+          // stale data beats blanking the page over a transient 429.
+          if (rowsRef.current.length === 0) setState('offline');
           // feed hiccup (deploy rollover / upstream 429) — retry fast
           retry = setTimeout(load, 5_000);
         });
@@ -180,6 +189,16 @@ export const Screener: FC = () => {
                       <td colSpan={8}><div className="skeleton" style={{ height: 14 }} /></td>
                     </tr>
                   ))
+                : sorted.length === 0
+                ? (
+                    /* The feed answered, with nothing in it. A bare header row
+                       and blank space below reads as a broken page. */
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '32px 12px', color: 'var(--text-2)' }}>
+                        No markets on the feed right now — this refreshes every 30s.
+                      </td>
+                    </tr>
+                  )
                 : sorted.map((t, i) => (
                     <tr
                       key={t.address}

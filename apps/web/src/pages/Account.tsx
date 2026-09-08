@@ -205,7 +205,7 @@ export const Account: FC = () => {
               {balanceLoading ? (
                 <span className="skeleton" style={{ display: 'inline-block', width: 80, height: 24, borderRadius: 0 }} />
               ) : (
-                <>{balance?.balanceEth || '0.0000'} ETH</>
+                <>{balance?.balanceEth != null ? Number(balance.balanceEth).toFixed(4) : '0.0000'} ETH</>
               )}
             </div>
           </div>

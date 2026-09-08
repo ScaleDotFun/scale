@@ -14,6 +14,9 @@ import { VibeCommandBar, type ParsedCommand } from '../components/VibeCommandBar
 import { formatEth, formatPrice, formatCountdown, formatTimeAgo, explorerTxUrl, weiToEth, ethToWei } from '../lib/format';
 import * as api from '../lib/api';
 
+/** validatePositionOpen's ceiling — the server rejects anything above it. */
+const MAX_COLLATERAL_ETH = 1;
+
 export const Trade: FC = () => {
   const {
     trending,
@@ -134,12 +137,30 @@ export const Trade: FC = () => {
       .then((info) => {
         selectToken(info);
       })
-      .catch(() => {
-        // Not in our DB yet — minimal token so the live chart still renders
+      .catch(async () => {
+        // Not in our DB. That is the NORMAL case right now — nothing is listed —
+        // so this fallback is the terminal's default identity, not an edge case.
+        //
+        // It used to name the coin "LOADED" and invent a ticker from the first
+        // six characters of its contract address. On the featured trending coin
+        // that meant the terminal confidently labelled somebody else's token as
+        // ours, with a ticker of "0x8f2c". Ask the market feed what the coin is
+        // actually called; only fall back to the address when nothing knows.
+        let name = searchParams.get('name');
+        let symbol = searchParams.get('symbol');
+        if (!name || !symbol) {
+          try {
+            const mkt = await api.getMarketToken(addr);
+            name = name || mkt?.name || null;
+            symbol = symbol || mkt?.symbol || null;
+          } catch {
+            // feed is down — the truncated address below is honest, if ugly
+          }
+        }
         selectToken({
           address: addr,
-          name: searchParams.get('name') || 'LOADED',
-          symbol: searchParams.get('symbol') || addr.slice(0, 6),
+          name: name || `${addr.slice(0, 6)}…${addr.slice(-4)}`,
+          symbol: symbol || `${addr.slice(0, 6)}…`,
           tier: '',
         });
       });
@@ -208,7 +229,15 @@ export const Trade: FC = () => {
   }, [selectedToken?.address, livePrice, tokenOverview?.price]);
 
   // Computed values — use real tier data from token API when available
-  const collateralEth = parseFloat(collateral) || 0;
+  // `parseFloat(x) || 0` only catches NaN. A typed "-5" survived it and quoted a
+  // negative position size and a negative protocol fill; "9e999" survived it as
+  // Infinity and printed "Infinity ETH" and "NaN ETH" through the breakdown.
+  // The input's min/max attributes do not constrain what can be typed or pasted.
+  const collateralEth = (() => {
+    const n = parseFloat(collateral);
+    if (!isFinite(n) || n <= 0) return 0;
+    return Math.min(n, MAX_COLLATERAL_ETH);
+  })();
   const positionSize = collateralEth * leverage;
   const protocolCapital = collateralEth * (leverage - 1);
   // Tier config comes from the API. There is no honest default: a fabricated
@@ -235,15 +264,27 @@ export const Trade: FC = () => {
   // plus the 5% safety buffer the closer applies. Drawing the liquidation
   // line at the raw number promised a price the server never waits for:
   // a bonded position was force-closed at -10%, not the -15% shown.
+  // Null when the coin has no tier, and deliberately so. The -(100/leverage)
+  // fallback printed "-33.3%" as this coin's liquidation threshold for a coin
+  // the protocol has never assigned one — a number a user sizes a real trade
+  // against. Every consumer below has to handle null by showing nothing.
   const exitThreshold =
-    selectedToken?.liquidationThresholdPct ?? selectedToken?.exitThresholdPct ?? -(100 / leverage);
+    selectedToken?.liquidationThresholdPct ?? selectedToken?.exitThresholdPct ?? null;
   const markPrice = tokenOverview?.price ?? 0;
   const tpPct = parseFloat(takeProfitPct) || 0;
   const slPct = parseFloat(stopLossPct) || 0;
   const tpPrice = markPrice && tpPct > 0 ? markPrice * (1 + tpPct / 100) : 0;
   const slPrice = markPrice && slPct > 0 ? markPrice * (1 - slPct / 100) : 0;
-  const liqPrice = markPrice ? markPrice * (1 + exitThreshold / (100 * leverage)) : 0;
-  const positionSizeUsd = markPrice ? positionSize * markPrice : 0;
+  const liqPrice =
+    markPrice && exitThreshold != null ? markPrice * (1 + exitThreshold / (100 * leverage)) : 0;
+  // Position size has no USD figure here, deliberately.
+  //
+  // This used to be `positionSize * markPrice` — an ETH amount multiplied by
+  // the TOKEN's USD price. Those units do not combine into anything: for a coin
+  // at $0.0000064 it produced "$0.00" beside a 1.25 ETH position, and for an
+  // expensive coin it would have produced a confidently wrong large number.
+  // Converting properly needs an ETH/USD rate, which this page does not have.
+  // A number that is silently wrong is worse on an order ticket than no number.
 
   // Chart position annotations — pnlPercent updates with each tick,
   // so the ENTRY line label breathes with the market
@@ -323,8 +364,17 @@ export const Trade: FC = () => {
 
   const handleBuyClick = useCallback(() => {
     if (!selectedToken || collateralEth <= 0) return;
+    // The Ape button is disabled on tradingDisabled, but the command bar's
+    // Enter key called straight through to here — so on an unlisted coin, or
+    // signed out, it opened the order-confirmation modal for a position the
+    // server will refuse. Same gates, both entry points.
+    if (tradingDisabled || isOpening || optimisticState === 'submitting') return;
+    if (!isAuthenticated) {
+      setErrorMessage('Sign in to open a position.');
+      return;
+    }
     setShowConfirmModal(true);
-  }, [selectedToken, collateralEth]);
+  }, [selectedToken, collateralEth, tradingDisabled, isOpening, optimisticState, isAuthenticated]);
 
   // Keyboard shortcut for confirm
   useEffect(() => {
@@ -773,11 +823,6 @@ export const Trade: FC = () => {
                     <span>Position Size</span>
                     <div style={{ textAlign: 'right' }}>
                       <span className="mono">{positionSize.toFixed(4)} ETH</span>
-                      {positionSizeUsd > 0 && (
-                        <span className="mono" style={{ color: '#67704f', fontSize: 10, marginLeft: 4 }}>
-                          (${positionSizeUsd.toFixed(2)})
-                        </span>
-                      )}
                     </div>
                   </div>
                   <div className="exec-row">
@@ -786,16 +831,25 @@ export const Trade: FC = () => {
                   </div>
                   <div className="exec-row">
                     <span>Fee{hasTierConfig ? ` (${flatFeePct}%)` : ''}</span>
-                    <span className="mono">{flatFee.toFixed(5)} ETH</span>
+                    {/* An unlisted coin has no fee rate, so "0.00000 ETH" is not
+                        a small number — it is a made-up one, on the line a user
+                        reads to price the trade. Show that we do not know. */}
+                    <span className="mono">{hasTierConfig ? `${flatFee.toFixed(5)} ETH` : '—'}</span>
                   </div>
                   <div className="exec-row">
                     <span>Liquidation</span>
                     <div style={{ textAlign: 'right' }}>
-                      <span className="mono" style={{ color: 'var(--red)' }}>{exitThreshold.toFixed(1)}%</span>
-                      {liqPrice > 0 && (
-                        <span className="mono" style={{ color: '#67704f', fontSize: 10, marginLeft: 4 }}>
-                          (${formatPrice(liqPrice)})
-                        </span>
+                      {exitThreshold == null ? (
+                        <span className="mono" style={{ color: '#67704f' }}>—</span>
+                      ) : (
+                        <>
+                          <span className="mono" style={{ color: 'var(--red)' }}>{exitThreshold.toFixed(1)}%</span>
+                          {liqPrice > 0 && (
+                            <span className="mono" style={{ color: '#67704f', fontSize: 10, marginLeft: 4 }}>
+                              (${formatPrice(liqPrice)})
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1001,7 +1055,7 @@ export const Trade: FC = () => {
                 </div>
                 <div className="confirm-row">
                   <span>Position Size</span>
-                  <span className="mono">{positionSize.toFixed(4)} ETH {positionSizeUsd > 0 && `($${positionSizeUsd.toFixed(2)})`}</span>
+                  <span className="mono">{positionSize.toFixed(4)} ETH</span>
                 </div>
                 <div className="confirm-row">
                   <span>Leverage</span>

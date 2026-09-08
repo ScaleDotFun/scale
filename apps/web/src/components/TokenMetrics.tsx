@@ -31,7 +31,13 @@ export const TokenMetrics: FC<TokenMetricsProps> = ({ token, overview }) => {
     bonded: { label: 'BONDED', color: '#c8ff00', bg: 'rgba(200, 255, 0, 0.08)' },
     rising: { label: 'RISING', color: 'var(--primary-hover)', bg: 'rgba(251, 191, 36, 0.08)' },
     degen: { label: 'DEGEN', color: '#ff4d4d', bg: 'rgba(239, 68, 68, 0.08)' },
-  }[token.tier] ?? { label: token.tier.toUpperCase(), color: '#a3ad8d', bg: 'rgba(128,128,128,0.08)' };
+    // An unlisted coin carries tier '', which rendered a coloured pill with
+    // nothing written in it. Say what it means instead.
+  }[token.tier] ?? {
+    label: token.tier ? token.tier.toUpperCase() : 'UNLISTED',
+    color: '#a3ad8d',
+    bg: 'rgba(128,128,128,0.08)',
+  };
 
   // Use live market data if available, otherwise fallback to token data
   const mcap = overview?.marketCap ?? token.marketCapUsd ?? 0;

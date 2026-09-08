@@ -67,9 +67,16 @@ export const VibeCommandBar: FC<VibeCommandBarProps> = ({
     }
 
     // Extract leverage: "7x", "at 7x", "5x lev"
-    const levMatch = lower.match(/(\d+)\s*x/);
+    //
+    // The bare /(\d+)\s*x/ matched the "0x" that starts every contract address,
+    // so pasting an address set leverage to 0 — and a 0 leverage propagated into
+    // -(100 / leverage), which renders as "Liquidation -Infinity%". Require a
+    // word boundary before the number and reject anything outside the real
+    // range; the tier cap clamps it properly once a coin is selected.
+    const levMatch = lower.match(/(?:^|[^\w.])(\d{1,2})\s*x(?![\w])/);
     if (levMatch) {
-      result.leverage = parseInt(levMatch[1], 10);
+      const lev = parseInt(levMatch[1], 10);
+      if (lev >= 1 && lev <= 10) result.leverage = lev;
     }
 
     // Extract priority

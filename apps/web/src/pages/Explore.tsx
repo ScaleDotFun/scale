@@ -1,7 +1,7 @@
 import { type FC, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../lib/api';
-import { formatUsd, formatEth, isValidAddress } from '../lib/format';
+import { formatUsd, formatEth, formatPrice, isValidAddress } from '../lib/format';
 
 
 export const Explore: FC = () => {
@@ -278,9 +278,7 @@ export const Explore: FC = () => {
                     fontSize: 14, fontWeight: 600, color: '#f0f4e4',
                     fontFamily: "'JetBrains Mono', monospace",
                   }}>
-                    {token.priceUsd != null
-                      ? `$${token.priceUsd < 0.01 ? token.priceUsd.toExponential(2) : token.priceUsd.toFixed(4)}`
-                      : ''}
+                    {token.priceUsd != null ? `$${formatPrice(token.priceUsd)}` : ''}
                   </div>
                   <div style={{ fontSize: 12, marginTop: 2 }}>
                     {formatChange(token.priceChange24hPct)}

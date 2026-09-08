@@ -101,8 +101,8 @@ describe('shouldAutoClose', () => {
 
 describe('validatePositionOpen', () => {
   const validParams = {
-    userWallet: 'A'.repeat(44), // valid length Robinhood Chain address
-    tokenAddress: 'B'.repeat(44),
+    userWallet: '0x' + 'a'.repeat(40), // Robinhood Chain (EVM) address
+    tokenAddress: '0x' + 'b'.repeat(40),
     userCapitalWei: ONE_SOL, // 1 ETH
     leverage: 3,
   };
@@ -177,6 +177,27 @@ describe('validatePositionOpen', () => {
   it('rejects invalid wallet address (too short)', () => {
     const result = validatePositionOpen(
       { ...validParams, userWallet: 'abc' },
+      tier,
+      bigPool,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining('wallet'));
+  });
+
+  it('rejects a base58-shaped address that only passes on length', () => {
+    // 44 chars, the old chain's range — accepted by the pre-fix length check.
+    const result = validatePositionOpen(
+      { ...validParams, userWallet: 'A'.repeat(44) },
+      tier,
+      bigPool,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining('wallet'));
+  });
+
+  it('rejects an address with a non-hex character', () => {
+    const result = validatePositionOpen(
+      { ...validParams, userWallet: '0x' + 'a'.repeat(39) + 'z' },
       tier,
       bigPool,
     );

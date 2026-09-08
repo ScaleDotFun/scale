@@ -49,15 +49,48 @@ export function formatEth(
  * - $0.1821 → "0.1821"
  * - $0.00002 → "0.00002000"
  * - $0.000000123 → "0.000000123"
+ *
+ * The last line of that contract was the one that mattered and the one that was
+ * broken. toPrecision(4) switches to exponential notation below 1e-6, so every
+ * genuinely small memecoin price rendered as "$3.400e-8" — on the cards, on the
+ * chart axis, in the trade feed, everywhere. This is a memecoin terminal; a
+ * price with a minus-sign exponent in it is the normal case, not an outlier,
+ * and scientific notation is unreadable at a glance and impossible to compare
+ * down a column.
+ *
+ * Below 1e-4 we switch to subscript-zero notation, the convention every
+ * memecoin venue uses: 0.0₈34 means 0.00000000034 — eight zeros, then the
+ * digits. It stays narrow no matter how small the number gets.
  */
 export function formatPrice(price: number | undefined | null): string {
-  if (price == null || isNaN(price) || price === 0) return '0.00';
-  if (price >= 1000) return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price);
-  if (price >= 1) return price.toFixed(4);
-  if (price >= 0.01) return price.toFixed(4);
-  if (price >= 0.0001) return price.toFixed(6);
-  // Very small prices — show significant digits
-  return price.toPrecision(4);
+  if (price == null || !isFinite(price) || price === 0) return '0.00';
+  const neg = price < 0;
+  const v = Math.abs(price);
+  const sign = neg ? '-' : '';
+
+  if (v >= 1000) {
+    return sign + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  }
+  if (v >= 0.01) return sign + v.toFixed(4);
+  if (v >= 0.0001) return sign + v.toFixed(6);
+
+  // Count the zeros between the decimal point and the first significant digit,
+  // then show four significant digits after them.
+  const exp = Math.floor(Math.log10(v));      // e.g. -9 for 3.4e-9
+  const zeros = -exp - 1;                      // 8 leading zeros
+  const digits = Math.round(v * Math.pow(10, exp === 0 ? 0 : -exp) * 1000)
+    .toString()
+    .slice(0, 4);
+  return `${sign}0.0${subscript(zeros)}${digits}`;
+}
+
+/** Digits 0-9 as Unicode subscripts, for the leading-zero count in tiny prices. */
+function subscript(n: number): string {
+  const SUBS = '₀₁₂₃₄₅₆₇₈₉';
+  return String(n)
+    .split('')
+    .map((d) => SUBS[Number(d)])
+    .join('');
 }
 
 /**
@@ -65,7 +98,10 @@ export function formatPrice(price: number | undefined | null): string {
  * @example formatUsd(1234.56) => "$1,234.56"
  */
 export function formatUsd(amount: number | undefined | null): string {
-  if (amount == null || isNaN(amount)) return '$0.00';
+  if (amount == null || !isFinite(amount)) return '$0.00';
+  // A real sub-cent swap is not zero. Rounding it to "$0.00" made every small
+  // trade in the feed look like it had no value at all.
+  if (amount !== 0 && Math.abs(amount) < 0.01) return `$${formatPrice(amount)}`;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',

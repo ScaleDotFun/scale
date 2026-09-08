@@ -1,6 +1,6 @@
 import { type FC, useState, useEffect, useRef } from 'react';
 import { fetchRecentTrades, type TradeItem } from '../lib/marketdata';
-import { explorerTxUrl } from '../lib/format';
+import { explorerTxUrl, formatPrice } from '../lib/format';
 
 interface TradesFeedProps {
   tokenAddress?: string;
@@ -78,8 +78,10 @@ export const TradesFeed: FC<TradesFeedProps> = ({ tokenAddress }) => {
                 {trade.side.toUpperCase()}
               </span>
             </td>
-            <td className="mono">${trade.priceUsd > 0.01 ? trade.priceUsd.toFixed(4) : trade.priceUsd.toPrecision(4)}</td>
-            <td className="mono">${trade.volumeUsd > 1000 ? `${(trade.volumeUsd / 1000).toFixed(1)}K` : trade.volumeUsd.toFixed(2)}</td>
+            <td className="mono">${formatPrice(trade.priceUsd)}</td>
+            {/* toFixed(2) flattened every sub-cent swap to "$0.00" — on a feed
+                whose whole job is showing that swaps are happening. */}
+            <td className="mono">${trade.volumeUsd > 1000 ? `${(trade.volumeUsd / 1000).toFixed(1)}K` : formatPrice(trade.volumeUsd)}</td>
             <td className="mono text-dim">{truncateWallet(trade.owner)}</td>
             <td>
               {trade.txHash && (

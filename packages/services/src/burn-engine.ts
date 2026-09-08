@@ -18,6 +18,7 @@ import {
   hasProtocolKey,
   swapNativeForToken,
   erc20Burn,
+  isValidAddress,
 } from '@loaded/evm';
 const fmtSol = (wei: bigint): string => (Number(wei) / Number(WEI_PER_ETH)).toFixed(4);
 import { redisConnection, QUEUE_NAMES } from './queues.js';
@@ -33,10 +34,13 @@ const BURN_THRESHOLD_WEI = BigInt(
 /** Redis key for the persistent burn accumulator (wei) */
 const REDIS_PENDING_BURN_KEY = 'loaded:burn:pending_wei';
 
-/** $LOADED token mint (SPL on Robinhood Chain) — read from env */
+/** $LOADED token address (ERC-20 on Robinhood Chain) — read from env */
 const LOADED_TOKEN_MINT = (process.env.LOADED_TOKEN_MINT ?? '').trim();
 
-const canBurn = () => LOADED_TOKEN_MINT.length >= 32 && LOADED_TOKEN_MINT.length <= 44 && hasProtocolKey();
+// Validated as a real EVM address, not merely a plausible length. A truncated
+// or mistyped address would otherwise pass and only fail at spend time, after
+// ETH has already been committed to the swap.
+const canBurn = () => isValidAddress(LOADED_TOKEN_MINT) && hasProtocolKey();
 
 interface BurnJobData {
   positionId: number;

@@ -18,6 +18,7 @@ import {
   swapNativeForToken,
   erc20Balance,
   erc20Transfer,
+  isValidAddress,
 } from '@loaded/evm';
 const fmtSol = (wei: bigint): string => (Number(wei) / Number(WEI_PER_ETH)).toFixed(4);
 import { redisConnection, QUEUE_NAMES, lockQueue } from './queues.js';
@@ -25,16 +26,15 @@ import { canSpendFromPool } from './pool-guard.js';
 
 const PREFIX = '[lock-engine]';
 
-/** $LOADED token mint (SPL on Robinhood Chain) */
+/** $LOADED token address (ERC-20 on Robinhood Chain) */
 const LOADED_TOKEN_MINT = (process.env.LOADED_TOKEN_MINT ?? '').trim();
 
-/** Non-throwing form, for deciding whether to defer rather than fail. */
+/** Non-throwing form, for deciding whether to defer rather than fail.
+ *  Validated as a real EVM address: a truncated or mistyped value would
+ *  otherwise defer nothing and fail mid-buy, with the trader's ETH already
+ *  withheld from their payout. */
 function isLockConfigured(): boolean {
-  return (
-    LOADED_TOKEN_MINT.length >= 32 &&
-    LOADED_TOKEN_MINT.length <= 44 &&
-    hasProtocolKey()
-  );
+  return isValidAddress(LOADED_TOKEN_MINT) && hasProtocolKey();
 }
 
 /**
@@ -45,8 +45,8 @@ function isLockConfigured(): boolean {
 const DEFERRED_BUY = 'deferred';
 
 function assertLockConfigured(): void {
-  if (LOADED_TOKEN_MINT.length < 32 || LOADED_TOKEN_MINT.length > 44) {
-    throw new Error(`${PREFIX} LOADED_TOKEN_MINT is not a Robinhood Chain (hex) token mint — cannot execute $LOADED locks`);
+  if (!isValidAddress(LOADED_TOKEN_MINT)) {
+    throw new Error(`${PREFIX} LOADED_TOKEN_MINT is not a valid EVM address (expected 0x + 40 hex chars) — cannot execute $LOADED locks`);
   }
   if (!hasProtocolKey()) {
     throw new Error(`${PREFIX} Robinhood Chain protocol pool key not configured — cannot execute $LOADED locks`);

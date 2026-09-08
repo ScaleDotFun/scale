@@ -144,19 +144,19 @@ export const Creator: FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>Volume</div>
-                    <div className="mono" style={{ fontSize: 13 }}>{formatNumber(Number(token.totalTradingVolume))}</div>
+                    <div className="mono" style={{ fontSize: 13 }}>{formatEth(token.totalTradingVolume, 4)} ETH</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>Fees</div>
-                    <div className="mono" style={{ fontSize: 13 }}>{formatNumber(Number(token.totalFeesGenerated))}</div>
+                    <div className="mono" style={{ fontSize: 13 }}>{formatEth(token.totalFeesGenerated, 4)} ETH</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>Earnings</div>
-                    <div className="mono" style={{ fontSize: 13, color: 'var(--green)' }}>{formatNumber(Number(token.totalEarnings))}</div>
+                    <div className="mono" style={{ fontSize: 13, color: 'var(--green)' }}>{formatEth(token.totalEarnings, 4)} ETH</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>Today</div>
-                    <div className="mono" style={{ fontSize: 13, color: 'var(--green)' }}>+{formatNumber(Number(token.todayEarnings))}</div>
+                    <div className="mono" style={{ fontSize: 13, color: 'var(--green)' }}>+{formatEth(token.todayEarnings, 4)} ETH</div>
                   </div>
                 </div>
               </div>

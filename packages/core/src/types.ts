@@ -206,6 +206,33 @@ export function formatEth(wei: bigint): string {
   return (Number(wei) / Number(WEI_PER_ETH)).toFixed(6);
 }
 
+/**
+ * True for a well-formed Robinhood Chain (EVM) address: 0x + 40 hex chars.
+ *
+ * Dependency-free so the Telegram bot and core share one definition. The
+ * chain-move left several length-only checks behind (32–44 chars, the base58
+ * range), which pass for a 42-char address by coincidence and also pass for
+ * any mistyped string of a similar length.
+ */
+export function isEvmAddress(addr: string): boolean {
+  return typeof addr === 'string' && /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
+}
+
+/**
+ * Parse a decimal ETH string into wei. Returns null if it isn't a plain
+ * positive decimal or carries more than 18 decimal places.
+ *
+ * String-based on purpose: `amount * 1e18` loses precision above 2^53, so
+ * floating-point multiplication cannot be used to reach wei.
+ */
+export function parseEthToWei(amount: string): bigint | null {
+  const s = String(amount).trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const [whole, frac = ''] = s.split('.');
+  if (frac.length > 18) return null;
+  return BigInt(whole) * WEI_PER_ETH + BigInt(frac.padEnd(18, '0') || '0');
+}
+
 /** Max position duration in milliseconds (24 hours) */
 export const MAX_POSITION_DURATION_MS = 24 * 60 * 60 * 1000;
 

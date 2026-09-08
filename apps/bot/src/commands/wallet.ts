@@ -4,6 +4,7 @@
 
 import type { CommandContext, Context } from 'grammy';
 import { InlineKeyboard } from 'grammy';
+import { isEvmAddress, parseEthToWei } from '@loaded/core';
 import * as api from '../lib/api.js';
 import { bold, code, escapeMarkdown, formatAddress, formatEth, formatUsd } from '../lib/format.js';
 
@@ -108,12 +109,23 @@ export async function handleWithdraw(ctx: CommandContext<Context>): Promise<void
     return;
   }
 
-  if (toAddress.length < 32 || toAddress.length > 44) {
-    await ctx.reply('⚠️ Invalid Robinhood Chain address\\.', { parse_mode: 'MarkdownV2' });
+  if (!isEvmAddress(toAddress)) {
+    await ctx.reply('⚠️ Invalid Robinhood Chain address\\. Expected `0x` followed by 40 hex characters\\.', {
+      parse_mode: 'MarkdownV2',
+    });
     return;
   }
 
-  const amountWei = Math.round(amountEth * 1e9).toString();
+  // 1e18, not 1e9 — wei, not lamports. Parsed from the string because
+  // amountEth * 1e18 exceeds Number's safe integer range and loses precision.
+  const amountWeiBig = parseEthToWei(amountStr);
+  if (amountWeiBig === null || amountWeiBig <= 0n) {
+    await ctx.reply('⚠️ Invalid amount\\. Use a plain decimal with at most 18 decimal places\\.', {
+      parse_mode: 'MarkdownV2',
+    });
+    return;
+  }
+  const amountWei = amountWeiBig.toString();
   const escapedAmt = escapeMarkdown(amountEth.toString());
   const escapedAddr = escapeMarkdown(formatAddress(toAddress));
 

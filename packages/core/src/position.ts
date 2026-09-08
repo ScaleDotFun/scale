@@ -10,6 +10,7 @@ import {
   WEI_PER_ETH,
   SAFETY_BUFFER_BPS,
   BPS,
+  isEvmAddress,
 } from './types.js';
 import {
   TIER_CONFIGS,
@@ -75,8 +76,8 @@ export function validatePositionOpen(
     );
   }
 
-  // Validate wallet address format (basic check)
-  if (!params.userWallet || params.userWallet.length < 32 || params.userWallet.length > 44) {
+  // Validate wallet address format (0x + 40 hex, not merely a plausible length)
+  if (!isEvmAddress(params.userWallet ?? '')) {
     errors.push('Invalid wallet address');
   }
 

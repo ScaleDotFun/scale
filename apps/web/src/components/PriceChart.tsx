@@ -15,6 +15,7 @@ import {
 } from 'lightweight-charts';
 import { fetchOHLCV, fetchOlderOHLCV, fetchTopPool, PollingPriceStream, type OHLCVBar, type StreamStatus } from '../lib/marketdata';
 import { getVar, onThemeChange } from '../lib/theme';
+import { formatPrice } from '../lib/format';
 
 
 
@@ -61,8 +62,10 @@ const fmtCompact = (v: number): string => {
   if (v >= 1_000_000) return `${(v / 1_000_000).toPrecision(4)}M`;
   if (v >= 1_000) return `${(v / 1_000).toPrecision(4)}K`;
   if (v >= 1) return v.toFixed(2);
-  if (v >= 0.01) return v.toFixed(4);
-  return v.toPrecision(4);
+  // Below a cent, defer to the shared formatter. toPrecision(4) here rendered
+  // every sub-microdollar axis label in exponential notation, which is the
+  // normal price range for the coins this terminal trades.
+  return formatPrice(v);
 };
 
 /**
@@ -567,7 +570,7 @@ export const PriceChart: FC<PriceChartProps> = ({ tokenAddress, positions, suppl
             }}>
               {unit === 'mcap' && hasMcap
                 ? `MC $${fmtCompact(lastPrice * (supply ?? 0))}`
-                : `$${lastPrice.toPrecision(6)}`}
+                : `$${formatPrice(lastPrice)}`}
             </span>
             <span style={{
               fontSize: 10,
