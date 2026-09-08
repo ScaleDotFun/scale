@@ -8,6 +8,7 @@ export const Explore: FC = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [listedTokens, setListedTokens] = useState<api.TokenInfo[]>([]);
+  const [launches, setLaunches] = useState<api.NewLaunch[]>([]);
   const [searchResults, setSearchResults] = useState<api.TokenInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -20,6 +21,15 @@ export const Explore: FC = () => {
       .then((data) => setListedTokens(data))
       .catch(() => setListedTokens([]))
       .finally(() => setLoading(false));
+
+    // Coins that just came off a launchpad. Listings are earned (a creator has
+    // to redirect their PONS fees), so without this the Explorer would sit
+    // empty even while dozens of coins launch every hour.
+    const loadLaunches = () =>
+      api.getNewLaunches().then(setLaunches).catch(() => setLaunches([]));
+    loadLaunches();
+    const t = setInterval(loadLaunches, 45_000);
+    return () => clearInterval(t);
   }, []);
 
   // Search behavior
@@ -41,7 +51,8 @@ export const Explore: FC = () => {
     setSearching(true);
     const timer = setTimeout(() => {
       const lower = trimmed.toLowerCase();
-      const filtered = listedTokens.filter(t =>
+      const pool = [...listedTokens, ...(launches as unknown as api.TokenInfo[])];
+      const filtered = pool.filter(t =>
         (t.symbol && t.symbol.toLowerCase().includes(lower)) ||
         (t.name && t.name.toLowerCase().includes(lower))
       );
@@ -49,9 +60,42 @@ export const Explore: FC = () => {
       setSearching(false);
     }, 200);
     return () => clearTimeout(timer);
-  }, [search, listedTokens, navigate]);
+  }, [search, listedTokens, launches, navigate]);
 
-  const displayTokens = search.trim().length >= 2 ? searchResults : listedTokens;
+  // Listed coins are tradeable with leverage and lead the grid; fresh launches
+  // follow so the page is alive even before the first creator redirects fees.
+  const listedAddrs = new Set(listedTokens.map((t) => t.address.toLowerCase()));
+  const launchCards = launches
+    .filter((l) => !listedAddrs.has(l.address.toLowerCase()))
+    .map((l) => ({
+      address: l.address,
+      name: l.name,
+      symbol: l.symbol,
+      imageUri: l.logoURI ?? undefined,
+      tier: '',
+      priceUsd: l.price,
+      marketCapUsd: l.marketCap,
+      liquidityUsd: l.liquidity,
+      priceChange24hPct: l.priceChange24h,
+      isActive: true,
+      __new: true,
+      __createdAt: l.createdAt,
+      __dex: l.dex,
+    })) as unknown as api.TokenInfo[];
+
+  const displayTokens =
+    search.trim().length >= 2 ? searchResults : [...listedTokens, ...launchCards];
+
+  /** "4m" / "2h" since launch. */
+  const age = (iso?: string | null): string | null => {
+    if (!iso) return null;
+    const ms = Date.now() - new Date(iso).getTime();
+    if (!Number.isFinite(ms) || ms < 0) return null;
+    const m = Math.floor(ms / 60000);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+  };
 
   const handleTokenClick = (token: api.TokenInfo) => {
     navigate(`/trade?token=${token.address}`);
@@ -89,7 +133,7 @@ export const Explore: FC = () => {
         <div>
           <h2 style={{ marginBottom: 4 }}>Explore Tokens</h2>
           <p style={{ fontSize: '0.86rem', color: '#66786a' }}>
-            Tokens listed on Loaded Protocol — click any token to trade with leverage
+            Listed coins trade with leverage · fresh PONS launches are spot-only until their creator redirects fees
           </p>
         </div>
       </div>
@@ -124,7 +168,7 @@ export const Explore: FC = () => {
           padding: '48px 16px', gap: 8,
         }}>
           <div style={{ fontSize: 14, fontWeight: 500, color: '#a3ad8d' }}>
-            {search ? 'No tokens found' : 'No coins listed yet — be the first'}
+            {search ? 'No tokens found' : 'Nothing launching right now'}
           </div>
           <div style={{ fontSize: 12, color: '#67704f' }}>
             {search
@@ -201,7 +245,15 @@ export const Explore: FC = () => {
                     <span style={{ fontSize: 16, fontWeight: 700, color: '#f0f4e4' }}>
                       {token.symbol || 'Unknown'}
                     </span>
-                    {token.isActive === false ? (
+                    {(token as any).__new ? (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+                        color: 'var(--primary)', border: '1px solid rgba(var(--primary-rgb),0.45)',
+                        padding: '2px 6px', whiteSpace: 'nowrap',
+                      }}>
+                        NEW{age((token as any).__createdAt) ? ` · ${age((token as any).__createdAt)}` : ''}
+                      </span>
+                    ) : token.isActive === false ? (
                       <span style={{
                         fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
                         color: '#ff4d4d', border: '1px solid rgba(255,77,77,0.45)',

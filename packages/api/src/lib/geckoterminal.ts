@@ -89,81 +89,143 @@ function toMarketToken(t: TokenInfo): MarketToken {
 }
 
 /**
- * Trending on Robinhood Chain → one MarketToken per base token, PONS coins
- * ONLY (LOADED lists nothing else, so the screener shows nothing else).
- * GeckoTerminal's trending pools, with the EVM layer's trending feed as a
- * fallback when GT rate-limits.
+ * Trending launchpad coins on Robinhood Chain — one MarketToken per base token.
+ *
+ * A single page of trending pools yields only a handful of launchpad coins once
+ * the venue filter is applied, which left the screener looking almost empty. We
+ * aggregate several pages of both trending and general pools, dedupe by token,
+ * and rank by 24h volume so the screener fills a real page.
  */
-export async function fetchTrending(): Promise<MarketToken[]> {
-  let json: any;
-  try {
-    json = await gtFetch(`/networks/${GT_NETWORK}/trending_pools?include=base_token&page=1`);
-  } catch (gtErr) {
-    const fallback = await getTrendingTokens(50);
-    const out = fallback
-      .filter((t) => isLaunchpadToken(t.address, t.launchpad))
-      .filter((t) => (t.priceUsd ?? 0) > 0 && (t.liquidity ?? 0) >= 5_000)
-      .slice(0, 20)
-      .map(toMarketToken);
-    if (out.length === 0) throw gtErr; // both sources dry — surface the original error
-    return out;
-  }
-  const included: Record<string, any> = {};
-  for (const inc of json.included ?? []) included[inc.id] = inc.attributes;
+const TRENDING_PAGES = [
+  'trending_pools?page=1',
+  'trending_pools?page=2',
+  'pools?page=1',
+  'pools?page=2',
+  'pools?page=3',
+];
 
+export async function fetchTrending(): Promise<MarketToken[]> {
   const out: MarketToken[] = [];
   const seen = new Set<string>();
-  for (const pool of json.data ?? []) {
-    const a = pool.attributes ?? {};
-    const btId = pool.relationships?.base_token?.data?.id;
-    const bt = btId ? included[btId] : null;
-    const address = bt?.address ?? '';
-    // GT returns lowercased addresses; the top-up feed returns checksummed
-    // ones. Dedupe on a single casing or the same coin lands in the list twice.
-    if (!address || seen.has(address.toLowerCase())) continue;
-    seen.add(address.toLowerCase());
-    // The venue identifies a launchpad coin — isLaunchpadToken is false for a
-    // missing dex, so omitting it here would empty the whole screener.
-    const dex = pool.relationships?.dex?.data?.id ?? null;
-    if (!isLaunchpadToken(address, dex)) continue; // launchpad coins only
+  let anyPageLoaded = false;
 
-    const price = num(a.base_token_price_usd);
-    const liquidity = num(a.reserve_in_usd);
-    if (!(price > 0) || liquidity < 5_000) continue; // floor rug-dust
-
-    out.push({
-      address,
-      name: bt?.name ?? 'Unknown',
-      symbol: bt?.symbol ?? '???',
-      price,
-      priceChange24h: num(a.price_change_percentage?.h24),
-      volume24h: num(a.volume_usd?.h24),
-      marketCap: num(a.market_cap_usd) || num(a.fdv_usd),
-      liquidity,
-      logoURI: bt?.image_url && bt.image_url !== 'missing.png' ? bt.image_url : null,
-    });
-    if (out.length >= 20) break;
-  }
-
-  // GT trending skews to majors; after the launchpad filter it can run
-  // thin. Top up from the EVM layer's feed so the screener stays full.
-  if (out.length < 12) {
+  for (const path of TRENDING_PAGES) {
+    let json: any;
     try {
-      const fallback = await getTrendingTokens(50);
-      for (const t of fallback) {
-        if (out.length >= 20) break;
-        if (seen.has(t.address.toLowerCase()) ||
-            out.some((m) => m.address.toLowerCase() === t.address.toLowerCase())) continue;
-        if (!isLaunchpadToken(t.address, t.launchpad)) continue;
-        if (!((t.priceUsd ?? 0) > 0) || (t.liquidity ?? 0) < 5_000) continue;
-        seen.add(t.address.toLowerCase());
-        out.push(toMarketToken(t));
-      }
+      const sep = path.includes('?') ? '&' : '?';
+      json = await gtFetch(`/networks/${GT_NETWORK}/${path}${sep}include=base_token`);
+      anyPageLoaded = true;
     } catch {
-      // top-up is best-effort — GT results alone are still valid
+      continue; // one bad page must not empty the whole screener
+    }
+
+    const included: Record<string, any> = {};
+    for (const inc of json.included ?? []) included[inc.id] = inc.attributes;
+
+    for (const pool of json.data ?? []) {
+      const a = pool.attributes ?? {};
+      const bt = included[pool.relationships?.base_token?.data?.id];
+      const address = bt?.address ?? '';
+      // GT lowercases addresses; dedupe on one casing.
+      if (!address || seen.has(address.toLowerCase())) continue;
+
+      // The venue identifies a launchpad coin — isLaunchpadToken is false for a
+      // missing dex, so omitting it here would empty the whole screener.
+      const dex = pool.relationships?.dex?.data?.id ?? null;
+      if (!isLaunchpadToken(address, dex)) continue;
+
+      const price = num(a.base_token_price_usd);
+      const liquidity = num(a.reserve_in_usd);
+      if (!(price > 0) || liquidity < 5_000) continue; // floor rug-dust
+
+      seen.add(address.toLowerCase());
+      out.push({
+        address,
+        name: bt?.name ?? 'Unknown',
+        symbol: bt?.symbol ?? '???',
+        price,
+        priceChange24h: num(a.price_change_percentage?.h24),
+        volume24h: num(a.volume_usd?.h24),
+        marketCap: num(a.market_cap_usd) || num(a.fdv_usd),
+        liquidity,
+        logoURI: bt?.image_url && bt.image_url !== 'missing.png' ? bt.image_url : null,
+      });
     }
   }
-  return out;
+
+  if (!anyPageLoaded) {
+    // Every page failed — fall back to the EVM layer's own feed rather than
+    // reporting an empty market.
+    const fallback = await getTrendingTokens(50);
+    return fallback
+      .filter((t) => isLaunchpadToken(t.address, t.launchpad))
+      .filter((t) => (t.priceUsd ?? 0) > 0 && (t.liquidity ?? 0) >= 5_000)
+      .slice(0, 60)
+      .map(toMarketToken);
+  }
+
+  // Most-traded first — a screener sorted by activity, not by page order.
+  out.sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+  return out.slice(0, 60);
+}
+
+/**
+ * Freshly launched coins on Robinhood Chain, newest first.
+ *
+ * This is the Explorer's feed: coins that just came off a launchpad, which is
+ * a different question from the screener's "what is being traded most". Only
+ * launchpad venues count — a new Uniswap pool for an established token is not
+ * a launch.
+ */
+export interface NewLaunch extends MarketToken {
+  /** ISO timestamp the pool was created. */
+  createdAt: string | null;
+  /** Launch venue, e.g. "pons-v2". */
+  dex: string | null;
+}
+
+export async function fetchNewLaunches(): Promise<NewLaunch[]> {
+  const out: NewLaunch[] = [];
+  const seen = new Set<string>();
+
+  for (const page of [1, 2]) {
+    let json: any;
+    try {
+      json = await gtFetch(`/networks/${GT_NETWORK}/new_pools?include=base_token&page=${page}`);
+    } catch {
+      continue;
+    }
+    const included: Record<string, any> = {};
+    for (const inc of json.included ?? []) included[inc.id] = inc.attributes;
+
+    for (const pool of json.data ?? []) {
+      const a = pool.attributes ?? {};
+      const bt = included[pool.relationships?.base_token?.data?.id];
+      const address = bt?.address ?? '';
+      if (!address || seen.has(address.toLowerCase())) continue;
+
+      const dex = pool.relationships?.dex?.data?.id ?? null;
+      if (!isLaunchpadToken(address, dex)) continue; // launches only
+
+      seen.add(address.toLowerCase());
+      out.push({
+        address,
+        name: bt?.name ?? 'Unknown',
+        symbol: bt?.symbol ?? '???',
+        price: num(a.base_token_price_usd),
+        priceChange24h: num(a.price_change_percentage?.h24),
+        volume24h: num(a.volume_usd?.h24),
+        marketCap: num(a.market_cap_usd) || num(a.fdv_usd),
+        liquidity: num(a.reserve_in_usd),
+        logoURI: bt?.image_url && bt.image_url !== 'missing.png' ? bt.image_url : null,
+        createdAt: a.pool_created_at ?? null,
+        dex,
+      });
+    }
+  }
+
+  out.sort((x, y) => new Date(y.createdAt ?? 0).getTime() - new Date(x.createdAt ?? 0).getTime());
+  return out.slice(0, 60);
 }
 
 /**

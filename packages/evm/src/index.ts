@@ -788,7 +788,7 @@ export function isLaunchpadToken(_address: string, launchpad?: string | null): b
 /** PONS bonding-curve implementation — every launch's curve delegates to it. */
 export const PONS_CURVE_IMPL = '0x3711cea4feade896c913c68f01eda97cb06d1a42';
 
-/** PONS fee/config contract — holds the 1% trade fee and its 70/30 creator/protocol split. */
+/** PONS fee/config contract — holds the 1% trade fee and the creator's share of it. */
 export const PONS_FEE_CONFIG = '0xe5e702641ea86f4ae6cc3cdaed2b886f976be044';
 
 /** GeckoTerminal dex ids that PONS pools are indexed under. */

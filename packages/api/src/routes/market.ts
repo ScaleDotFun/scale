@@ -109,6 +109,29 @@ router.get('/trending', publicLimiter, async (_req, res) => {
 });
 
 /**
+ * GET /market/new — freshly launched coins, newest first.
+ *
+ * The Explorer's feed. Cached briefly and served stale on error, same as
+ * trending: an empty list reads as "nothing is launching", which is wrong.
+ */
+const NEW_CACHE_MS = 45_000;
+let newCache: { data: gt.NewLaunch[]; at: number } | null = null;
+
+router.get('/new', publicLimiter, async (_req, res) => {
+  try {
+    if (newCache && Date.now() - newCache.at < NEW_CACHE_MS) {
+      return sendSuccess(res, newCache.data);
+    }
+    const data = await gt.fetchNewLaunches();
+    if (data.length > 0) newCache = { data, at: Date.now() };
+    sendSuccess(res, data);
+  } catch (err) {
+    if (newCache) return sendSuccess(res, newCache.data); // stale-if-error
+    sendError(res, err);
+  }
+});
+
+/**
  * GET /market/search?q=keyword — search Robinhood Chain tokens.
  */
 router.get('/search', publicLimiter, async (req, res) => {

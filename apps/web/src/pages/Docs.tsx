@@ -201,7 +201,7 @@ export const Docs: FC = () => {
         </p>
         <p>
           PONS charges <span className="mono">1%</span> on every bonding-curve trade and splits it{' '}
-          <strong>70% creator / 30% protocol</strong>. The 70% creator slice is paid to the curve's
+          <strong>1% per trade</strong>. The creator's share of that is set at launch (up to 10%) and is paid to the curve's
           creator fee recipient — that address is the entire listing deal.
         </p>
 

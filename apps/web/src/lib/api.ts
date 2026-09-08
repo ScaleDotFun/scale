@@ -557,6 +557,16 @@ export interface MarketToken {
   logoURI: string | null;
 }
 
+export interface NewLaunch extends MarketToken {
+  createdAt: string | null;
+  dex: string | null;
+}
+
+/** Freshly launched launchpad coins, newest first — the Explorer feed. */
+export function getNewLaunches(): Promise<NewLaunch[]> {
+  return request('/market/new');
+}
+
 export function getMarketTrending(): Promise<MarketToken[]> {
   return request('/market/trending');
 }

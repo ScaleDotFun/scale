@@ -338,8 +338,8 @@ router.post('/list', async (req, res) => {
 
     // ── The listing deal — REAL, verified on-chain ──
     // The coin must be a launchpad token AND its PONS creator fees must reach
-    // the LOADED pool wallet. PONS takes 1% per trade and splits it 70/30
-    // creator/protocol; the creator's 70% is what gets pointed at the pool.
+    // the LOADED pool wallet. PONS takes 1% per trade; the creator's share of
+    // that (set at launch, up to 10%) is what gets pointed at the pool.
     // There is no public getter for the recipient, so the gate is economic:
     // fees have to show up in the pool wallet on-chain, nothing self-reported.
     const LOADED_TOKEN = (process.env.LOADED_TOKEN_MINT || '').trim().toLowerCase();

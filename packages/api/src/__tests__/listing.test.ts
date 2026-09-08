@@ -2,7 +2,7 @@
 // LOADED PROTOCOL — Token Listing Verification Tests
 //
 // POST /tokens/list enforces the listing deal: the coin must be a genuine
-// launchpad token AND its PONS creator fees (70% of the 1% trade fee) must
+// launchpad token AND its PONS creator fees (the creator's share of the 1% trade fee) must
 // demonstrably reach the LOADED pool wallet. PONS ships
 // setCreatorFeeRecipient(address) with no matching getter, so the gate is
 // economic — money has to show up on-chain. An unreadable chain is

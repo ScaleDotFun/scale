@@ -1,4 +1,4 @@
-import { type FC, useState } from 'react';
+import { type CSSProperties, type FC, useState } from 'react';
 import * as api from '../lib/api';
 import { isValidAddress } from '../lib/format';
 import { useStats } from '../hooks/useStats';
@@ -102,6 +102,19 @@ export const ListToken: FC = () => {
     letterSpacing: '0.5px',
   } as const;
 
+  const guideImg: CSSProperties = {
+    width: '100%',
+    display: 'block',
+    border: '1px solid var(--panel-border)',
+    marginBottom: 6,
+  };
+  const guideCap: CSSProperties = {
+    display: 'block',
+    fontSize: '0.72rem',
+    color: 'var(--text-2)',
+    lineHeight: 1.5,
+  };
+
   return (
     <div className="fade-in" style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
@@ -120,15 +133,15 @@ export const ListToken: FC = () => {
           What you're actually giving up
         </span>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
-          PONS takes <b>1% of every trade</b> on your bonding curve and splits it{' '}
-          <b>70% to the creator, 30% to the protocol</b>. The 70% creator slice is
-          paid to whatever address is set as the curve's creator fee recipient —
-          that's the only thing you change. The PONS protocol's 30% is untouched,
-          and your token contract, supply, and curve stay exactly as launched.
+          PONS charges <b>1% on every trade</b> against your curve. Your slice of
+          that is the <b>creator tax</b> you set at launch (PONS allows up to 10%),
+          and it is paid to whatever address sits in the <b>Creator wallet</b>
+          field. That address is the only thing you change — your token contract,
+          supply, and curve stay exactly as launched.
         </p>
         <div style={calloutStyle}>
           <span className="text-muted">
-            You hand over the 70% creator slice and take back <b>30% of every LOADED
+            You hand over your creator slice and take back <b>30% of every LOADED
             flat fee</b> on leveraged trades of your coin. Leverage multiplies the
             volume that fee is charged on, which is why the trade is usually
             lopsided in your favor.
@@ -145,23 +158,43 @@ export const ListToken: FC = () => {
           Create your coin on PONS as usual — name, ticker, image, launch. Any
           genuine PONS launch on Robinhood Chain qualifies for LOADED, whether
           it's still on the bonding curve or has already graduated to Uniswap V4.
-          Nothing here has to be decided at launch time; the fee recipient can be
-          changed later.
         </p>
+        <img
+          src="/guide/pons-launch-form.png"
+          alt="The PONS launch form: name, ticker, description, image, paired asset and the Advanced section"
+          loading="lazy"
+          style={guideImg}
+        />
+        <span style={guideCap}>
+          ponsfamily.com/launchpad/create — note “Graduates once the curve raises 4.2 ETH”
+          and the 1.00% trade fee on the right.
+        </span>
       </div>
 
       {/* Step 2 — Point the creator fee at the pool */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <span className="text-muted" style={stepHead}>
-          Step 2 — Set your creator fee recipient to the LOADED pool
+          Step 2 — Point your creator fee at the LOADED pool
         </span>
         <p className="text-muted" style={{ fontSize: '0.85rem', margin: '8px 0 12px' }}>
-          From the wallet that deployed the coin, call{' '}
-          <code style={codeStyle}>setCreatorFeeRecipient(address)</code> on your
-          coin's PONS bonding-curve contract with the pool address below — either
-          from your coin's creator settings on PONS, or straight from the contract
-          write tab on the explorer. Only the deployer can set it.
+          On the launch form, open <b>Advanced</b>. Paste the pool address below
+          into <b>Creator wallet</b> — the field is labelled “Receives creator fees
+          and the creator tax”. Set <b>Creator tax</b> to the share you want routed
+          (PONS allows up to 10%). Leave <b>Holder fee sharing</b> off; switching it
+          on sends fees to holders instead of the pool, and the listing check will
+          fail.
         </p>
+        <img
+          src="/guide/pons-creator-wallet.png"
+          alt="PONS Advanced section showing Holder fee sharing, the Creator wallet field and Creator tax"
+          loading="lazy"
+          style={guideImg}
+        />
+        <span style={guideCap}>
+          Already launched? Call{' '}
+          <code style={codeStyle}>setCreatorFeeRecipient(address)</code> on your
+          coin's curve from the deploying wallet — only the deployer can set it.
+        </span>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
           background: 'var(--bg-1)', border: '1px solid var(--primary)', padding: '10px 14px',
@@ -277,7 +310,7 @@ export const ListToken: FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[
           { title: 'Launch on PONS', desc: 'Create your coin on PONS — name, ticker, image, launch. Bonding curve or already graduated, both qualify.' },
-          { title: 'Route the Creator Fee to the Pool', desc: 'Call setCreatorFeeRecipient with the LOADED pool address on your curve. PONS charges 1% per trade split 70% creator / 30% protocol — the 70% creator slice is what you route.' },
+          { title: 'Route the Creator Fee to the Pool', desc: 'Put the LOADED pool address in the Creator wallet field at launch, or call setCreatorFeeRecipient on your curve afterwards. PONS charges 1% per trade; your creator tax share of it is what you route.' },
           { title: 'Paste the Contract Address', desc: 'Copy the 0x… CA from your coin\'s PONS page, paste it above, and LOADED lists it instantly with tier, name, and logo auto-detected.' },
           { title: 'Earn 30% of Flat Fees', desc: 'Traders take leveraged positions on your coin with real on-chain swaps, and 30% of every flat fee accrues to your launch wallet — usually worth far more than the creator fee you routed.' },
         ].map((step, i) => (
