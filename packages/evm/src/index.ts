@@ -1154,7 +1154,6 @@ export function poolReserveFor(openPositions: number): bigint {
  * in the vault right now, which is what happens when nobody runs step 2.
  */
 export const PONS_FEE_VAULT = '0xd3afeb2a57f70ef218aa82451c51b2fb0416ac9e' as Address;
-const CURVE_FLUSH_SELECTOR = '0x3729bb9a';
 const VAULT_CLAIM_SELECTOR = '0x4e71d92d';
 
 /** What the vault has credited to `beneficiary` but not yet paid out. */
@@ -1168,32 +1167,24 @@ export async function vaultCreditOf(beneficiary: string): Promise<bigint> {
 }
 
 /**
- * Move a coin's accrued fees off its curve and into the vault.
+ * Whether this wallet may flush a coin's accrued fees off its curve.
  *
- * Permissionless and idempotent: flushing a curve with nothing accrued moves
- * nothing. Returns the tx hash, or null when the call reverts — a revert here
- * is normal (nothing to flush) and must never abort a sweep.
+ * It may not. The curve's flush is gated to PONS's own keeper
+ * (0x49bbf2b70955fb3a106e084d4bfda92d334573d2): calling it from any other
+ * address reverts with 0x8d42130c. Verified across five live curves — the
+ * keeper simulates OK on every one, the pool wallet and a random address
+ * revert on every one.
+ *
+ * That is fine, and it is why there is no flush call in this codebase. The
+ * keeper runs the flush continuously as PONS infrastructure, which is what
+ * puts credits in the vault in the first place. Our half of the job is the
+ * second hop, which IS ours: claim() pays msg.sender, so only the pool wallet
+ * can turn its own credit into ETH.
+ *
+ * Kept as a named constant so nobody re-adds a flush loop that can only ever
+ * revert.
  */
-export async function flushCurveFees(
-  from: PrivateKeyAccount,
-  curve: string,
-): Promise<string | null> {
-  return withWalletLock(from.address, async () => {
-    try {
-      const wallet = getWalletClient(from);
-      const hash = await wallet.sendTransaction({
-        account: from,
-        chain: robinhoodChain,
-        to: getAddress(curve),
-        data: `${CURVE_FLUSH_SELECTOR}${'0'.repeat(64)}` as Hex,
-      });
-      const receipt = await getPublicClient().waitForTransactionReceipt({ hash, confirmations: 1 });
-      return receipt.status === 'success' ? hash : null;
-    } catch {
-      return null;
-    }
-  });
-}
+export const PONS_FEE_KEEPER = '0x49bbf2b70955fb3a106e084d4bfda92d334573d2' as Address;
 
 /**
  * Collect everything the vault has credited to this wallet.

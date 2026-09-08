@@ -6,10 +6,13 @@
 // two-transaction job, not bookkeeping.
 //
 // Fees do NOT arrive on their own. They accrue inside each coin's bonding
-// curve; a permissionless FLUSH moves them into a shared escrow vault as a
-// credit to the recipient; and only a CLAIM sent BY that recipient turns the
-// credit into native ETH. claim() pays msg.sender and takes no beneficiary
-// argument, so nobody can collect for us — the pool wallet signs its own.
+// curve; PONS's keeper flushes them into a shared escrow vault as a credit to
+// the recipient; and only a CLAIM sent BY that recipient turns the credit into
+// native ETH. claim() pays msg.sender and takes no beneficiary argument, so
+// nobody can collect for us — and we cannot flush for ourselves either: the
+// curve's flush is keeper-gated and reverts (0x8d42130c) for every other
+// caller. So this worker does exactly the half that is ours: watch the vault
+// credit, and claim it.
 //
 // The evidence for that shape: on one live curve, 142 fee-bearing trades
 // accrued 0.1321 ETH while the recipient's balance never moved; and ~887 ETH
@@ -27,8 +30,6 @@ import {
   getProtocolAccount,
   hasProtocolKey,
   protocolPublicKey,
-  findCurveForToken,
-  flushCurveFees,
   claimVaultCredit,
   vaultCreditOf,
   explorerTxUrl,
@@ -54,10 +55,10 @@ interface FeeClaimJobData {
 }
 
 /**
- * Flush every listed coin's curve, then claim the whole vault credit at once.
+ * Claim whatever the vault has credited to the pool wallet.
  *
- * Flushing is idempotent — a curve with nothing accrued moves nothing — so
- * this is safe to run on a schedule and safe to retry.
+ * Safe to run on a schedule and safe to retry: a claim with nothing credited
+ * is a no-op, and a failed claim leaves the credit untouched in the vault.
  */
 async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
   const pool = protocolPublicKey();
@@ -83,42 +84,18 @@ async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
     // The bootstrap trap, stated plainly: claiming costs gas, and only the
     // beneficiary can claim, so a wallet at zero cannot fund itself.
     console.warn(
-      `${PREFIX} pool wallet holds ${fmt(gas)} — below the ${fmt(MIN_GAS_TO_OPERATE)} needed to run a ` +
-      `flush + claim. ${credited > 0n ? `${fmt(credited)} of fees are waiting in the vault. ` : ''}` +
+      `${PREFIX} pool wallet holds ${fmt(gas)} — below the ${fmt(MIN_GAS_TO_OPERATE)} needed to send a ` +
+      `claim. ${credited > 0n ? `${fmt(credited)} of fees are waiting in the vault. ` : ''}` +
       `Send the pool wallet a small amount of ETH to unblock collection.`,
     );
     return;
   }
 
-  // ── Step 1: flush each listed coin's curve into the vault ──
-  const tokens = await prisma.token.findMany({
-    where: { isActive: true },
-    select: { id: true, address: true, symbol: true },
-  });
-
-  let flushed = 0;
-  for (const t of tokens) {
-    try {
-      const curve = await findCurveForToken(t.address);
-      if (!curve) continue;
-      const tx = await flushCurveFees(account, curve);
-      if (tx) {
-        flushed++;
-        console.log(`${PREFIX} flushed ${t.symbol ?? t.address} (curve ${curve}) — ${explorerTxUrl(tx)}`);
-      }
-    } catch (err) {
-      // One coin's curve must never stop the sweep, and a revert here just
-      // means there was nothing accrued to move.
-      console.warn(`${PREFIX} flush skipped for ${t.symbol ?? t.address}:`, err instanceof Error ? err.message : err);
-    }
-  }
-
-  // ── Step 2: turn the vault credit into ETH ──
+  // PONS's keeper does the flushing. We only collect.
   const credited = await vaultCreditOf(pool).catch(() => 0n);
-  if (credited < MIN_CLAIM_WEI) {
-    if (flushed > 0) console.log(`${PREFIX} flushed ${flushed} curve(s); nothing above dust to claim yet`);
-    return;
-  }
+  if (credited < MIN_CLAIM_WEI) return;
+
+  console.log(`${PREFIX} ${fmt(credited)} credited in the vault — claiming`);
 
   let claim: { txHash: string; received: bigint } | null;
   try {
@@ -138,8 +115,8 @@ async function processFeeClaim(_job: Job<FeeClaimJobData>): Promise<void> {
   });
 
   console.log(
-    `${PREFIX} 💰 Claimed ${fmt(claim.received)} of PONS creator fees into the pool ` +
-    `(${flushed} curve(s) flushed) — ${explorerTxUrl(claim.txHash)}`,
+    `${PREFIX} 💰 Claimed ${fmt(claim.received)} of PONS creator fees into the pool — ` +
+    `${explorerTxUrl(claim.txHash)}`,
   );
 }
 
@@ -171,5 +148,5 @@ export async function scheduleFeeClaimer(): Promise<void> {
     {},
     { repeat: { every: 5 * 60_000 }, jobId: 'fee-sweep-recurring' },
   );
-  console.log(`${PREFIX} Scheduled fee flush + claim every 5 minutes`);
+  console.log(`${PREFIX} Scheduled vault fee claim every 5 minutes`);
 }

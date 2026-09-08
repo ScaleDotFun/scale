@@ -88,7 +88,6 @@ vi.mock('@loaded/evm', () => ({
   readCurveDeployer: vi.fn(() => Promise.resolve(null)),
   readCreatorFeeRecipient: vi.fn(() => Promise.resolve(null)),
   readCurveGraduated: vi.fn(() => Promise.resolve(false)),
-  flushCurveFees: vi.fn(() => Promise.resolve(null)),
   claimVaultCredit: vi.fn(() => Promise.resolve(null)),
   vaultCreditOf: vi.fn(() => Promise.resolve(0n)),
   poolReserveFor: vi.fn((n: number) => 3_000_000_000_000_000n + 1_000_000_000_000_000n * BigInt(n)),

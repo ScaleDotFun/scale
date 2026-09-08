@@ -2,10 +2,16 @@
 // LOADED PROTOCOL — Fee claimer tests
 //
 // PONS creator fees are claim-based, not push-based: they accrue on the curve,
-// a permissionless flush credits a shared escrow vault, and only a claim() sent
-// BY the beneficiary turns that credit into ETH. The previous worker assumed
-// fees simply landed and never sent a transaction — against a wallet that will
-// never move on its own it would have booked nothing, forever.
+// PONS's own keeper flushes them into a shared escrow vault as a credit, and
+// only a claim() sent BY the beneficiary turns that credit into ETH.
+//
+// Two mechanics decide the shape of this worker, and both were checked against
+// the chain rather than assumed:
+//   • claim() pays msg.sender and takes no beneficiary — nobody can collect for
+//     us, so the pool wallet must sign its own claim, and needs gas first.
+//   • the curve's flush is keeper-gated: calling it from the pool wallet or any
+//     other address reverts (0x8d42130c), while PONS's keeper simulates OK.
+//     So this worker must NOT try to flush — that half is not ours to do.
 // ──────────────────────────────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -13,34 +19,26 @@ import { prisma } from '@loaded/database';
 import {
   getNativeBalance,
   hasProtocolKey,
-  findCurveForToken,
-  flushCurveFees,
   claimVaultCredit,
   vaultCreditOf,
 } from '@loaded/evm';
 import { feeClaimerWorker } from '../fee-claimer.js';
 
 const WEI = 1_000_000_000_000_000_000n;
-const CURVE = '0x1111111111111111111111111111111111111111';
-const run = () => (feeClaimerWorker as unknown as { __processor: (j: unknown) => Promise<void> }).__processor({ data: {} });
+const run = () =>
+  (feeClaimerWorker as unknown as { __processor: (j: unknown) => Promise<void> }).__processor({ data: {} });
 
 describe('fee claimer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(hasProtocolKey).mockReturnValue(true);
     vi.mocked(getNativeBalance).mockResolvedValue(WEI / 100n); // 0.01 ETH of gas
-    vi.mocked(prisma.token.findMany).mockResolvedValue([
-      { id: 1, address: '0x2222222222222222222222222222222222222222', symbol: 'AAA' },
-    ] as never);
-    vi.mocked(findCurveForToken).mockResolvedValue(CURVE as never);
-    vi.mocked(flushCurveFees).mockResolvedValue('0xflush' as never);
     vi.mocked(vaultCreditOf).mockResolvedValue(WEI / 10n); // 0.1 ETH credited
     vi.mocked(claimVaultCredit).mockResolvedValue({ txHash: '0xclaim', received: WEI / 10n } as never);
   });
 
-  it('flushes each listed curve and then claims the vault credit', async () => {
+  it('claims the vault credit when the pool has one', async () => {
     await run();
-    expect(flushCurveFees).toHaveBeenCalledWith(expect.anything(), CURVE);
     expect(claimVaultCredit).toHaveBeenCalledTimes(1);
   });
 
@@ -59,7 +57,6 @@ describe('fee claimer', () => {
     await run();
     // The chicken-and-egg: claim() pays msg.sender only, so a wallet at zero
     // cannot fund itself. It must not burn its last wei trying.
-    expect(flushCurveFees).not.toHaveBeenCalled();
     expect(claimVaultCredit).not.toHaveBeenCalled();
     expect(prisma.poolLedger.create).not.toHaveBeenCalled();
   });
@@ -71,19 +68,16 @@ describe('fee claimer', () => {
     expect(prisma.poolLedger.create).not.toHaveBeenCalled();
   });
 
-  it('keeps sweeping when one coin’s flush throws', async () => {
-    vi.mocked(prisma.token.findMany).mockResolvedValue([
-      { id: 1, address: '0x2222222222222222222222222222222222222222', symbol: 'AAA' },
-      { id: 2, address: '0x3333333333333333333333333333333333333333', symbol: 'BBB' },
-    ] as never);
-    vi.mocked(flushCurveFees).mockRejectedValueOnce(new Error('reverted') as never);
-    await run();
-    expect(claimVaultCredit).toHaveBeenCalledTimes(1);
-  });
-
   it('never claims without the pool key, however much is credited', async () => {
     vi.mocked(hasProtocolKey).mockReturnValue(false);
     await run();
     expect(claimVaultCredit).not.toHaveBeenCalled();
+  });
+
+  it('does not read the token list at all — flushing is the keeper’s job, not ours', async () => {
+    await run();
+    // A flush loop here would send one reverting transaction per listed coin,
+    // every sweep, forever. The keeper is gated to 0x49bbf2b7… and we are not it.
+    expect(prisma.token.findMany).not.toHaveBeenCalled();
   });
 });
